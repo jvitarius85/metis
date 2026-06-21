@@ -13,3 +13,4 @@ try {
 } finally {
     Profiler::report();
 }
+##cats
