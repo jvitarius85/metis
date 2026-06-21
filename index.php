@@ -12,3 +12,4 @@ try {
     metis_kernel_execute( 'web' );
 } finally {
     Profiler::report();
+}
