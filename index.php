@@ -13,4 +13,4 @@ try {
 } finally {
     Profiler::report();
 }
-##cats
+##dogs rules
