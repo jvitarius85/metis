@@ -7,6 +7,7 @@ if ( PHP_SAPI !== 'cli' ) {
 }
 
 $root = dirname( __DIR__ );
+require_once __DIR__ . '/_support/module_path_resolver.php';
 
 define( 'METIS_STANDALONE', true );
 define( 'METIS_PREFIX', 'metis' );
@@ -29,18 +30,7 @@ use Metis\Http\Request as Metis_Http_Request;
 
 $failures = [];
 
-$resolve_relative = static function ( string $relative ) use ( $root ): string {
-    $normalized = ltrim( $relative, '/\\' );
-
-    foreach ( [ 'help', 'people', 'portal', 'profile', 'settings' ] as $slug ) {
-        $prefix = 'modules/' . $slug . '/';
-        if ( str_starts_with( $normalized, $prefix ) ) {
-            return $root . '/src/Metis/Core/BuiltInServices/' . $slug . '/' . substr( $normalized, strlen( $prefix ) );
-        }
-    }
-
-    return $root . '/' . $normalized;
-};
+$resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
 
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {
     if ( ! $condition ) {
@@ -414,8 +404,8 @@ $modernized_shared_paths = [
     $root . '/modules/finance/views/finance.php',
     $root . '/modules/finance/assets/finance.ajax.php',
     $root . '/modules/donations/views/dashboard.php',
-    $root . '/modules/hermes/views/dashboard.php',
-    $root . '/modules/hermes/assets/hermes.ajax.php',
+    $root . '/src/Metis/Core/BuiltInServices/hermes/views/dashboard.php',
+    $root . '/src/Metis/Core/BuiltInServices/hermes/assets/hermes.ajax.php',
     $root . '/modules/media/assets/media.ajax.php',
     $root . '/modules/newsletter/assets/newsletter.ajax.php',
     $root . '/modules/newsletter/services/audit.php',

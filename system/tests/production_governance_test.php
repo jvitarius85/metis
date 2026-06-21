@@ -8,19 +8,9 @@ if ( PHP_SAPI !== 'cli' ) {
 
 $root = dirname( __DIR__ );
 $failures = [];
+require_once __DIR__ . '/_support/module_path_resolver.php';
 
-$resolve_relative = static function ( string $relative ) use ( $root ): string {
-    $normalized = ltrim( $relative, '/\\' );
-
-    foreach ( [ 'help', 'people', 'portal', 'profile', 'settings' ] as $slug ) {
-        $prefix = 'modules/' . $slug . '/';
-        if ( str_starts_with( $normalized, $prefix ) ) {
-            return $root . '/src/Metis/Core/BuiltInServices/' . $slug . '/' . substr( $normalized, strlen( $prefix ) );
-        }
-    }
-
-    return $root . '/' . $normalized;
-};
+$resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
 
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {
     if ( ! $condition ) {

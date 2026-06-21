@@ -11,7 +11,7 @@ $root = dirname( __DIR__ );
 $core_service_path = static function ( string $relative ) use ( $root ): string {
     $normalized = ltrim( $relative, '/\\' );
 
-    foreach ( [ 'help', 'people', 'portal', 'profile', 'settings' ] as $slug ) {
+    foreach ( [ 'help', 'hermes', 'people', 'portal', 'profile', 'settings' ] as $slug ) {
         $prefix = 'modules/' . $slug . '/';
         if ( str_starts_with( $normalized, $prefix ) ) {
             return $root . '/src/Metis/Core/BuiltInServices/' . $slug . '/' . substr( $normalized, strlen( $prefix ) );

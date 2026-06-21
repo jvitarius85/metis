@@ -12,19 +12,9 @@ $failures = [];
 $rawSqlPattern = '/\bSELECT\s+.+\bFROM\b|\bINSERT\s+INTO\b|\bUPDATE\s+\S+\s+SET\b|\bDELETE\s+FROM\b/us';
 $hardeningScope = getenv( 'METIS_HARDENING_SCOPE' ) ?: 'auto';
 $enforceModulePresence = $hardeningScope === 'private';
+require_once __DIR__ . '/_support/module_path_resolver.php';
 
-$resolve_relative = static function ( string $relative ) use ( $system ): string {
-    $normalized = ltrim( $relative, '/\\' );
-
-    foreach ( [ 'help', 'people', 'portal', 'profile', 'settings' ] as $slug ) {
-        $prefix = 'modules/' . $slug . '/';
-        if ( str_starts_with( $normalized, $prefix ) ) {
-            return $system . '/src/Metis/Core/BuiltInServices/' . $slug . '/' . substr( $normalized, strlen( $prefix ) );
-        }
-    }
-
-    return $system . '/' . $normalized;
-};
+$resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $system, $relative );
 
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {
     if ( ! $condition ) {
@@ -79,7 +69,7 @@ $governanceChecker = $read( '../tools/governance/check-ajax-ui-hardening.php' );
 $grandyStashAjax = $read( 'modules/grandys_stash/assets/grandys_stash.ajax.php' );
 $contactsRelationshipsAjax = $read( 'modules/contacts/ajax/relationships.ajax.php' );
 $peopleTemplatesAjax = $read( 'modules/people/ajax/templates.ajax.php' );
-$hermesAjax = $read( 'modules/hermes/assets/hermes.ajax.php' );
+$hermesAjax = $read( 'src/Metis/Core/BuiltInServices/hermes/assets/hermes.ajax.php' );
 $boardAjax = $read( 'modules/board/assets/board.ajax.php' );
 $boardBylawsService = $read( 'src/Metis/Modules/Board/BylawsService.php' );
 $boardDecisionAttendanceService = $read( 'src/Metis/Modules/Board/DecisionAttendanceService.php' );

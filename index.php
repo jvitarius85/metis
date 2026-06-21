@@ -13,4 +13,3 @@ try {
 } finally {
     Profiler::report();
 }
-##dogs rules

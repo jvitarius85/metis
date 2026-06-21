@@ -8,7 +8,7 @@ use Metis\Core\Error\FailureIsolation;
 use Metis\Core\Modules\ModuleValidator;
 
 final class ModuleLoader {
-    private const REQUIRED_MODULES = [ 'portal', 'people', 'profile', 'settings' ];
+    private const REQUIRED_MODULES = [ 'portal', 'people', 'profile', 'settings', 'hermes' ];
     private const COMPLIANCE_CACHE_TTL = 300;
 
     private array $modules = [];
