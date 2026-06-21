@@ -9,19 +9,9 @@ if ( PHP_SAPI !== 'cli' ) {
 $system = dirname( __DIR__ );
 $failures = [];
 $rawSqlPattern = '/\bSELECT\s+.+\bFROM\b|\bINSERT\s+INTO\b|\bUPDATE\s+\S+\s+SET\b|\bDELETE\s+FROM\b/us';
+require_once __DIR__ . '/_support/module_path_resolver.php';
 
-$resolve_relative = static function ( string $relative ) use ( $system ): string {
-    $normalized = ltrim( $relative, '/\\' );
-
-    foreach ( [ 'help', 'hermes', 'people', 'portal', 'profile', 'settings' ] as $slug ) {
-        $prefix = 'modules/' . $slug . '/';
-        if ( str_starts_with( $normalized, $prefix ) ) {
-            return $system . '/src/Metis/Core/BuiltInServices/' . $slug . '/' . substr( $normalized, strlen( $prefix ) );
-        }
-    }
-
-    return $system . '/' . $normalized;
-};
+$resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $system, $relative );
 
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {
     if ( ! $condition ) {
