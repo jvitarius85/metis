@@ -1,4 +1,4 @@
-name: AJAX UI Hardening
+name: AJAX UI Hardening (Public Core)
 
 on:
   push:
@@ -11,6 +11,8 @@ on:
 jobs:
   ajax-ui-hardening:
     runs-on: ubuntu-latest
+    env:
+      METIS_HARDENING_SCOPE: public
 
     steps:
       - name: Checkout

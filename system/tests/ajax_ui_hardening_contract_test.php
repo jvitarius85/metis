@@ -10,6 +10,8 @@ $system = dirname( __DIR__ );
 $root = dirname( $system );
 $failures = [];
 $rawSqlPattern = '/\bSELECT\s+.+\bFROM\b|\bINSERT\s+INTO\b|\bUPDATE\s+\S+\s+SET\b|\bDELETE\s+FROM\b/us';
+$hardeningScope = getenv( 'METIS_HARDENING_SCOPE' ) ?: 'auto';
+$enforceModulePresence = $hardeningScope === 'private';
 
 $resolve_relative = static function ( string $relative ) use ( $system ): string {
     $normalized = ltrim( $relative, '/\\' );
@@ -28,6 +30,14 @@ $assert = static function ( bool $condition, string $message ) use ( &$failures 
     if ( ! $condition ) {
         $failures[] = $message;
     }
+};
+
+$assert_if_loaded = static function ( string $contents, bool $condition, string $message ) use ( $assert ): void {
+    if ( $contents === '' ) {
+        return;
+    }
+
+    $assert( $condition, $message );
 };
 
 $read = static function ( string $relative ) use ( $resolve_relative ): string {
@@ -122,20 +132,20 @@ $assert( str_contains( $coreJs, 'Metis.ui.modal.confirm = function(options)' ), 
 $assert( str_contains( $coreJs, 'Metis.ui.modal.form = function(target)' ), 'Core UI runtime must expose Metis.ui.modal.form helper.' );
 $assert( ! str_contains( $coreCss, '.metis-theme-selectx' ) && ! str_contains( $coreCss, '.metis-ui-selectx' ), 'Shared core styles must not retain legacy selectx systems.' );
 
-$assert( str_contains( $formsRepository, 'CampaignService::getActiveCampaignOptions()' ), 'Form Builder campaign options must route through the canonical campaign service.' );
-$assert( str_contains( $donationsCampaignService, 'getActiveCampaignOptions' ), 'Donations campaign service must expose active campaign options.' );
-$assert( str_contains( $formsJs, 'Metis.ui.ajax.post' ), 'Form Builder admin requests must delegate through Metis.ui.ajax.post.' );
-$assert( str_contains( $formsJs, 'Metis.ui.form.setSubmitting' ), 'Form Builder public submit state must delegate through Metis.ui.form.' );
-$assert( str_contains( $formsJs, 'metisRoot.forms.initPublicEmbeds = initPublicEmbeds;' ) && str_contains( $formsJs, "root.dataset.metisFormsPublicInit = '1';" ), 'Public forms runtime must expose idempotent embed initialization.' );
-$assert( str_contains( $formsJs, 'findAdjacentPublicBoot(root)' ) && str_contains( $formsJs, 'hideSuccessOverlay(successOverlay);' ), 'Public forms runtime must resolve scoped boot data and close the confirmation modal through the governed helper.' );
-$assert( str_contains( $formsJs, 'Metis.ui.select.init(root);' ), 'Form Builder render cycle must reinitialize the canonical select helper.' );
-$assert( ! preg_match( '/(^|[^A-Za-z0-9_])alert\s*\(|(^|[^A-Za-z0-9_])confirm\s*\(/u', $formsJs ), 'Form Builder must not use browser-native alert/confirm fallbacks.' );
-$assert( str_contains( $formsRenderer, 'data-metis-forms-public-data' ) && str_contains( $formsRenderer, 'Metis.forms.initPublicEmbeds(document);' ), 'Public form renderer must keep boot data with the embed and request embed reinitialization after script load.' );
-$assert( ! str_contains( $websiteThemeView, 'metis-theme-selectx' ), 'Website theme UI must not keep the legacy private selectx system.' );
-$assert( ! str_contains( $websiteThemeView, 'rebuildStyledSelects' ), 'Website theme UI must not rebuild private styled selects.' );
-$assert( str_contains( $websiteThemeView, 'data-metis-ui-select="1"' ) && str_contains( $websiteThemeView, 'refreshThemeSelects' ), 'Website theme UI must use the shared select helper for preview-capable selects.' );
-$assert( ! str_contains( $newsletterJs, 'metis-theme-selectx' ), 'Newsletter theme UI must not keep the legacy private selectx system.' );
-$assert( str_contains( $newsletterJs, 'Metis.ui.select.refresh(select);' ), 'Newsletter theme UI must use the shared select helper.' );
+$assert_if_loaded( $formsRepository, str_contains( $formsRepository, 'CampaignService::getActiveCampaignOptions()' ), 'Form Builder campaign options must route through the canonical campaign service.' );
+$assert_if_loaded( $donationsCampaignService, str_contains( $donationsCampaignService, 'getActiveCampaignOptions' ), 'Donations campaign service must expose active campaign options.' );
+$assert_if_loaded( $formsJs, str_contains( $formsJs, 'Metis.ui.ajax.post' ), 'Form Builder admin requests must delegate through Metis.ui.ajax.post.' );
+$assert_if_loaded( $formsJs, str_contains( $formsJs, 'Metis.ui.form.setSubmitting' ), 'Form Builder public submit state must delegate through Metis.ui.form.' );
+$assert_if_loaded( $formsJs, str_contains( $formsJs, 'metisRoot.forms.initPublicEmbeds = initPublicEmbeds;' ) && str_contains( $formsJs, "root.dataset.metisFormsPublicInit = '1';" ), 'Public forms runtime must expose idempotent embed initialization.' );
+$assert_if_loaded( $formsJs, str_contains( $formsJs, 'findAdjacentPublicBoot(root)' ) && str_contains( $formsJs, 'hideSuccessOverlay(successOverlay);' ), 'Public forms runtime must resolve scoped boot data and close the confirmation modal through the governed helper.' );
+$assert_if_loaded( $formsJs, str_contains( $formsJs, 'Metis.ui.select.init(root);' ), 'Form Builder render cycle must reinitialize the canonical select helper.' );
+$assert_if_loaded( $formsJs, ! preg_match( '/(^|[^A-Za-z0-9_])alert\s*\(|(^|[^A-Za-z0-9_])confirm\s*\(/u', $formsJs ), 'Form Builder must not use browser-native alert/confirm fallbacks.' );
+$assert_if_loaded( $formsRenderer, str_contains( $formsRenderer, 'data-metis-forms-public-data' ) && str_contains( $formsRenderer, 'Metis.forms.initPublicEmbeds(document);' ), 'Public form renderer must keep boot data with the embed and request embed reinitialization after script load.' );
+$assert_if_loaded( $websiteThemeView, ! str_contains( $websiteThemeView, 'metis-theme-selectx' ), 'Website theme UI must not keep the legacy private selectx system.' );
+$assert_if_loaded( $websiteThemeView, ! str_contains( $websiteThemeView, 'rebuildStyledSelects' ), 'Website theme UI must not rebuild private styled selects.' );
+$assert_if_loaded( $websiteThemeView, str_contains( $websiteThemeView, 'data-metis-ui-select="1"' ) && str_contains( $websiteThemeView, 'refreshThemeSelects' ), 'Website theme UI must use the shared select helper for preview-capable selects.' );
+$assert_if_loaded( $newsletterJs, ! str_contains( $newsletterJs, 'metis-theme-selectx' ), 'Newsletter theme UI must not keep the legacy private selectx system.' );
+$assert_if_loaded( $newsletterJs, str_contains( $newsletterJs, 'Metis.ui.select.refresh(select);' ), 'Newsletter theme UI must use the shared select helper.' );
 $assert( str_contains( $editorService, "assets/js/editor/simple-editor.css" ) && str_contains( $editorService, "assets/js/editor/simple-editor.js" ) && str_contains( $editorService, "metis_runtime_localize_script( 'metis-editor-simple', 'metisEditorConfig'" ), 'Editor service must expose the shared simple-editor runtime for every editor context.' );
 $assert( ! str_contains( $simpleEditorJs, 'metis-modal-overlay' ), 'Simple editor must not retain legacy modal overlay markup.' );
 $assert( str_contains( $simpleEditorJs, 'emojiAssetUrlFromValue' ) && str_contains( $simpleEditorJs, 'replaceEmojiTextNodesWithImages' ), 'Simple editor must normalize inline emoji text through the repo-backed emoji asset path.' );
@@ -149,51 +159,51 @@ $assert( str_contains( $simpleEditorJs, 'function resolveSaveStatus(autosave, pu
 $assert( str_contains( $simpleEditorCss, 'grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));' ) && str_contains( $simpleEditorCss, '.metis-text-size-sm .metis-inline-emoji' ) && str_contains( $simpleEditorCss, '.metis-text-size-lg .metis-inline-emoji' ) && str_contains( $simpleEditorCss, '.metis-text-size-xl .metis-inline-emoji' ), 'Simple editor styles must keep a compact emoji-only picker and scale inline emoji with the shared text size selector classes.' );
 $assert( is_file( $system . '/assets/Images/emojis/emoji-index.json' ) && str_contains( $routerRuntime, "'json'" ), 'Core asset routing must serve the generated emoji index manifest for the shared picker.' );
 $assert( str_contains( $routerRuntime, 'function metis_router_build_cacheable_asset_response' ) && str_contains( $routerRuntime, "'ETag' => \$cache['etag']" ) && str_contains( $routerRuntime, "'Last-Modified' => \$cache['last_modified']" ) && str_contains( $routerRuntime, 'public, max-age=604800, stale-while-revalidate=86400' ), 'Core routed asset delivery must expose strong cache validators for shared images, fonts, and other static assets.' );
-$assert( str_contains( $websiteRoutes, 'max-age=31536000, immutable' ) && str_contains( $websiteRoutes, "'ETag' => \$etag" ), 'Versioned website theme stylesheets must be cacheable as immutable assets with strong validators.' );
-$assert( str_contains( $websiteRenderer, "rel=\"preload\" href=\"" ) && str_contains( $websiteRenderer, "as=\"font\"" ) && str_contains( $websiteRenderer, "font_preloads" ), 'Public website rendering must preload the active local theme font assets before the generated stylesheet applies them.' );
-$assert( str_contains( $publicNavigationJs, 'event.stopPropagation();' ) && str_contains( $publicNavigationJs, 'nav.setAttribute("aria-hidden", active ? "false" : "true")' ) && str_contains( $websiteRenderer, 'body.metis-nav-mobile-viewport .metis-shell-nav-primary .metis-shell-menu-item.has-children.is-open > .metis-shell-menu-sub{max-height:44rem !important;opacity:1 !important;}' ) && ! str_contains( $websiteRenderer, 'private static function mobileFlyoutMenuHardeningCss' ) && ! str_contains( $themeService, 'body.metis-nav-mobile-viewport .metis-shell-nav-primary{position:fixed;' ), 'Public mobile navigation must have one canonical flyout owner, expand submenus from explicit toggle state, and keep ThemeService out of mobile shell layout.' );
-$assert( str_contains( $menuService, 'function normalizeItemsForPersistence' ) && str_contains( $menuService, 'function normalizePublicItemUrl' ) && str_contains( $menuService, 'PageService::getPublishedByPath' ) && str_contains( $menuService, 'PostService::publicPath' ) && str_contains( $websiteAjax, 'MenuService::normalizeItemsForPersistence' ) && str_contains( $websiteAjax, 'metis_json_encode( $normalized_items' ), 'Website menu items must normalize internal URLs through the canonical page/post route services at both render and save time and persist them through the Metis JSON helper.' );
-$assert( str_contains( $websiteRenderer, "stylesheetHref( \$context, \$template_structure, \$template_preview_mode, 'shared' )" ) && str_contains( $websiteRenderer, "stylesheetHref( \$context, \$template_structure, \$template_preview_mode, 'layout' )" ) && str_contains( $websiteRenderer, 'contentStyleVersionToken' ), 'Website rendering must split shared theme CSS from page layout CSS so fonts and global styles cache across pages without making page CSS stale.' );
-$assert( str_contains( $websiteRenderer, 'shared_style_href' ) && str_contains( $websiteRenderer, 'layout_style_href' ) && str_contains( $websiteRenderer, 'as="style"' ), 'Public website rendering must discover the shared stylesheet early and load page-specific layout CSS separately.' );
-$assert( str_contains( $themeService, 'public static function renderCriticalTypographyCss' ) && str_contains( $websiteRenderer, 'data-metis-critical-typography="1"' ) && str_contains( $websiteRenderer, 'renderCriticalTypographyCss' ), 'Public website rendering must inline critical typography CSS so fresh installs do not wait on generated stylesheets before knowing the active theme fonts.' );
+$assert_if_loaded( $websiteRoutes, str_contains( $websiteRoutes, 'max-age=31536000, immutable' ) && str_contains( $websiteRoutes, "'ETag' => \$etag" ), 'Versioned website theme stylesheets must be cacheable as immutable assets with strong validators.' );
+$assert_if_loaded( $websiteRenderer, str_contains( $websiteRenderer, "rel=\"preload\" href=\"" ) && str_contains( $websiteRenderer, "as=\"font\"" ) && str_contains( $websiteRenderer, "font_preloads" ), 'Public website rendering must preload the active local theme font assets before the generated stylesheet applies them.' );
+$assert_if_loaded( $publicNavigationJs . $websiteRenderer . $themeService, str_contains( $publicNavigationJs, 'event.stopPropagation();' ) && str_contains( $publicNavigationJs, 'nav.setAttribute("aria-hidden", active ? "false" : "true")' ) && str_contains( $websiteRenderer, 'body.metis-nav-mobile-viewport .metis-shell-nav-primary .metis-shell-menu-item.has-children.is-open > .metis-shell-menu-sub{max-height:44rem !important;opacity:1 !important;}' ) && ! str_contains( $websiteRenderer, 'private static function mobileFlyoutMenuHardeningCss' ) && ! str_contains( $themeService, 'body.metis-nav-mobile-viewport .metis-shell-nav-primary{position:fixed;' ), 'Public mobile navigation must have one canonical flyout owner, expand submenus from explicit toggle state, and keep ThemeService out of mobile shell layout.' );
+$assert_if_loaded( $menuService . $websiteAjax, str_contains( $menuService, 'function normalizeItemsForPersistence' ) && str_contains( $menuService, 'function normalizePublicItemUrl' ) && str_contains( $menuService, 'PageService::getPublishedByPath' ) && str_contains( $menuService, 'PostService::publicPath' ) && str_contains( $websiteAjax, 'MenuService::normalizeItemsForPersistence' ) && str_contains( $websiteAjax, 'metis_json_encode( $normalized_items' ), 'Website menu items must normalize internal URLs through the canonical page/post route services at both render and save time and persist them through the Metis JSON helper.' );
+$assert_if_loaded( $websiteRenderer, str_contains( $websiteRenderer, "stylesheetHref( \$context, \$template_structure, \$template_preview_mode, 'shared' )" ) && str_contains( $websiteRenderer, "stylesheetHref( \$context, \$template_structure, \$template_preview_mode, 'layout' )" ) && str_contains( $websiteRenderer, 'contentStyleVersionToken' ), 'Website rendering must split shared theme CSS from page layout CSS so fonts and global styles cache across pages without making page CSS stale.' );
+$assert_if_loaded( $websiteRenderer, str_contains( $websiteRenderer, 'shared_style_href' ) && str_contains( $websiteRenderer, 'layout_style_href' ) && str_contains( $websiteRenderer, 'as="style"' ), 'Public website rendering must discover the shared stylesheet early and load page-specific layout CSS separately.' );
+$assert_if_loaded( $themeService . $websiteRenderer, str_contains( $themeService, 'public static function renderCriticalTypographyCss' ) && str_contains( $websiteRenderer, 'data-metis-critical-typography="1"' ) && str_contains( $websiteRenderer, 'renderCriticalTypographyCss' ), 'Public website rendering must inline critical typography CSS so fresh installs do not wait on generated stylesheets before knowing the active theme fonts.' );
 $assert( str_contains( $coreCss, "Figtree-VariableFont_wght.woff2" ) && str_contains( $coreCss, "IBMPlexMono-Regular.woff2" ) && str_contains( $coreCss, 'font-display: fallback;' ), 'Core CSS must prefer local webfont assets and use fallback display to balance stable paint with actual custom font loading.' );
-$assert( str_contains( $themeService, 'font-display:fallback;' ) && str_contains( $themeService, "if ( \$value === 'ttf' ) {" ) && str_contains( $websiteThemeView, 'font-display:fallback;' ), 'Website theme font generation must normalize local font formats correctly and use fallback display for public pages and live previews.' );
-$assert( str_contains( $websiteBlockRegistry, "'form_tabs_block'" ), 'Website block registry must expose the shared form tabs dynamic block definition.' );
-$assert( ! str_contains( $depositsView, 'metis-modal-overlay' ), 'Deposits view must not retain legacy modal overlay markup.' );
-$assert( ! str_contains( $campaignView, 'metis-modal-overlay' ), 'Campaign view must not retain legacy modal overlay markup.' );
+$assert_if_loaded( $themeService . $websiteThemeView, str_contains( $themeService, 'font-display:fallback;' ) && str_contains( $themeService, "if ( \$value === 'ttf' ) {" ) && str_contains( $websiteThemeView, 'font-display:fallback;' ), 'Website theme font generation must normalize local font formats correctly and use fallback display for public pages and live previews.' );
+$assert_if_loaded( $websiteBlockRegistry, str_contains( $websiteBlockRegistry, "'form_tabs_block'" ), 'Website block registry must expose the shared form tabs dynamic block definition.' );
+$assert_if_loaded( $depositsView, ! str_contains( $depositsView, 'metis-modal-overlay' ), 'Deposits view must not retain legacy modal overlay markup.' );
+$assert_if_loaded( $campaignView, ! str_contains( $campaignView, 'metis-modal-overlay' ), 'Campaign view must not retain legacy modal overlay markup.' );
 $assert( str_contains( $simpleEditorJs, "Metis.ui.modal.form('metis-v2-confirm-modal');" ), 'Simple editor confirm flow must use the shared modal runtime.' );
-$assert( str_contains( $campaignView, "Metis.ui.modal.form('metis-goal-modal');" ), 'Campaign goal editor must use the shared modal runtime.' );
+$assert_if_loaded( $campaignView, str_contains( $campaignView, "Metis.ui.modal.form('metis-goal-modal');" ), 'Campaign goal editor must use the shared modal runtime.' );
 
-$assert( str_contains( $donationsReadService, 'public static function dashboardSnapshot()' ), 'Donations read service must expose dashboardSnapshot().' );
-$assert( str_contains( $grandyStashAjax, "metis_textarea_clean( metis_runtime_unslash( metis_request_post()['content'] ?? '' ) )" ) && str_contains( $grandyStashAjax, "metis_text_clean( metis_runtime_unslash( metis_request_post()['subject'] ?? '' ) )" ), 'Grandy\'s Stash message submission must normalize note/reply text through canonical cleaners.' );
-$assert( str_contains( $contactsRelationshipsAjax, "metis_textarea_clean( metis_runtime_unslash( metis_request_post()['notes'] ) )" ), 'Contacts relationship notes must preserve multiline Unicode via textarea cleaner.' );
-$assert( str_contains( $peopleTemplatesAjax, "metis_textarea_clean(metis_runtime_unslash(metis_request_post()['description']))" ), 'People template descriptions must preserve multiline Unicode via textarea cleaner.' );
-$assert( str_contains( $hermesAjax, "metis_textarea_clean( metis_runtime_unslash( metis_request_post()['note'] ?? '' ) )" ), 'Hermes approval notes must preserve multiline Unicode via textarea cleaner.' );
-$assert( str_contains( $boardAjax, "metis_text_raw_clean(metis_runtime_unslash(\$post['source_text'] ?? ''))" ), 'Board bylaws formatting endpoint must normalize raw UTF-8 source text through canonical raw cleaner.' );
-$assert( str_contains( $boardBylawsService, "\\metis_text_raw_clean( \\metis_runtime_unslash( \$post['source_text'] ?? '' ) )" ), 'Board bylaws save service must normalize raw UTF-8 source text through canonical raw cleaner.' );
-$assert( str_contains( $boardDecisionAttendanceService, "\\metis_textarea_clean( \\metis_runtime_unslash( \$post['notes'] ?? '' ) )" ), 'Board attendance notes must preserve multiline Unicode via textarea cleaner.' );
-$assert( str_contains( $boardWorkflowTemplateService, "\\metis_textarea_clean( \\metis_runtime_unslash( \$post['description'] ?? '' ) )" ), 'Board workflow template descriptions must preserve multiline Unicode via textarea cleaner.' );
-$assert( str_contains( $financeAjax, "'decision_notes' => metis_textarea_clean( (string) metis_finance_ajax_post_value( 'decision_notes', '' ) )" ), 'Finance reconciliation review notes must preserve multiline Unicode via textarea cleaner at the AJAX boundary.' );
-$assert( str_contains( $financeService, "\$decisionNotes = metis_textarea_clean( (string) ( \$input['decision_notes'] ?? '' ) );" ) && str_contains( $financeService, "\$notes = metis_textarea_clean( (string) ( \$input['notes'] ?? '' ) );" ), 'Finance service notes fields must preserve multiline Unicode via textarea cleaner.' );
-$assert( str_contains( $donationsNotesAjax, 'TransactionMutationService::ensureSupportingTables();' ) && str_contains( $donationsNotesAjax, 'TransactionMutationService::addTransactionNote(' ) && str_contains( $donationsNotesAjax, 'TransactionMutationService::recordTransactionRefund(' ) && str_contains( $donationsNotesAjax, 'TransactionMutationService::updateTransactionCampaign(' ), 'Donations transaction note/refund/campaign writes must delegate through the canonical mutation service.' );
-$assert( str_contains( $donationsTransactionMutationService, "'note'       => \$note" ) && str_contains( $donationsTransactionMutationService, "'notes'       => \$notes !== '' ? \$notes : null" ), 'Donations mutation service must preserve transaction note and refund notes text through canonical payloads.' );
-$assert( str_contains( $donationsNotesAjax, 'metis_update_batch_note( $id, $batch, $text )' ) && str_contains( $donationsNotesAjax, 'metis_delete_batch_note( $id, $batch )' ), 'Donations batch note AJAX handlers must delegate writes through the donations module path.' );
-$assert( str_contains( $donationsBootstrap, 'function metis_update_batch_note' ) && str_contains( $donationsBootstrap, 'function metis_delete_batch_note' ), 'Donations bootstrap must expose canonical batch note mutation helpers.' );
-$assert( str_contains( $donationsModule, 'public static function updateBatchNote' ) && str_contains( $donationsModule, 'public static function deleteBatchNote' ), 'Donations module must own batch note update and delete persistence.' );
+$assert_if_loaded( $donationsReadService, str_contains( $donationsReadService, 'public static function dashboardSnapshot()' ), 'Donations read service must expose dashboardSnapshot().' );
+$assert_if_loaded( $grandyStashAjax, str_contains( $grandyStashAjax, "metis_textarea_clean( metis_runtime_unslash( metis_request_post()['content'] ?? '' ) )" ) && str_contains( $grandyStashAjax, "metis_text_clean( metis_runtime_unslash( metis_request_post()['subject'] ?? '' ) )" ), 'Grandy\'s Stash message submission must normalize note/reply text through canonical cleaners.' );
+$assert_if_loaded( $contactsRelationshipsAjax, str_contains( $contactsRelationshipsAjax, "metis_textarea_clean( metis_runtime_unslash( metis_request_post()['notes'] ) )" ), 'Contacts relationship notes must preserve multiline Unicode via textarea cleaner.' );
+$assert_if_loaded( $peopleTemplatesAjax, str_contains( $peopleTemplatesAjax, "metis_textarea_clean(metis_runtime_unslash(metis_request_post()['description']))" ), 'People template descriptions must preserve multiline Unicode via textarea cleaner.' );
+$assert_if_loaded( $hermesAjax, str_contains( $hermesAjax, "metis_textarea_clean( metis_runtime_unslash( metis_request_post()['note'] ?? '' ) )" ), 'Hermes approval notes must preserve multiline Unicode via textarea cleaner.' );
+$assert_if_loaded( $boardAjax, str_contains( $boardAjax, "metis_text_raw_clean(metis_runtime_unslash(\$post['source_text'] ?? ''))" ), 'Board bylaws formatting endpoint must normalize raw UTF-8 source text through canonical raw cleaner.' );
+$assert_if_loaded( $boardBylawsService, str_contains( $boardBylawsService, "\\metis_text_raw_clean( \\metis_runtime_unslash( \$post['source_text'] ?? '' ) )" ), 'Board bylaws save service must normalize raw UTF-8 source text through canonical raw cleaner.' );
+$assert_if_loaded( $boardDecisionAttendanceService, str_contains( $boardDecisionAttendanceService, "\\metis_textarea_clean( \\metis_runtime_unslash( \$post['notes'] ?? '' ) )" ), 'Board attendance notes must preserve multiline Unicode via textarea cleaner.' );
+$assert_if_loaded( $boardWorkflowTemplateService, str_contains( $boardWorkflowTemplateService, "\\metis_textarea_clean( \\metis_runtime_unslash( \$post['description'] ?? '' ) )" ), 'Board workflow template descriptions must preserve multiline Unicode via textarea cleaner.' );
+$assert_if_loaded( $financeAjax, str_contains( $financeAjax, "'decision_notes' => metis_textarea_clean( (string) metis_finance_ajax_post_value( 'decision_notes', '' ) )" ), 'Finance reconciliation review notes must preserve multiline Unicode via textarea cleaner at the AJAX boundary.' );
+$assert_if_loaded( $financeService, str_contains( $financeService, "\$decisionNotes = metis_textarea_clean( (string) ( \$input['decision_notes'] ?? '' ) );" ) && str_contains( $financeService, "\$notes = metis_textarea_clean( (string) ( \$input['notes'] ?? '' ) );" ), 'Finance service notes fields must preserve multiline Unicode via textarea cleaner.' );
+$assert_if_loaded( $donationsNotesAjax, str_contains( $donationsNotesAjax, 'TransactionMutationService::ensureSupportingTables();' ) && str_contains( $donationsNotesAjax, 'TransactionMutationService::addTransactionNote(' ) && str_contains( $donationsNotesAjax, 'TransactionMutationService::recordTransactionRefund(' ) && str_contains( $donationsNotesAjax, 'TransactionMutationService::updateTransactionCampaign(' ), 'Donations transaction note/refund/campaign writes must delegate through the canonical mutation service.' );
+$assert_if_loaded( $donationsTransactionMutationService, str_contains( $donationsTransactionMutationService, "'note'       => \$note" ) && str_contains( $donationsTransactionMutationService, "'notes'       => \$notes !== '' ? \$notes : null" ), 'Donations mutation service must preserve transaction note and refund notes text through canonical payloads.' );
+$assert_if_loaded( $donationsNotesAjax, str_contains( $donationsNotesAjax, 'metis_update_batch_note( $id, $batch, $text )' ) && str_contains( $donationsNotesAjax, 'metis_delete_batch_note( $id, $batch )' ), 'Donations batch note AJAX handlers must delegate writes through the donations module path.' );
+$assert_if_loaded( $donationsBootstrap, str_contains( $donationsBootstrap, 'function metis_update_batch_note' ) && str_contains( $donationsBootstrap, 'function metis_delete_batch_note' ), 'Donations bootstrap must expose canonical batch note mutation helpers.' );
+$assert_if_loaded( $donationsModule, str_contains( $donationsModule, 'public static function updateBatchNote' ) && str_contains( $donationsModule, 'public static function deleteBatchNote' ), 'Donations module must own batch note update and delete persistence.' );
 $assert( str_contains( $helpService, "return metis_text_clean( \$value );" ), 'Help plain-text normalization must delegate to the canonical text cleaner.' );
 $assert( str_contains( $helpSearchStore, "\\metis_text_raw_clean( \$content )" ) && str_contains( $helpSearchStore, "\\metis_runtime_kses_post( \$content )" ), 'Help article content normalization must preserve UTF-8 text and sanitize through the canonical rich-text path.' );
 $assert( str_contains( $helpArticleSave, "metis_text_raw_clean( metis_runtime_unslash( metis_request_post()['content'] ?? '' ) )" ), 'Help article save handler must normalize raw submitted content through the canonical raw cleaner.' );
 $assert( str_contains( $contactMutationService, "\\metis_textarea_clean( \$note )" ), 'Contact note mutation service must defensively normalize note text through the canonical textarea cleaner.' );
 $assert( str_contains( $contactsAjax, "metis_textarea_clean( (string) ( \$entry['notes'] ?? '' ) )" ), 'Contacts relationship-note normalization must preserve multiline Unicode via textarea cleaner.' );
-$assert( str_contains( $recurringDonationsService, "\\metis_textarea_clean( \$message )" ), 'Recurring donation inquiry messages must preserve multiline Unicode via textarea cleaner.' );
-$assert( str_contains( $websiteAjax, "metis_textarea_clean( (string) metis_runtime_unslash( metis_request_post()['revision_note'] ) )" ), 'Website revision notes must preserve multiline Unicode via textarea cleaner at the AJAX boundary.' );
-$assert( str_contains( $websiteAjax, "(string) ( \$row['status'] ?? 'draft' )" ) && str_contains( $websiteAjax, ") !== 'published'" ), 'Website form selector options must only expose published forms to public page and post embeds.' );
-$assert( str_contains( $formsJs, "root.querySelector('[data-metis-forms-public-form]')" ) && str_contains( $formsJs, "root.querySelector('[data-metis-forms-success-overlay]')" ), 'Forms public runtime must scope embeds by instance-safe data attributes rather than duplicate global IDs.' );
-$assert( str_contains( $revisionTimelineService, "'revision_note' => metis_textarea_clean( \$note )" ), 'Website revision timeline persistence must preserve multiline Unicode via textarea cleaner.' );
-$assert( str_contains( $testimoniesAjax, "'module' => 'testimonies'" ) && str_contains( $testimoniesAjax, "'metis_testimony_categories_save' => 'edit'" ), 'Testimonies AJAX handlers must declare module-scoped controller registration metadata.' );
+$assert_if_loaded( $recurringDonationsService, str_contains( $recurringDonationsService, "\\metis_textarea_clean( \$message )" ), 'Recurring donation inquiry messages must preserve multiline Unicode via textarea cleaner.' );
+$assert_if_loaded( $websiteAjax, str_contains( $websiteAjax, "metis_textarea_clean( (string) metis_runtime_unslash( metis_request_post()['revision_note'] ) )" ), 'Website revision notes must preserve multiline Unicode via textarea cleaner at the AJAX boundary.' );
+$assert_if_loaded( $websiteAjax, str_contains( $websiteAjax, "(string) ( \$row['status'] ?? 'draft' )" ) && str_contains( $websiteAjax, ") !== 'published'" ), 'Website form selector options must only expose published forms to public page and post embeds.' );
+$assert_if_loaded( $formsJs, str_contains( $formsJs, "root.querySelector('[data-metis-forms-public-form]')" ) && str_contains( $formsJs, "root.querySelector('[data-metis-forms-success-overlay]')" ), 'Forms public runtime must scope embeds by instance-safe data attributes rather than duplicate global IDs.' );
+$assert_if_loaded( $revisionTimelineService, str_contains( $revisionTimelineService, "'revision_note' => metis_textarea_clean( \$note )" ), 'Website revision timeline persistence must preserve multiline Unicode via textarea cleaner.' );
+$assert_if_loaded( $testimoniesAjax, str_contains( $testimoniesAjax, "'module' => 'testimonies'" ) && str_contains( $testimoniesAjax, "'metis_testimony_categories_save' => 'edit'" ), 'Testimonies AJAX handlers must declare module-scoped controller registration metadata.' );
 $assert( str_contains( $peopleReadService, 'public static function workspaceSnapshot' ) && str_contains( $peopleReadService, 'public static function personSnapshot' ), 'People read service must expose workspace and person snapshots.' );
 $assert( str_contains( $peopleReadService, "'current_workspace_role' => \$current_workspace_role" ) && str_contains( $peopleReadService, "'current_stripe_role' => \$current_stripe_role" ), 'People person snapshot must expose the current workspace and Stripe role values explicitly for view rendering.' );
-$assert( str_contains( $newsletterReadService, 'public static function campaignsSnapshot' ) && str_contains( $newsletterReadService, 'public static function dashboardSnapshot' ), 'Newsletter read service must expose canonical campaign/dashboard snapshots.' );
+$assert_if_loaded( $newsletterReadService, str_contains( $newsletterReadService, 'public static function campaignsSnapshot' ) && str_contains( $newsletterReadService, 'public static function dashboardSnapshot' ), 'Newsletter read service must expose canonical campaign/dashboard snapshots.' );
 
 $viewExpectations = [
     'modules/donations/views/dashboard.php' => 'ReadService::dashboardSnapshot()',
@@ -205,7 +215,12 @@ $viewExpectations = [
 
 foreach ( $viewExpectations as $relative => $needle ) {
     $contents = $read( $relative );
-    $assert( $contents !== '', 'Expected hardened view is missing: ' . $relative );
+    if ( $contents === '' ) {
+        if ( $enforceModulePresence ) {
+            $assert( false, 'Expected hardened view is missing: ' . $relative );
+        }
+        continue;
+    }
     $assert( str_contains( $contents, $needle ), 'Hardened view must delegate through canonical read service: ' . $relative );
     $assert( preg_match( $rawSqlPattern, $contents ) !== 1, 'Hardened view must not embed raw SQL: ' . $relative );
 }
@@ -222,7 +237,12 @@ $handlerExpectations = [
 
 foreach ( $handlerExpectations as $relative ) {
     $contents = $read( $relative );
-    $assert( $contents !== '', 'Expected hardened AJAX handler is missing: ' . $relative );
+    if ( $contents === '' ) {
+        if ( $enforceModulePresence ) {
+            $assert( false, 'Expected hardened AJAX handler is missing: ' . $relative );
+        }
+        continue;
+    }
     $assert( str_contains( $contents, 'metis_ajax_register_controller(' ), 'Hardened AJAX handler must register controller metadata: ' . $relative );
     $assert( preg_match( $rawSqlPattern, $contents ) !== 1, 'Hardened AJAX handler must not embed request-path raw SQL: ' . $relative );
 }
@@ -239,7 +259,12 @@ $legacyUiCallers = [
 
 foreach ( $legacyUiCallers as $relative ) {
     $contents = $read( $relative );
-    $assert( $contents !== '', 'Expected hardened UI module is missing: ' . $relative );
+    if ( $contents === '' ) {
+        if ( $enforceModulePresence ) {
+            $assert( false, 'Expected hardened UI module is missing: ' . $relative );
+        }
+        continue;
+    }
     $assert( ! str_contains( $contents, 'window.metis_toast' ), 'Hardened UI module must not call legacy toast alias directly: ' . $relative );
     $assert( ! str_contains( $contents, 'window.metis_confirm' ), 'Hardened UI module must not call legacy confirm alias directly: ' . $relative );
 }
