@@ -16,7 +16,7 @@ $enforceModulePresence = $hardeningScope === 'private';
 $resolve_relative = static function ( string $relative ) use ( $system ): string {
     $normalized = ltrim( $relative, '/\\' );
 
-    foreach ( [ 'help', 'people', 'portal', 'profile', 'settings' ] as $slug ) {
+    foreach ( [ 'help', 'hermes', 'people', 'portal', 'profile', 'settings' ] as $slug ) {
         $prefix = 'modules/' . $slug . '/';
         if ( str_starts_with( $normalized, $prefix ) ) {
             return $system . '/src/Metis/Core/BuiltInServices/' . $slug . '/' . substr( $normalized, strlen( $prefix ) );

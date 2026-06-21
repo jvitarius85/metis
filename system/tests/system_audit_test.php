@@ -32,7 +32,7 @@ $failures = [];
 $resolve_relative = static function ( string $relative ) use ( $root ): string {
     $normalized = ltrim( $relative, '/\\' );
 
-    foreach ( [ 'help', 'people', 'portal', 'profile', 'settings' ] as $slug ) {
+    foreach ( [ 'help', 'hermes', 'people', 'portal', 'profile', 'settings' ] as $slug ) {
         $prefix = 'modules/' . $slug . '/';
         if ( str_starts_with( $normalized, $prefix ) ) {
             return $root . '/src/Metis/Core/BuiltInServices/' . $slug . '/' . substr( $normalized, strlen( $prefix ) );
@@ -414,8 +414,8 @@ $modernized_shared_paths = [
     $root . '/modules/finance/views/finance.php',
     $root . '/modules/finance/assets/finance.ajax.php',
     $root . '/modules/donations/views/dashboard.php',
-    $root . '/modules/hermes/views/dashboard.php',
-    $root . '/modules/hermes/assets/hermes.ajax.php',
+    $resolve_relative( 'modules/hermes/views/dashboard.php' ),
+    $resolve_relative( 'modules/hermes/assets/hermes.ajax.php' ),
     $root . '/modules/media/assets/media.ajax.php',
     $root . '/modules/newsletter/assets/newsletter.ajax.php',
     $root . '/modules/newsletter/services/audit.php',
