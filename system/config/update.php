@@ -3,6 +3,8 @@ return [
     'github' => [
         'owner' => 'jvitarius85',
         'repo' => 'metis',
+        'metadata_owner' => 'jvitarius85',
+        'metadata_repo' => 'metis-private',
         'ref' => 'stable',
         'metadata_ref' => 'main',
         'token' => '',

@@ -60,8 +60,8 @@ final class GitHubUpdateService {
 
     public function moduleRegistry(bool $forceRefresh = false): array {
         $settings = $this->repositoryConfig();
-        $owner = (string) ($settings['owner'] ?? '');
-        $repo = (string) ($settings['repo'] ?? '');
+        $owner = (string) ($settings['metadata_owner'] ?? $settings['owner'] ?? '');
+        $repo = (string) ($settings['metadata_repo'] ?? $settings['repo'] ?? '');
         if ($owner === '' || $repo === '') {
             return $this->emptyModuleRegistry('unconfigured', 'GitHub repository settings are not configured.');
         }
@@ -121,8 +121,8 @@ final class GitHubUpdateService {
 
     public function cachedModuleRegistry(): array {
         $settings = $this->repositoryConfig();
-        $owner = (string) ($settings['owner'] ?? '');
-        $repo = (string) ($settings['repo'] ?? '');
+        $owner = (string) ($settings['metadata_owner'] ?? $settings['owner'] ?? '');
+        $repo = (string) ($settings['metadata_repo'] ?? $settings['repo'] ?? '');
         if ($owner === '' || $repo === '') {
             return $this->emptyModuleRegistry('unconfigured', 'GitHub repository settings are not configured.');
         }
@@ -193,8 +193,8 @@ final class GitHubUpdateService {
 
     public function manifestReleases(bool $forceRefresh = false): array {
         $settings = $this->repositoryConfig();
-        $owner = (string) ($settings['owner'] ?? '');
-        $repo = (string) ($settings['repo'] ?? '');
+        $owner = (string) ($settings['metadata_owner'] ?? $settings['owner'] ?? '');
+        $repo = (string) ($settings['metadata_repo'] ?? $settings['repo'] ?? '');
         if ($owner === '' || $repo === '') {
             return [];
         }
@@ -291,6 +291,9 @@ final class GitHubUpdateService {
         $owner = (string) ($fileConfig['github']['owner'] ?? $this->config->get('github_update_owner', ''));
         $repo = (string) ($fileConfig['github']['repo'] ?? $this->config->get('github_update_repo', ''));
 
+        $metadataOwner = (string) ($fileConfig['github']['metadata_owner'] ?? $this->config->get('github_update_metadata_owner', ''));
+        $metadataRepo = (string) ($fileConfig['github']['metadata_repo'] ?? $this->config->get('github_update_metadata_repo', ''));
+
         if ($owner === '' || $repo === '') {
             $fallback = $this->repositoryConfigFromGitOrigin();
             if ($owner === '') {
@@ -301,9 +304,18 @@ final class GitHubUpdateService {
             }
         }
 
+        if ($metadataOwner === '') {
+            $metadataOwner = $owner;
+        }
+        if ($metadataRepo === '') {
+            $metadataRepo = $repo;
+        }
+
         return [
             'owner' => $owner,
             'repo' => $repo,
+            'metadata_owner' => $metadataOwner,
+            'metadata_repo' => $metadataRepo,
             'ref' => $this->repositoryRef($fileConfig),
             'metadata_ref' => $this->repositoryMetadataRef($fileConfig),
             'token' => $this->resolveToken($fileConfig),
