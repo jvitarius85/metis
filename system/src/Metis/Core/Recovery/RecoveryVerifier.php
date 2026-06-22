@@ -30,11 +30,11 @@ final class RecoveryVerifier {
         foreach ($this->moduleDirectories() as $moduleDir) {
             $manifest = $moduleDir . '/module.json';
             $relative = $this->relativePath($manifest);
-            if (!is_file($manifest)) {
+            if (!$this->manifestFileExists($manifest)) {
                 $issues[] = $this->issue('missing_module_manifest', 'high', $relative, 'Module manifest is missing.');
                 continue;
             }
-            $decoded = json_decode((string) @file_get_contents($manifest), true);
+            $decoded = json_decode((string) $this->readManifestFile($manifest), true);
             if (!is_array($decoded) || empty($decoded['slug']) || empty($decoded['name'])) {
                 $issues[] = $this->issue('corrupted_module_manifest', 'high', $relative, 'Module manifest is invalid.');
             }
@@ -217,5 +217,34 @@ final class RecoveryVerifier {
             'message' => $message,
             'selected_playbook' => (string) ($playbook['playbook_key'] ?? ''),
         ];
+    }
+
+    private function manifestFileExists(string $path): bool {
+        clearstatcache(true, $path);
+
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            if (is_file($path) && is_readable($path)) {
+                return true;
+            }
+
+            clearstatcache(true, $path);
+        }
+
+        return false;
+    }
+
+    private function readManifestFile(string $path): string {
+        clearstatcache(true, $path);
+
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $raw = @file_get_contents($path);
+            if (is_string($raw)) {
+                return $raw;
+            }
+
+            clearstatcache(true, $path);
+        }
+
+        return '';
     }
 }
