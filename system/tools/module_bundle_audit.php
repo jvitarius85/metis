@@ -56,11 +56,14 @@ $summary = [
     'passed' => 0,
     'failed' => 0,
     'entry_statuses' => [],
+    'runtime_coupling_statuses' => [],
 ];
 
 foreach ( $modules as $module ) {
     $status = (string) ( $module['entry_status'] ?? 'unknown_entry_contract' );
     $summary['entry_statuses'][ $status ] = (int) ( $summary['entry_statuses'][ $status ] ?? 0 ) + 1;
+    $coupling = (string) ( $module['runtime_coupling_status'] ?? 'unknown_runtime_coupling' );
+    $summary['runtime_coupling_statuses'][ $coupling ] = (int) ( $summary['runtime_coupling_statuses'][ $coupling ] ?? 0 ) + 1;
 
     if ( ! empty( $module['ok'] ) ) {
         $summary['passed']++;
@@ -168,6 +171,11 @@ function audit_module_bundle( string $targetPath, ModuleValidator $validator ): 
         }
     }
 
+    [ $runtimeCouplingStatus, $runtimeCouplingNote, $runtimeCouplingRefs ] = audit_runtime_coupling(
+        $targetPath,
+        $entryClass
+    );
+
     return [
         'ok' => $errors === [] && $entryStatus === 'self_contained_entry',
         'module_path' => $targetPath,
@@ -177,7 +185,98 @@ function audit_module_bundle( string $targetPath, ModuleValidator $validator ): 
         'entry_class' => $entryClass,
         'entry_status' => $entryStatus,
         'entry_note' => $entryNote,
+        'runtime_coupling_status' => $runtimeCouplingStatus,
+        'runtime_coupling_note' => $runtimeCouplingNote,
+        'runtime_coupling_refs' => $runtimeCouplingRefs,
         'services' => $serviceFiles,
         'errors' => $errors,
+    ];
+}
+
+/**
+ * @return array{0:string,1:string,2:array<int,array<string,string>>}
+ */
+function audit_runtime_coupling( string $targetPath, string $entryClass ): array {
+    $moduleNamespace = '';
+    if (
+        preg_match(
+            '/^Metis\\\\Modules\\\\([^\\\\]+)\\\\[^\\\\]+$/',
+            $entryClass,
+            $matches
+        ) === 1
+    ) {
+        $moduleNamespace = (string) ( $matches[1] ?? '' );
+    }
+
+    $refs = [];
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator( $targetPath, FilesystemIterator::SKIP_DOTS )
+    );
+
+    foreach ( $iterator as $file ) {
+        if ( ! $file instanceof SplFileInfo || ! $file->isFile() ) {
+            continue;
+        }
+
+        $path = str_replace( '\\', '/', $file->getPathname() );
+        if ( ! str_ends_with( $path, '.php' ) ) {
+            continue;
+        }
+
+        if ( preg_match( '#/(views|templates)/#', $path ) === 1 ) {
+            continue;
+        }
+
+        $source = (string) @file_get_contents( $path );
+        if ( $source === '' ) {
+            continue;
+        }
+
+        if ( preg_match_all( '/Metis\\\\Modules\\\\([^\\\\\s\'";()]+)(?:\\\\[^\s\'";()]*)?/', $source, $moduleMatches ) > 0 ) {
+            foreach ( $moduleMatches[0] as $index => $reference ) {
+                $segment = (string) ( $moduleMatches[1][ $index ] ?? '' );
+                if ( $segment !== '' && $segment === $moduleNamespace ) {
+                    continue;
+                }
+
+                $refs[] = [
+                    'file' => $path,
+                    'type' => 'module_namespace',
+                    'reference' => (string) $reference,
+                ];
+            }
+        }
+
+        if ( preg_match_all( '/Metis\\\\Core\\\\BuiltInServices\\\\[^\s\'";()]*/', $source, $coreMatches ) > 0 ) {
+            foreach ( $coreMatches[0] as $reference ) {
+                $refs[] = [
+                    'file' => $path,
+                    'type' => 'core_service_namespace',
+                    'reference' => (string) $reference,
+                ];
+            }
+        }
+
+        if ( str_contains( $source, 'METIS_SRC_PATH' ) ) {
+            $refs[] = [
+                'file' => $path,
+                'type' => 'source_path_reference',
+                'reference' => 'METIS_SRC_PATH',
+            ];
+        }
+    }
+
+    if ( $refs === [] ) {
+        return [
+            'bundle_only',
+            'Bundle runtime files do not reference source-side module namespaces or source-path includes.',
+            [],
+        ];
+    }
+
+    return [
+        'source_coupled',
+        'Bundle runtime still references source-side namespaces or source-path includes.',
+        array_slice( $refs, 0, 25 ),
     ];
 }

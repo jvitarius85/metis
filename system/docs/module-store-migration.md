@@ -84,6 +84,15 @@ The audit returns JSON and exits non-zero when:
 - the declared entry file is missing
 - the entry file is still a placeholder instead of defining the expected module class
 
+The audit also reports `runtime_coupling_status` for each bundle:
+
+- `bundle_only`
+  - Runtime PHP files do not reference source-side module namespaces or `METIS_SRC_PATH`.
+- `source_coupled`
+  - Runtime PHP still reaches into source-side module namespaces, core service namespaces, or source-path includes.
+
+This means a bundle can be entry-contract compliant while still needing a later runtime-isolation pass.
+
 ## Migration Rules
 
 - Do not add new store-managed feature logic under `system/src/Metis/Modules/`.
