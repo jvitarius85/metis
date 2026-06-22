@@ -71,6 +71,39 @@ final class TransactionRecordService {
     /**
      * @return array<int,object>
      */
+    public static function listStripeTransactionsNeedingReconciliation( int $limit = 250 ): array {
+        $table = \Metis_Tables::get( 'transactions' );
+        $limit = max( 1, min( 1000, $limit ) );
+
+        return array_map(
+            static fn( array $row ): object => (object) $row,
+            \metis_db()->fetchAll(
+                "SELECT id, tid, did, donor_email, stripe_customer_id, stripe_pay_int, stripe_charge_id,
+                        stripe_balance_txn, stripe_payout_id, deposit_batch_id, tran_date
+                 FROM {$table}
+                 WHERE platform IN ('ST', 'stripe')
+                   AND (
+                        ( stripe_pay_int IS NOT NULL AND stripe_pay_int <> '' )
+                        OR ( stripe_charge_id IS NOT NULL AND stripe_charge_id <> '' )
+                   )
+                   AND (
+                        did IS NULL OR did = ''
+                        OR donor_email IS NULL OR donor_email = ''
+                        OR stripe_customer_id IS NULL OR stripe_customer_id = ''
+                        OR stripe_balance_txn IS NULL OR stripe_balance_txn = ''
+                        OR stripe_payout_id IS NULL OR stripe_payout_id = ''
+                        OR deposit_batch_id IS NULL OR deposit_batch_id = ''
+                   )
+                 ORDER BY tran_date DESC, id DESC
+                 LIMIT %d",
+                [ $limit ]
+            )
+        );
+    }
+
+    /**
+     * @return array<int,object>
+     */
     public static function listStripeTransactionsMissingPayout(): array {
         $table = \Metis_Tables::get( 'transactions' );
         return array_map(
@@ -158,6 +191,43 @@ final class TransactionRecordService {
         );
 
         return is_array( $row ) ? $row : null;
+    }
+
+    public static function updateStripeReconciliationFields( int $transaction_id, array $payload ): bool {
+        if ( $transaction_id <= 0 || $payload === [] ) {
+            return false;
+        }
+
+        $allowed = [
+            'did',
+            'donor_email',
+            'deposit_batch_id',
+            'stripe_customer_id',
+            'stripe_pay_int',
+            'stripe_charge_id',
+            'stripe_balance_txn',
+            'stripe_payout_id',
+        ];
+
+        $update = [];
+        foreach ( $allowed as $column ) {
+            if ( array_key_exists( $column, $payload ) ) {
+                $update[ $column ] = $payload[ $column ];
+            }
+        }
+
+        if ( $update === [] ) {
+            return false;
+        }
+
+        $update['updated_at'] = \metis_current_time( 'mysql' );
+        $result = \metis_db()->update(
+            \Metis_Tables::get( 'transactions' ),
+            $update,
+            [ 'id' => $transaction_id ]
+        );
+
+        return $result !== false;
     }
 
     public static function linkOrphanedByPayoutId( string $deposit_code, string $payout_id ): int {

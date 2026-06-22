@@ -6,15 +6,57 @@ namespace Metis\Modules\Donations;
 use Metis\Services\DatabaseService;
 
 final class DonationsModule {
+    private static bool $booted = false;
+
     public static function boot(): void {
+        if ( self::$booted ) {
+            return;
+        }
+
+        self::$booted = true;
         \Metis_Logger::info( 'Donations bootstrap loaded' );
 
         \metis_on( 'init', [ self::class, 'handleAdminBackfillTriggers' ] );
+        \metis_on( 'init', [ self::class, 'ensureRuntimeSchema' ], 5 );
         \metis_on( 'metis_assets_enqueue', [ self::class, 'enqueueReportsAssets' ] );
 
         if ( function_exists( 'metis_shortcode_register' ) ) {
             \metis_shortcode_register( 'metis_campaign_progress', [ self::class, 'renderCampaignProgressShortcode' ] );
         }
+
+        if ( \class_exists( '\Metis_Cron_Manager' ) ) {
+            \Metis_Cron_Manager::register_task(
+                'donations_stripe_reconciliation',
+                static function (): array {
+                    return StripeReconciliationService::runNightly();
+                },
+                [
+                    'label'    => 'Donations Stripe Reconciliation',
+                    'interval' => DAY_IN_SECONDS,
+                    'lock_ttl' => 45 * MINUTE_IN_SECONDS,
+                    'module'   => 'donations',
+                ]
+            );
+        }
+    }
+
+    public static function ensureRuntimeSchema(): void {
+        if ( function_exists( 'metis_runtime_run_once_per_signature' ) ) {
+            \metis_runtime_run_once_per_signature(
+                'donations_runtime_schema',
+                [ __FILE__, __DIR__ . '/StripeReconciliationService.php', __DIR__ . '/RecurringDonationsService.php' ],
+                static function (): void {
+                    self::ensureTransactionPaymentDetailSchema();
+                    StripeReconciliationService::ensureSchema();
+                    RecurringDonationsService::ensureSchema();
+                }
+            );
+            return;
+        }
+
+        self::ensureTransactionPaymentDetailSchema();
+        StripeReconciliationService::ensureSchema();
+        RecurringDonationsService::ensureSchema();
     }
 
     public static function baseUrl(): string {

@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace Metis\Backup;
 
+use Metis\Modules\Board\WorkspaceService;
+
 final class BackupService {
     private const RUNNING = 'running';
     private const SUCCESS = 'success';
@@ -1351,7 +1353,7 @@ final class BackupService {
             return [ 'ok' => false, 'error' => 'Could not read backup artifact: ' . $name ];
         }
 
-        $token = \metis_drive_google_access_token( $cfg );
+        $token = $this->driveAccessToken( $cfg );
         if ( empty( $token['ok'] ) ) {
             return [ 'ok' => false, 'error' => 'Workspace token error.' ];
         }
@@ -1408,7 +1410,7 @@ final class BackupService {
             return [ 'ok' => false, 'error' => 'Backup artifact is empty: ' . $name ];
         }
 
-        $token = \metis_drive_google_access_token( $cfg );
+        $token = $this->driveAccessToken( $cfg );
         if ( empty( $token['ok'] ) ) {
             return [ 'ok' => false, 'error' => 'Workspace token error.' ];
         }
@@ -1635,7 +1637,7 @@ final class BackupService {
             'fields'                    => 'files(id,name,parents,driveId,webViewLink)',
             'pageSize'                  => 1,
         ], 'https://www.googleapis.com/drive/v3/files' );
-        $find = \metis_drive_google_request( 'GET', $find_url, null, $cfg );
+        $find = $this->driveJsonRequest( 'GET', $find_url, null, $cfg );
         if ( ! empty( $find['ok'] ) ) {
             $existing = (array) ( $find['body']['files'][0] ?? [] );
             if ( ! empty( $existing['id'] ) ) {
@@ -1652,11 +1654,16 @@ final class BackupService {
             'useDomainAdminAccess'      => 'true',
             'fields'                    => 'id,name,parents,driveId,webViewLink',
         ], 'https://www.googleapis.com/drive/v3/files' );
-        $create = \metis_drive_google_request( 'POST', $create_url, $this->encode( [
-            'name'     => $name,
-            'mimeType' => 'application/vnd.google-apps.folder',
-            'parents'  => [ $parent_id ],
-        ] ), $cfg );
+        $create = $this->driveJsonRequest(
+            'POST',
+            $create_url,
+            [
+                'name'     => $name,
+                'mimeType' => 'application/vnd.google-apps.folder',
+                'parents'  => [ $parent_id ],
+            ],
+            $cfg
+        );
         if ( empty( $create['ok'] ) || empty( $create['body']['id'] ) ) {
             return [ 'ok' => false, 'error' => 'Could not create a backup folder in Google Drive.' ];
         }
@@ -1668,54 +1675,53 @@ final class BackupService {
     }
 
     private function resolveDriveConfig( string $preferred_drive_id = '' ): array {
-        if ( ! \function_exists( 'metis_drive_workspace_base_settings' ) || ! \function_exists( 'metis_drive_list_shared_drives' ) ) {
-            return [ 'ok' => false, 'error' => 'The Drive integration is not available.' ];
-        }
-
-        $drive_id = trim( \Core_Settings_Service::get( 'backup_drive_id', $preferred_drive_id ) );
-        if ( $drive_id !== '' ) {
-            $base = \metis_drive_workspace_base_settings();
-            if ( empty( $base['ok'] ) ) {
-                return $base;
-            }
-
-            $drives = \metis_drive_list_shared_drives( $base );
-            if ( empty( $drives['ok'] ) ) {
-                return [ 'ok' => false, 'error' => 'Unable to load Shared Drives.' ];
-            }
-
-            foreach ( (array) ( $drives['drives'] ?? [] ) as $drive ) {
-                if ( (string) ( $drive['id'] ?? '' ) !== $drive_id ) {
-                    continue;
-                }
-
-                $base['shared_drive_id'] = $drive_id;
-                $base['shared_drive_name'] = trim( (string) ( $drive['name'] ?? '' ) );
-                $base['shared_drive_label'] = trim( (string) ( $drive['name'] ?? '' ) );
-                return $base;
-            }
-
-            return [ 'ok' => false, 'error' => 'The selected backup Shared Drive could not be found.' ];
-        }
-
-        $base = \metis_drive_workspace_base_settings();
+        $base = $this->workspaceDriveBaseSettings();
         if ( empty( $base['ok'] ) ) {
             return $base;
         }
 
-        $drives = \metis_drive_list_shared_drives( $base );
+        $configured_rows = $this->configuredDriveRows();
+        $drive_id = trim( \Core_Settings_Service::get( 'backup_drive_id', $preferred_drive_id ) );
+        if ( $drive_id === '' ) {
+            foreach ( $configured_rows as $row ) {
+                if ( strtolower( trim( (string) ( $row['drive_name'] ?? '' ) ) ) === 'backups' ) {
+                    $drive_id = trim( (string) ( $row['drive_id'] ?? '' ) );
+                    if ( $drive_id !== '' ) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        $drives = $this->listWorkspaceSharedDrives( $base );
         if ( empty( $drives['ok'] ) ) {
             return [ 'ok' => false, 'error' => 'Unable to load Shared Drives.' ];
         }
 
         foreach ( (array) ( $drives['drives'] ?? [] ) as $drive ) {
-            $name = strtolower( trim( (string) ( $drive['name'] ?? '' ) ) );
-            if ( $name === 'backups' ) {
-                $base['shared_drive_id'] = (string) ( $drive['id'] ?? '' );
-                $base['shared_drive_name'] = trim( (string) ( $drive['name'] ?? '' ) );
-                $base['shared_drive_label'] = trim( (string) ( $drive['name'] ?? '' ) );
+            $candidate_id = trim( (string) ( $drive['id'] ?? '' ) );
+            $candidate_name = trim( (string) ( $drive['name'] ?? '' ) );
+            if ( $candidate_id === '' ) {
+                continue;
+            }
+
+            if ( $drive_id !== '' && $candidate_id === $drive_id ) {
+                $base['shared_drive_id'] = $candidate_id;
+                $base['shared_drive_name'] = $candidate_name;
+                $base['shared_drive_label'] = $candidate_name;
                 return $base;
             }
+
+            if ( $drive_id === '' && strtolower( $candidate_name ) === 'backups' ) {
+                $base['shared_drive_id'] = $candidate_id;
+                $base['shared_drive_name'] = $candidate_name;
+                $base['shared_drive_label'] = $candidate_name;
+                return $base;
+            }
+        }
+
+        if ( $drive_id !== '' ) {
+            return [ 'ok' => false, 'error' => 'The selected backup Shared Drive could not be found.' ];
         }
 
         return [ 'ok' => false, 'error' => 'No Google Shared Drive named "backups" is configured.' ];
@@ -1770,7 +1776,7 @@ final class BackupService {
             'fields'                    => 'id,trashed',
         ], 'https://www.googleapis.com/drive/v3/files/' . rawurlencode( $file_id ) );
 
-        \metis_drive_google_request( 'PATCH', $url, $this->encode( [ 'trashed' => true ] ), $cfg );
+        $this->driveJsonRequest( 'PATCH', $url, [ 'trashed' => true ], $cfg );
     }
 
     private function downloadDriveFile( array $cfg, string $file_id, string $destination ): array {
@@ -1778,7 +1784,7 @@ final class BackupService {
             return [ 'ok' => false, 'error' => 'The backup archive file ID is missing.' ];
         }
 
-        $token = \metis_drive_google_access_token( $cfg );
+        $token = $this->driveAccessToken( $cfg );
         if ( empty( $token['ok'] ) ) {
             return [ 'ok' => false, 'error' => 'Workspace token error.' ];
         }
@@ -1809,6 +1815,94 @@ final class BackupService {
         }
 
         return [ 'ok' => true, 'path' => $destination ];
+    }
+
+    private function workspaceDriveBaseSettings(): array {
+        if ( \function_exists( 'metis_drive_workspace_base_settings' ) ) {
+            return (array) \metis_drive_workspace_base_settings();
+        }
+
+        if ( \class_exists( WorkspaceService::class ) ) {
+            return WorkspaceService::workspaceSettings();
+        }
+
+        return [ 'ok' => false, 'error' => 'The Drive integration is not available.' ];
+    }
+
+    private function listWorkspaceSharedDrives( array $cfg ): array {
+        if ( \function_exists( 'metis_drive_list_shared_drives' ) ) {
+            return (array) \metis_drive_list_shared_drives( $cfg );
+        }
+
+        if ( ! \class_exists( WorkspaceService::class ) ) {
+            return [ 'ok' => false, 'error' => 'The Drive integration is not available.' ];
+        }
+
+        $drives = [];
+        $page_token = '';
+        $pages = 0;
+
+        do {
+            $pages++;
+            $url = \metis_add_query_arg( array_filter( [
+                'pageSize' => 100,
+                'fields' => 'drives(id,name),nextPageToken',
+                'pageToken' => $page_token !== '' ? $page_token : null,
+            ], static fn( mixed $value ): bool => $value !== null && $value !== '' ), 'https://www.googleapis.com/drive/v3/drives' );
+            $response = WorkspaceService::googleRequest( 'GET', $url, null, $cfg );
+            if ( empty( $response['ok'] ) ) {
+                return [ 'ok' => false, 'error' => (string) ( $response['error'] ?? 'Unable to load Shared Drives.' ) ];
+            }
+
+            foreach ( (array) ( $response['body']['drives'] ?? [] ) as $drive ) {
+                if ( is_array( $drive ) ) {
+                    $drives[] = $drive;
+                }
+            }
+
+            $page_token = trim( (string) ( $response['body']['nextPageToken'] ?? '' ) );
+        } while ( $page_token !== '' && $pages < 5 );
+
+        return [ 'ok' => true, 'drives' => $drives ];
+    }
+
+    private function driveAccessToken( array $cfg ): array {
+        if ( \function_exists( 'metis_drive_google_access_token' ) ) {
+            return (array) \metis_drive_google_access_token( $cfg );
+        }
+
+        if ( \class_exists( WorkspaceService::class ) ) {
+            return WorkspaceService::googleAccessToken( $cfg );
+        }
+
+        return [ 'ok' => false, 'error' => 'Workspace token error.' ];
+    }
+
+    private function driveJsonRequest( string $method, string $url, ?array $payload, array $cfg ): array {
+        if ( \function_exists( 'metis_drive_google_request' ) ) {
+            return (array) \metis_drive_google_request(
+                $method,
+                $url,
+                $payload !== null ? $this->encode( $payload ) : null,
+                $cfg
+            );
+        }
+
+        if ( ! \class_exists( WorkspaceService::class ) ) {
+            return [ 'ok' => false, 'error' => 'The Drive integration is not available.' ];
+        }
+
+        return WorkspaceService::googleRequest( $method, $url, $payload, $cfg );
+    }
+
+    private function configuredDriveRows(): array {
+        $rows = \Core_Settings_Service::get( 'workspace_drive_configs', [] );
+        if ( \function_exists( 'metis_settings_normalize_drive_rows' ) ) {
+            $normalized = \metis_settings_normalize_drive_rows( $rows );
+            return is_array( $normalized ) ? $normalized : [];
+        }
+
+        return is_array( $rows ) ? $rows : [];
     }
 
     private function restoreDatabaseFromSnapshot( string $snapshot ): void {
