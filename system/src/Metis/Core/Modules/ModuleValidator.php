@@ -333,7 +333,7 @@ final class ModuleValidator {
             return;
         }
 
-        $reservedFunctions = $this->coreDeclaredFunctions();
+        $reservedFunctions = $this->coreDeclaredFunctions( $bootstrapFile );
 
         foreach ( $this->bootstrapDeclaredFunctions( $bootstrapFile ) as $functionName ) {
             if ( isset( $reservedFunctions[ strtolower( $functionName ) ] ) ) {
@@ -406,39 +406,52 @@ final class ModuleValidator {
     /**
      * @return array<string, true>
      */
-    private function coreDeclaredFunctions(): array {
+    private function coreDeclaredFunctions( string $excludePath = '' ): array {
         static $declared = null;
-        if ( is_array( $declared ) ) {
-            return $declared;
+        if ( ! is_array( $declared ) ) {
+            $declared = [];
         }
 
-        $declared = [];
         $coreRoot = dirname( __DIR__, 2 );
         if ( ! is_dir( $coreRoot ) ) {
             return $declared;
         }
 
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator( $coreRoot, \FilesystemIterator::SKIP_DOTS )
-        );
+        if ( $declared === [] ) {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator( $coreRoot, \FilesystemIterator::SKIP_DOTS )
+            );
 
-        foreach ( $iterator as $fileInfo ) {
-            if ( ! $fileInfo instanceof \SplFileInfo || ! $fileInfo->isFile() ) {
-                continue;
-            }
+            foreach ( $iterator as $fileInfo ) {
+                if ( ! $fileInfo instanceof \SplFileInfo || ! $fileInfo->isFile() ) {
+                    continue;
+                }
 
-            if ( strtolower( $fileInfo->getExtension() ) !== 'php' ) {
-                continue;
-            }
+                if ( strtolower( $fileInfo->getExtension() ) !== 'php' ) {
+                    continue;
+                }
 
-            foreach ( $this->bootstrapDeclaredFunctions( $fileInfo->getPathname() ) as $functionName ) {
-                $normalized = strtolower( trim( $functionName ) );
-                if ( $normalized !== '' ) {
-                    $declared[ $normalized ] = true;
+                foreach ( $this->bootstrapDeclaredFunctions( $fileInfo->getPathname() ) as $functionName ) {
+                    $normalized = strtolower( trim( $functionName ) );
+                    if ( $normalized !== '' ) {
+                        $declared[ $normalized ] = true;
+                    }
                 }
             }
         }
 
-        return $declared;
+        if ( $excludePath === '' ) {
+            return $declared;
+        }
+
+        $functions = $declared;
+        foreach ( $this->bootstrapDeclaredFunctions( $excludePath ) as $functionName ) {
+            $normalized = strtolower( trim( $functionName ) );
+            if ( $normalized !== '' ) {
+                unset( $functions[ $normalized ] );
+            }
+        }
+
+        return $functions;
     }
 }
