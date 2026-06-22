@@ -156,21 +156,21 @@ $module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
                                     </p>
                                 </div>
                                 <div class="metis-module-card__actions">
-                                    <div class="metis-module-action-group">
-                                        <button
-                                            type="button"
-                                            class="metis-module-action metis-module-action--<?php echo metis_escape_attr( $action_kind ); ?> metis-module-action--icon"
+                                        <div class="metis-module-action-group<?php echo empty( $module['installed'] ) ? ' metis-module-action-group--single' : ''; ?>">
+                                            <button
+                                                type="button"
+                                                class="metis-module-action metis-module-action--<?php echo metis_escape_attr( $action_kind ); ?> metis-module-action--icon"
                                             data-module-install-id="<?php echo metis_escape_attr( (string) $module['id'] ); ?>"
                                             data-module-install-name="<?php echo metis_escape_attr( (string) $module['name'] ); ?>"
                                             data-module-install-version="<?php echo metis_escape_attr( ! empty( $module['installed'] ) ? (string) $module['latest'] : (string) $module['latest'] ); ?>"
                                             data-module-action-kind="<?php echo metis_escape_attr( $action_kind ); ?>"
                                             title="<?php echo metis_escape_attr( $action_label . ' ' . (string) $module['name'] ); ?>"
                                             aria-label="<?php echo metis_escape_attr( $action_label . ' ' . (string) $module['name'] ); ?>"
-                                        >
-                                            <span class="metis-module-action__label"><?php echo metis_escape_html( $action_label ); ?></span>
-                                            <span class="metis-module-action__icon" aria-hidden="true"><?php echo $action_icon; ?></span>
-                                            <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
-                                        </button>
+                                            >
+                                                <span class="metis-module-action__label"><?php echo metis_escape_html( $action_label ); ?></span>
+                                                <span class="metis-module-action__icon" aria-hidden="true"><?php echo $action_icon; ?></span>
+                                                <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
+                                            </button>
                                         <?php if ( ! empty( $module['installed'] ) ) : ?>
                                             <button
                                                 type="button"
@@ -186,8 +186,10 @@ $module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
                                                 <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_uninstall_icon; ?></span>
                                                 <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
                                             </button>
+                                        <?php else : ?>
+                                            <span class="metis-module-action metis-module-action--placeholder" aria-hidden="true"></span>
                                         <?php endif; ?>
-                                    </div>
+                                        </div>
                                 </div>
                             </div>
                             <?php if ( ! empty( $module['description'] ) ) : ?>

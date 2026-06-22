@@ -178,6 +178,10 @@
     background: rgba(255, 255, 255, 0.75);
 }
 
+.metis-module-action-group--single {
+    min-width: 84px;
+}
+
 .metis-module-refresh {
     width: auto;
     height: auto;
@@ -299,6 +303,13 @@
 .metis-module-action--danger:focus-visible {
     background: #ffe4e6;
     box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
+}
+
+.metis-module-action--placeholder {
+    border-right: 0;
+    background: #fff1f2;
+    opacity: 0.38;
+    pointer-events: none;
 }
 
 .metis-module-action--icon {
