@@ -6,6 +6,9 @@ namespace Metis\Modules\FormsImport;
 final class SchemaManager {
     private static bool $ready = false;
 
+    /**
+     * Transitional compatibility shim. Forms import schema is owned by Forms.
+     */
     public static function ensureSchema(): void {
         if ( self::$ready ) {
             return;

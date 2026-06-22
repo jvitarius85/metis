@@ -6,6 +6,9 @@ namespace Metis\Modules\FormsImport;
 final class FormsImportModule {
     private static bool $booted = false;
 
+    /**
+     * Transitional compatibility shim while import behavior is folded into Forms.
+     */
     public static function boot(): void {
         if ( self::$booted ) {
             return;
@@ -27,7 +30,7 @@ final class FormsImportModule {
     public static function ensureRuntimeSchema(): void {
         if ( function_exists( 'metis_runtime_run_once_per_signature' ) ) {
             \metis_runtime_run_once_per_signature(
-                'forms_import_schema',
+                'forms_schema_compat',
                 [ __FILE__, __DIR__ . '/SchemaManager.php' ],
                 static function (): void {
                     SchemaManager::ensureSchema();

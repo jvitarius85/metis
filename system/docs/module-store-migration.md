@@ -40,6 +40,7 @@ Metis is migrating toward a module-store model where installable feature modules
   - `formsimport`
     - Target: `forms`
     - Direction: fold import behavior into the Forms runtime module.
+    - Status: standalone installer/runtime schema registration removed; compatibility shim remains only to delegate to Forms.
   - `grandystash`
     - Target: `grandys_stash`
     - Direction: normalize the legacy source directory name to the runtime/store slug.
