@@ -2412,9 +2412,9 @@ function metisInitSettingsUi() {
                         updateReleaseProgressPanel(panel, progress);
                         if (result.ok) {
                             showToast('success', String(data.message || 'Release update completed.'));
-                            window.setTimeout(function () {
-                                window.location.reload();
-                            }, 1200);
+                            return refreshSettingsLiveRoot().catch(function (refreshError) {
+                                showToast('error', refreshError && refreshError.message ? refreshError.message : 'Release update completed, but the page could not refresh.');
+                            });
                         } else {
                             showToast('error', String(data.message || result.message || 'Release update failed.'));
                         }
