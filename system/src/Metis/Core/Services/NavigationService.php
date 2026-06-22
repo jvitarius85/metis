@@ -88,6 +88,7 @@ final class NavigationService {
             \class_exists( 'Core_Settings_Service' )
             && (string) \Core_Settings_Service::get( 'navigation_defaults_seeded_version', '' ) === $seedVersion
         ) {
+            $this->removeLegacyModulesStoreEntry();
             $this->seedReady = true;
             return;
         }
@@ -140,6 +141,7 @@ final class NavigationService {
         }
 
         $this->ensureLogoutEntry();
+        $this->removeLegacyModulesStoreEntry();
         $this->backfillLegacyIcons();
 
         $this->backfillParentAssignments();
@@ -779,6 +781,11 @@ final class NavigationService {
             ],
             [ '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s' ]
         );
+    }
+
+    private function removeLegacyModulesStoreEntry(): void {
+        $table = \Metis_Tables::get( 'navigation_items' );
+        $this->db->delete( $table, [ 'module_key' => 'system:modules-store' ], [ '%s' ] );
     }
 
     private function defaultPositionForModule( string $slug ): int {

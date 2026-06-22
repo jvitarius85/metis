@@ -1666,6 +1666,17 @@ function metis_router_require_route_security( Metis_Http_Request $request, calla
     }
     $enclave = metis_security_enclave();
     if ( ! $enclave->has_policy( $policy->operation ) ) {
+        $route_name = (string) $request->attribute( 'route_name', '' );
+        $domain = metis_key_clean( (string) $request->attribute( 'domain', '' ) );
+        if (
+            $route_name === 'portal.page'
+            && $domain !== ''
+            && function_exists( 'metis_security_register_portal_route_policy' )
+        ) {
+            metis_security_register_portal_route_policy( $domain );
+        }
+    }
+    if ( ! $enclave->has_policy( $policy->operation ) ) {
         if ( class_exists( 'Profiler', false ) ) {
             Profiler::mark( 'ROUTER_ENCLAVE_CHECK_DONE' );
         }
