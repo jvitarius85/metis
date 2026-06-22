@@ -354,6 +354,14 @@
     gap: 8px;
 }
 
+.metis-settings-stat-card__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
 .metis-settings-stat-card.is-ok {
     background: #f0fdf4;
     border-color: #86efac;
@@ -388,7 +396,9 @@
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
-    margin-top: 12px;
+    margin-top: 0;
+    justify-content: flex-end;
+    align-self: flex-start;
 }
 
 .metis-settings-progress-stack {
@@ -412,8 +422,8 @@
 }
 
 .metis-settings-version-flow__icon svg {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
 }
 
 @keyframes metis-spin {

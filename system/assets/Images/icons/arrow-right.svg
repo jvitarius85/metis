@@ -3,6 +3,6 @@
     Arrow Right Streamline Icon: https://streamlinehq.com
   </desc>
   <defs></defs>
-  <path d="m9 3 -0.715 0.6965L12.075 7.5 2 7.5l0 1 10.075 0 -3.79 3.7865L9 13l5 -5L9 3z" fill="currentColor" stroke-width="0.5"></path>
-  <path id="_Transparent_Rectangle_" d="M0 0h16v16H0Z" fill="none" stroke-width="0.5"></path>
+  <path d="M8.5 2.5 7.44 3.56 10.38 6.5H2v1.5h8.38l-2.94 2.94 1.06 1.06L14 7.5l-5.5-5Z" fill="currentColor"></path>
+  <path id="_Transparent_Rectangle_" d="M0 0h16v16H0Z" fill="none"></path>
 </svg>

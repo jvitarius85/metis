@@ -105,7 +105,26 @@ $release_apply_tag = trim( (string) ( $release_latest['tag'] ?? $release_latest[
     <div class="metis-settings-body">
         <div class="metis-settings-stats-grid">
             <div class="metis-settings-stat-card<?php echo ! empty( $release_status['update_available'] ) ? ' is-warning' : ' is-ok'; ?>">
-                <div class="metis-settings-stat-card__label">Metis Update</div>
+                <div class="metis-settings-stat-card__head">
+                    <div class="metis-settings-stat-card__label">Metis Update</div>
+                    <?php if ( $is_system_admin && ! empty( $release_status['update_available'] ) && $release_apply_tag !== '' ) : ?>
+                        <div class="metis-settings-stat-card__actions">
+                            <div class="metis-module-action-group">
+                                <button
+                                    type="button"
+                                    class="metis-module-action metis-module-action--install metis-module-action--icon"
+                                    data-release-apply-tag="<?php echo metis_escape_attr( $release_apply_tag ); ?>"
+                                    title="Install Metis Update"
+                                    aria-label="Install Metis Update"
+                                >
+                                    <span class="metis-module-action__label">Install Update</span>
+                                    <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_install_icon; ?></span>
+                                    <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
+                                </button>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
                 <div class="metis-settings-stat-card__value">
                     <?php if ( ! empty( $release_status['update_available'] ) ) : ?>
                         <span class="metis-settings-version-flow">
@@ -118,45 +137,30 @@ $release_apply_tag = trim( (string) ( $release_latest['tag'] ?? $release_latest[
                     <?php endif; ?>
                 </div>
                 <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( $release_checked_display ); ?></div>
-                <?php if ( $is_system_admin && ! empty( $release_status['update_available'] ) && $release_apply_tag !== '' ) : ?>
-                    <div class="metis-settings-stat-card__actions">
-                        <div class="metis-module-action-group">
-                            <button
-                                type="button"
-                                class="metis-module-action metis-module-action--install metis-module-action--icon"
-                                data-release-apply-tag="<?php echo metis_escape_attr( $release_apply_tag ); ?>"
-                                title="Install Metis Update"
-                                aria-label="Install Metis Update"
-                            >
-                                <span class="metis-module-action__label">Install Update</span>
-                                <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_install_icon; ?></span>
-                                <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
-                            </button>
-                        </div>
-                    </div>
-                <?php endif; ?>
             </div>
             <div class="metis-settings-stat-card<?php echo $module_update_count > 0 ? ' is-warning' : ' is-ok'; ?>">
-                <div class="metis-settings-stat-card__label">Module Updates</div>
+                <div class="metis-settings-stat-card__head">
+                    <div class="metis-settings-stat-card__label">Module Updates</div>
+                    <?php if ( $is_system_admin && $module_update_count > 0 ) : ?>
+                        <div class="metis-settings-stat-card__actions">
+                            <div class="metis-module-action-group">
+                                <button
+                                    type="button"
+                                    class="metis-module-action metis-module-action--install metis-module-action--icon"
+                                    data-module-update-all="1"
+                                    title="Install Module Updates"
+                                    aria-label="Install Module Updates"
+                                >
+                                    <span class="metis-module-action__label">Install Updates</span>
+                                    <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_install_icon; ?></span>
+                                    <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
+                                </button>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
                 <div class="metis-settings-stat-card__value"><?php echo metis_escape_html( (string) $module_update_count ); ?></div>
                 <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( $module_checked_display ); ?></div>
-                <?php if ( $is_system_admin && $module_update_count > 0 ) : ?>
-                    <div class="metis-settings-stat-card__actions">
-                        <div class="metis-module-action-group">
-                            <button
-                                type="button"
-                                class="metis-module-action metis-module-action--install metis-module-action--icon"
-                                data-module-update-all="1"
-                                title="Install Module Updates"
-                                aria-label="Install Module Updates"
-                            >
-                                <span class="metis-module-action__label">Install Updates</span>
-                                <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_install_icon; ?></span>
-                                <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
-                            </button>
-                        </div>
-                    </div>
-                <?php endif; ?>
             </div>
             <div class="metis-settings-stat-card is-ok">
                 <div class="metis-settings-stat-card__label">Loaded Modules</div>
