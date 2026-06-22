@@ -85,7 +85,7 @@ foreach ( $scanRoots as $scanRoot ) {
 ksort( $actual );
 
 $allowed = [
-    'src/Metis/Core/BuiltInServices/settings/views/_settings_bootstrap.php' => [ 'website' ],
+    'src/Metis/Core/BuiltInServices/settings/WebsiteSettingsBridge.php' => [ 'website' ],
     'src/Metis/Core/Editor/WebsiteEditorRuntimeBridge.php' => [ 'website' ],
     'src/Metis/Core/Runtime/StandaloneApplicationBootstrap.php' => [ 'board', 'calendar', 'contacts', 'finance', 'forms', 'import', 'newsletter', 'website' ],
     'src/Metis/Services/HermesNewsletterAdminService.php' => [ 'newsletter' ],

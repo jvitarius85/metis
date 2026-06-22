@@ -2736,22 +2736,10 @@ if ( ! function_exists( 'metis_settings_save_general_section' ) ) {
 
         if ( array_key_exists( 'site_homepage_page_id', metis_request_post() ) ) {
             $homepage_id = isset( metis_request_post()['site_homepage_page_id'] ) ? (int) metis_request_post()['site_homepage_page_id'] : 0;
-            if ( $homepage_id > 0 ) {
-                if (
-                    class_exists( '\Metis\Modules\Website\Services\HomepageService' )
-                    && class_exists( '\Metis\Modules\Website\Services\PageService' )
-                ) {
-                    $page = \Metis\Modules\Website\Services\PageService::getById( $homepage_id );
-                    if ( $page === null || $page->status !== 'published' ) {
-                        $errors[] = 'Homepage must reference a published website page.';
-                    } elseif ( ! \Metis\Modules\Website\Services\HomepageService::setHomepagePageId( $homepage_id ) ) {
-                        $errors[] = 'Unable to save homepage selection.';
-                    } else {
-                        $saved = true;
-                    }
-                }
-            } elseif ( class_exists( '\Core_Settings_Service' ) ) {
-                Core_Settings_Service::delete( 'site_homepage_page_id' );
+            $homepage_result = \Metis\Core\BuiltInServices\settings\WebsiteSettingsBridge::saveHomepageSelection( $homepage_id );
+            if ( $homepage_result['error'] !== '' ) {
+                $errors[] = (string) $homepage_result['error'];
+            } elseif ( ! empty( $homepage_result['saved'] ) ) {
                 $saved = true;
             }
         }
@@ -3961,12 +3949,9 @@ if ( ! function_exists( 'metis_settings_bootstrap' ) ) {
         $help_custom_topics = Core_Settings_Service::get( 'help_custom_topics', [] );
         $help_custom_walkthroughs = Core_Settings_Service::get( 'help_custom_walkthroughs', [] );
         $site_homepage_page_id = (int) Core_Settings_Service::get( 'site_homepage_page_id', 0 );
-        $website_pages_for_homepage = [];
-        if ( metis_settings_should_load_homepage_pages( $section ) && class_exists( '\Metis\Modules\Website\Services\PageService' ) ) {
-            $website_pages_for_homepage = array_values(
-                \Metis\Modules\Website\Services\PageService::getAll( [ 'status' => 'published' ] )
-            );
-        }
+        $website_pages_for_homepage = \Metis\Core\BuiltInServices\settings\WebsiteSettingsBridge::publishedHomepagePages(
+            metis_settings_should_load_homepage_pages( $section )
+        );
         if (
             metis_settings_should_load_calendar_options( $section )
             && $is_system_admin
