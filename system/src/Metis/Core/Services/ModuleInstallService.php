@@ -5,6 +5,7 @@ namespace Metis\Core\Services;
 
 use Metis\Core\Application;
 use Metis\Core\Cache\CacheService;
+use Metis\Core\ModulePathRegistry;
 use Metis\Core\Version;
 
 final class ModuleInstallService {
@@ -143,6 +144,81 @@ final class ModuleInstallService {
                 'name' => $moduleName,
                 'current' => $currentVersion,
                 'latest' => $latestVersion,
+            ]);
+        }
+    }
+
+    public function uninstall(string $moduleId): array {
+        $moduleId = metis_key_clean($moduleId);
+        if ($moduleId === '') {
+            return $this->failure('invalid_module', 'A valid module ID is required.');
+        }
+
+        if (ModulePathRegistry::isCoreServiceSlug($moduleId)) {
+            return $this->failure('protected_module', 'Built-in services cannot be uninstalled.');
+        }
+
+        $installedMap = [];
+        foreach ($this->moduleUpdates->discoverInstalledModules() as $installedModule) {
+            $installedId = metis_key_clean((string) ($installedModule['id'] ?? ''));
+            if ($installedId !== '') {
+                $installedMap[$installedId] = $installedModule;
+            }
+        }
+
+        $current = is_array($installedMap[$moduleId] ?? null) ? (array) $installedMap[$moduleId] : [];
+        if ($current === []) {
+            return $this->failure('missing_module', sprintf('Module [%s] is not installed.', $moduleId));
+        }
+
+        $manifestPath = (string) ($current['manifest_path'] ?? '');
+        $modulePath = $manifestPath !== '' ? dirname($manifestPath) : '';
+        if ($modulePath === '' || !is_dir($modulePath)) {
+            return $this->failure('missing_path', sprintf('Module [%s] could not be located on disk.', $moduleId));
+        }
+
+        if (ModulePathRegistry::packageTypeForPath($modulePath) !== 'module') {
+            return $this->failure('protected_module', 'Only registry modules can be uninstalled.');
+        }
+
+        $moduleName = trim((string) ($current['name'] ?? ucwords(str_replace(['_', '-'], ' ', $moduleId))));
+        $currentVersion = trim((string) ($current['version'] ?? ''));
+        $runtimeRoot = $this->files->ensureDirectory($this->files->rootPath('storage/runtime/module_updates'));
+
+        try {
+            $backupRoot = $this->files->ensureDirectory($runtimeRoot . '/backups');
+            $this->copyDirectory($modulePath, $backupRoot . '/' . $moduleId . '-uninstall-' . gmdate('YmdHis'));
+            $this->files->remove($modulePath);
+            $this->refreshRuntimeState();
+            $status = $this->moduleUpdates->checkForUpdates(true);
+
+            $result = [
+                'ok' => true,
+                'status' => 'uninstalled',
+                'message' => sprintf('%s %s uninstalled.', $moduleName, $currentVersion !== '' ? $currentVersion : $moduleId),
+                'module' => $moduleId,
+                'name' => $moduleName,
+                'current' => $currentVersion,
+                'module_update_status' => $status,
+            ];
+
+            $this->logger->activity('module_uninstall_completed', [
+                'module' => $moduleId,
+                'current' => $currentVersion,
+            ]);
+
+            return $result;
+        } catch (\Throwable $exception) {
+            $this->logger->error('module_uninstall_failed', [
+                'module' => $moduleId,
+                'version' => $currentVersion,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return $this->failure('uninstall_failed', $exception->getMessage(), [
+                'module' => $moduleId,
+                'name' => $moduleName,
+                'current' => $currentVersion,
             ]);
         }
     }

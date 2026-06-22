@@ -61,19 +61,31 @@
 
 .metis-module-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 14px;
 }
 
 .metis-module-card {
-    padding: 14px 16px;
+    padding: 16px 18px;
     border: 1px solid #d9deea;
     border-radius: 12px;
-    background: #f7f8fc;
+    background: #f3f4f6;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
+    min-height: 100%;
     transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease;
+}
+
+.metis-module-card.is-installed {
+    border-color: #86efac;
+    background: linear-gradient(180deg, #f0fdf4 0%, #ecfdf3 100%);
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.1);
+}
+
+.metis-module-card.is-available {
+    border-color: #d1d5db;
+    background: linear-gradient(180deg, #f3f4f6 0%, #eef2f7 100%);
 }
 
 .metis-module-card.is-update-available {
@@ -99,10 +111,12 @@
 .metis-module-card__title {
     font-weight: 700;
     color: #1f2330;
+    font-size: 18px;
+    line-height: 1.2;
 }
 
 .metis-module-card__version {
-    margin: 8px 0 0 0;
+    margin: 6px 0 0 0;
     color: #667085;
     font-size: 13px;
 }
@@ -132,6 +146,14 @@
     font-size: 13px;
 }
 
+.metis-module-card__description {
+    margin: 0;
+    color: #475467;
+    font-size: 14px;
+    line-height: 1.45;
+    flex: 1 1 auto;
+}
+
 .metis-module-card__note.is-warning {
     color: #92400e;
 }
@@ -145,6 +167,15 @@
     flex: 0 0 auto;
     align-self: flex-start;
     justify-content: flex-end;
+}
+
+.metis-module-action-group {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid #c7d2fe;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.75);
 }
 
 .metis-module-refresh {
@@ -206,19 +237,20 @@
 }
 
 .metis-module-action {
-    white-space: nowrap;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-height: 34px;
+    min-height: 36px;
     padding: 7px 12px;
-    border-radius: 999px;
-    border: 1px solid #c7d2fe;
+    border-radius: 0;
+    border: 0;
+    border-right: 1px solid rgba(199, 210, 254, 0.9);
     background: #eef2ff;
     color: #3346b5;
     font-weight: 700;
     line-height: 1;
+    white-space: nowrap;
 }
 
 .metis-module-action:hover,
@@ -255,6 +287,35 @@
 .metis-module-action--install:hover,
 .metis-module-action--install:focus-visible {
     background: #e0e7ff;
+}
+
+.metis-module-action--danger {
+    background: #fff1f2;
+    color: #be123c;
+    border-right: 0;
+}
+
+.metis-module-action--danger:hover,
+.metis-module-action--danger:focus-visible {
+    background: #ffe4e6;
+    box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
+}
+
+.metis-module-action--icon {
+    min-width: 42px;
+    padding: 0 12px;
+}
+
+.metis-module-action--icon .metis-module-action__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .metis-module-actions-row {

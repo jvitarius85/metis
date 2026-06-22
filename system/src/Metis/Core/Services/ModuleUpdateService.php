@@ -62,7 +62,8 @@ final class ModuleUpdateService {
             $result = [
                 'module' => $moduleId,
                 'id' => $moduleId,
-                'name' => (string) ( $module['name'] ?? $moduleId ),
+                'name' => (string) ( $module['name'] ?? $registryEntry['name'] ?? $moduleId ),
+                'description' => trim( (string) ( $module['description'] ?? $registryEntry['description'] ?? '' ) ),
                 'current' => $installedVersion,
                 'latest' => $latestVersion,
                 'minimum_metis' => $requiredMetis,
@@ -183,6 +184,7 @@ final class ModuleUpdateService {
             $modules[] = [
                 'id' => $moduleId,
                 'name' => $moduleName,
+                'description' => trim( (string) ( $payload['description'] ?? '' ) ),
                 'version' => trim( (string) ( $payload['version'] ?? '' ) ),
                 'minimum_metis' => trim( (string) ( $payload['minimum_metis'] ?? '' ) ),
                 'release_channel' => trim( (string) ( $payload['release_channel'] ?? 'stable' ) ),

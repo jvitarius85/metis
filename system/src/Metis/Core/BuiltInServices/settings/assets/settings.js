@@ -2243,6 +2243,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 confirmLabel: 'Reinstall'
             };
         }
+        if (kind === 'uninstall') {
+            return {
+                message: 'Uninstall ' + label + ' now?',
+                title: 'Uninstall Module',
+                confirmLabel: 'Uninstall'
+            };
+        }
         return {
             message: 'Install ' + label + ' now?',
             title: 'Install Module',
@@ -2295,15 +2302,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
                     const body = new FormData();
                     body.append('module_id', moduleId);
+                    const action = actionKind === 'uninstall'
+                        ? 'metis_module_uninstall_now'
+                        : 'metis_module_install_now';
 
-                    postSettingsAction('metis_module_install_now', body).then(function (data) {
+                    postSettingsAction(action, body).then(function (data) {
                         return refreshSettingsLiveRoot().then(function () {
                             setSettingsLiveFeedback('', '');
-                            showToast('success', String((data && data.message) || 'Module installed.'));
+                            showToast('success', String((data && data.message) || 'Module updated.'));
                         });
                     }).catch(function (error) {
                         setSettingsLiveFeedback(error && error.message ? error.message : 'Module action failed.', 'error');
-                        showToast('error', error && error.message ? error.message : 'Module installation failed.');
+                        showToast('error', error && error.message ? error.message : 'Module action failed.');
                     }).finally(function () {
                         endLoading();
                     });
