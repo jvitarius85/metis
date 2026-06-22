@@ -78,6 +78,11 @@ Metis is migrating toward a module-store model where installable feature modules
 
 The canonical inventory lives in `ModulePathRegistry::sourceModuleInventory()`. Any new directory added under `system/src/Metis/Modules/` should fail contract tests until the migration inventory and runtime plan are updated intentionally.
 
+Metis also tracks the current set of core-to-store-module namespace dependencies in `system/tests/module_store_dependency_boundary_test.php`. That boundary is intentionally one-way:
+
+- Existing references may be removed as runtime bundles become self-contained.
+- New references from core, Hermes, or built-in services into legacy store-module namespaces should fail tests until the migration plan is updated deliberately.
+
 ## Bundle Contract
 
 Each published module bundle should unpack to:

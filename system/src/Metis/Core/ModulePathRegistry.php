@@ -232,6 +232,13 @@ final class ModulePathRegistry {
     }
 
     /**
+     * @return array<int,string>
+     */
+    public static function legacyStoreManagedSourceModuleSlugs(): array {
+        return array_keys( self::legacyStoreManagedSourceModules() );
+    }
+
+    /**
      * @return array<string,string>|null
      */
     public static function transitionalSourceModule( string $slug ): ?array {
