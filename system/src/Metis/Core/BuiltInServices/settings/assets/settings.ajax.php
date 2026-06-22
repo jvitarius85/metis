@@ -490,7 +490,18 @@ metis_ajax_register_handler( 'metis_settings_checker_remediate', function () {
             $store = new \Metis\Core\HelpSearchStore();
             $seeded = $store->runSeeder( true );
             $indexed = $store->rebuildSearchIndex();
+            CacheService::clearGroup( 'modules' );
             CacheService::clearGroup( 'fragments' );
+            if ( \Metis\Core\Application::has_service( 'modules' ) ) {
+                $modules = \Metis\Core\Application::service( 'modules' );
+                if ( is_object( $modules ) && method_exists( $modules, 'reload' ) ) {
+                    $modules->reload();
+                }
+            }
+            if ( function_exists( 'metis_standalone_invalidate_config_cache' ) ) {
+                metis_standalone_invalidate_config_cache();
+            }
+            CacheService::rebuildSystemCaches();
 
             $actions[] = [
                 'action' => 'help.seed_and_index',

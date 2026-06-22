@@ -5,6 +5,7 @@ namespace Metis\Core\Services;
 
 use Metis\Core\Application;
 use Metis\Core\Cache\CacheService;
+use Metis\Core\Modules\ModuleValidator;
 use Metis\Core\ModulePathRegistry;
 use Metis\Core\Recovery\RecoveryVerifier;
 use Metis\Core\Version;
@@ -93,6 +94,7 @@ final class ModuleInstallService {
             if (preg_match(self::SEMVER_PATTERN, $manifestVersion) !== 1 || version_compare($manifestVersion, $latestVersion, '!=')) {
                 throw new \RuntimeException(sprintf('Archive version [%s] does not match registry version [%s].', $manifestVersion, $latestVersion));
             }
+            $manifest = (new ModuleValidator())->validateModule($moduleSource, $manifest, $moduleId);
 
             $destination = rtrim(ModulePathRegistry::moduleRootPath(), '/\\') . '/' . $moduleId;
             if (is_dir($destination)) {

@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace Metis\Release;
 
+use Metis\Core\Application;
+use Metis\Core\Cache\CacheService;
 use Metis\Core\Services\ProcessRunner;
 use Metis\Core\Version;
 
@@ -527,6 +529,8 @@ final class ReleaseManager {
     }
 
     private function preflightIntegrityCheck( string $trigger ): array {
+        $this->refreshProtectionPreflightState();
+
         if ( ! \class_exists( 'Metis_Integrity_Manager' ) ) {
             return [
                 'blocked' => false,
@@ -545,6 +549,8 @@ final class ReleaseManager {
     }
 
     private function preflightModuleComplianceCheck(): array {
+        $this->refreshProtectionPreflightState();
+
         if ( ! \function_exists( 'metis_module_compliance_report' ) ) {
             return [
                 'blocked' => false,
@@ -576,6 +582,25 @@ final class ReleaseManager {
             'failures' => $failures,
             'report' => $report,
         ];
+    }
+
+    private function refreshProtectionPreflightState(): void {
+        CacheService::clearGroup( 'modules' );
+        CacheService::clearGroup( 'fragments' );
+        CacheService::forget( 'updates.modules' );
+
+        if ( Application::has_service( 'modules' ) ) {
+            $modules = Application::service( 'modules' );
+            if ( is_object( $modules ) && method_exists( $modules, 'reload' ) ) {
+                $modules->reload();
+            }
+        }
+
+        $this->invalidateConfigCache();
+
+        if ( \class_exists( 'Metis_Integrity_Manager' ) ) {
+            \Metis_Integrity_Manager::ensure_runtime();
+        }
     }
 
     private function runPreUpdateBackup( string $trigger ): array {

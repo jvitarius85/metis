@@ -1318,6 +1318,7 @@ if ( ! function_exists( 'metis_settings_health_help_service_status' ) ) {
 
         $seed_base = defined( 'METIS_SRC_PATH' ) ? (string) METIS_SRC_PATH : metis_settings_root_path() . '/system/src';
         $manifest_candidates = [
+            dirname( __DIR__, 2 ) . '/help/module.json',
             metis_settings_root_path() . '/system/src/Metis/Core/BuiltInServices/help/module.json',
         ];
         if ( defined( 'METIS_MODULES_PATH' ) ) {
@@ -1332,6 +1333,7 @@ if ( ! function_exists( 'metis_settings_health_help_service_status' ) ) {
         }
 
         $seed_candidates = [
+            dirname( __DIR__, 3 ) . '/Help/Seeds/HelpDocumentsSeed.php',
             rtrim( $seed_base, '/\\' ) . '/Metis/Core/Help/Seeds/HelpDocumentsSeed.php',
         ];
         $seed_path = '';
