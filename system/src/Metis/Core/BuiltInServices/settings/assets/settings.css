@@ -391,6 +391,13 @@
     margin-top: 12px;
 }
 
+.metis-settings-progress-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 16px;
+}
+
 .metis-settings-version-flow {
     display: inline-flex;
     align-items: center;
