@@ -916,47 +916,17 @@ function metis_standalone_install_ensure_all_schema(): array {
 
     metis_standalone_install_require_module_file( 'drive', 'includes/schema.php' );
 
-    $schema_installers = [
-        'contacts' => static function (): void { \Metis\Modules\Contacts\SchemaManager::ensureSchema(); },
-        'people' => static function (): void { \Metis\Modules\People\SchemaManager::ensureSchema(); },
-        'forms' => static function (): void { \Metis\Modules\Forms\SchemaManager::ensureSchema(); },
-        'newsletter' => static function (): void { \Metis\Modules\Newsletter\SchemaManager::ensureSchema(); },
-        'board' => static function (): void { \Metis\Modules\Board\SchemaManager::ensureSchema(); },
-        'calendar' => static function (): void { \Metis\Modules\Calendar\SyncStore::ensureSchema(); },
-        'finance' => static function (): void { \Metis\Modules\Finance\SchemaManager::ensureSchema(); },
-        'hermes' => static function (): void { \Metis\Modules\Hermes\SchemaManager::ensureSchema(); },
-        'website' => static function (): void { \Metis\Modules\Website\SchemaManager::ensureSchema(); },
-        'import' => static function (): void { \Metis\Modules\Import\SchemaManager::ensureSchema(); },
-        'communications_inbound' => static function (): void { \Metis\Modules\CommunicationsInbound\SchemaManager::ensureSchema(); },
-        'grandy_stash' => static function (): void { \Metis\Modules\GrandyStash\GrandyStashSchemaManager::ensureSchema(); },
-        'drive' => static function (): void {
-            if ( function_exists( 'metis_drive_ensure_schema' ) ) {
-                metis_drive_ensure_schema();
-            }
-        },
-        'recovery' => static function (): void { \Metis\Core\Recovery\RecoverySchema::ensureSchema(); },
-    ];
+    $schema_installers = \Metis\Core\Runtime\ModuleSchemaRuntimeBridge::installers();
 
     foreach ( $schema_installers as $label => $installer ) {
         metis_standalone_install_call_schema( $label, $installer, $created );
     }
 
-    if ( function_exists( 'metis_backup_service' ) ) {
-        metis_standalone_install_call_schema( 'backup_service', static function (): void {
-            metis_backup_service()->ensureSchema();
-        }, $created );
-    }
-
-    if ( function_exists( 'metis_entity_id_service' ) ) {
-        metis_standalone_install_call_schema( 'entity_id_service', static function (): void {
-            metis_entity_id_service()->ensureSchema();
-        }, $created );
-    }
-
-    if ( class_exists( '\Metis\Core\HelpSearchStore' ) ) {
-        metis_standalone_install_call_schema( 'help_search_store', static function (): void {
-            ( new \Metis\Core\HelpSearchStore() )->ensureSchema();
-        }, $created );
+    foreach ( [ 'backup_service', 'entity_id_service', 'help_search_store' ] as $label ) {
+        $installer = \Metis\Core\Runtime\ModuleSchemaRuntimeBridge::installer( $label );
+        if ( is_callable( $installer ) ) {
+            metis_standalone_install_call_schema( $label, $installer, $created );
+        }
     }
 
     return $created;
@@ -1133,24 +1103,11 @@ function metis_standalone_install_run_schema_step( string $step ): void {
         'metis_audit_ensure_schema' => static function (): void { if ( function_exists( 'metis_audit_ensure_schema' ) ) { metis_audit_ensure_schema(); } },
         'metis_webhook_ensure_schema' => static function (): void { if ( function_exists( 'metis_webhook_ensure_schema' ) ) { metis_webhook_ensure_schema(); } },
         'metis_media_ensure_schema' => static function (): void { if ( function_exists( 'metis_media_ensure_schema' ) ) { metis_media_ensure_schema(); } },
-        'contacts' => static function (): void { \Metis\Modules\Contacts\SchemaManager::ensureSchema(); },
-        'people' => static function (): void { \Metis\Modules\People\SchemaManager::ensureSchema(); },
-        'forms' => static function (): void { \Metis\Modules\Forms\SchemaManager::ensureSchema(); },
-        'newsletter' => static function (): void { \Metis\Modules\Newsletter\SchemaManager::ensureSchema(); },
-        'board' => static function (): void { \Metis\Modules\Board\SchemaManager::ensureSchema(); },
-        'calendar' => static function (): void { \Metis\Modules\Calendar\SyncStore::ensureSchema(); },
-        'finance' => static function (): void { \Metis\Modules\Finance\SchemaManager::ensureSchema(); },
-        'hermes' => static function (): void { \Metis\Modules\Hermes\SchemaManager::ensureSchema(); },
-        'website' => static function (): void { \Metis\Modules\Website\SchemaManager::ensureSchema(); },
-        'import' => static function (): void { \Metis\Modules\Import\SchemaManager::ensureSchema(); },
-        'communications_inbound' => static function (): void { \Metis\Modules\CommunicationsInbound\SchemaManager::ensureSchema(); },
-        'grandy_stash' => static function (): void { \Metis\Modules\GrandyStash\GrandyStashSchemaManager::ensureSchema(); },
-        'drive' => static function (): void { if ( function_exists( 'metis_drive_ensure_schema' ) ) { metis_drive_ensure_schema(); } },
-        'recovery' => static function (): void { \Metis\Core\Recovery\RecoverySchema::ensureSchema(); },
-        'backup_service' => static function (): void { if ( function_exists( 'metis_backup_service' ) ) { metis_backup_service()->ensureSchema(); } },
-        'entity_id_service' => static function (): void { if ( function_exists( 'metis_entity_id_service' ) ) { metis_entity_id_service()->ensureSchema(); } },
-        'help_search_store' => static function (): void { if ( class_exists( '\Metis\Core\HelpSearchStore' ) ) { ( new \Metis\Core\HelpSearchStore() )->ensureSchema(); } },
     ];
+
+    foreach ( \Metis\Core\Runtime\ModuleSchemaRuntimeBridge::installers() as $label => $installer ) {
+        $callbacks[ $label ] = $installer;
+    }
 
     if ( ! isset( $callbacks[ $step ] ) ) {
         throw new InvalidArgumentException( 'Unknown installer schema step.' );

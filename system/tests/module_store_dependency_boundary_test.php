@@ -87,7 +87,7 @@ ksort( $actual );
 $allowed = [
     'src/Metis/Core/BuiltInServices/settings/WebsiteSettingsBridge.php' => [ 'website' ],
     'src/Metis/Core/Editor/WebsiteEditorRuntimeBridge.php' => [ 'website' ],
-    'src/Metis/Core/Runtime/StandaloneApplicationBootstrap.php' => [ 'board', 'calendar', 'contacts', 'finance', 'forms', 'import', 'newsletter', 'website' ],
+    'src/Metis/Core/Runtime/ModuleSchemaRuntimeBridge.php' => [ 'board', 'calendar', 'contacts', 'finance', 'forms', 'import', 'newsletter', 'website' ],
     'src/Metis/Services/HermesNewsletterAdminService.php' => [ 'newsletter' ],
     'src/Metis/Services/HermesWebsiteAdminService.php' => [ 'website' ],
 ];
