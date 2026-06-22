@@ -182,6 +182,7 @@ final class ModuleValidator {
             throw new \RuntimeException( 'Module bootstrap missing: ' . $modulePath . '/' . $bootstrap );
         }
 
+        $this->validateBootstrapFunctionCollisions( $modulePath, $bootstrap, $slug );
         $this->validateBootstrapRoutingContract( $modulePath, $bootstrap, $slug );
 
         foreach ( (array) ( $manifest['services'] ?? [] ) as $serviceFile ) {
@@ -320,5 +321,83 @@ final class ModuleValidator {
                 )
             );
         }
+    }
+
+    private function validateBootstrapFunctionCollisions( string $modulePath, string $bootstrap, string $slug ): void {
+        if ( $bootstrap === '' ) {
+            return;
+        }
+
+        $bootstrapFile = $modulePath . '/' . $bootstrap;
+        if ( ! is_file( $bootstrapFile ) ) {
+            return;
+        }
+
+        foreach ( $this->bootstrapDeclaredFunctions( $bootstrapFile ) as $functionName ) {
+            if ( function_exists( $functionName ) ) {
+                throw new \RuntimeException(
+                    sprintf(
+                        'Module [%s] bootstrap declares helper [%s] that conflicts with an existing runtime function.',
+                        $slug,
+                        $functionName
+                    )
+                );
+            }
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function bootstrapDeclaredFunctions( string $bootstrapFile ): array {
+        $source = (string) @file_get_contents( $bootstrapFile );
+        if ( $source === '' ) {
+            return [];
+        }
+
+        $tokens = token_get_all( $source );
+        $functions = [];
+        $tokenCount = count( $tokens );
+
+        for ( $index = 0; $index < $tokenCount; $index++ ) {
+            $token = $tokens[ $index ];
+            if ( ! is_array( $token ) || $token[0] !== T_FUNCTION ) {
+                continue;
+            }
+
+            $nextIndex = $index + 1;
+            while ( $nextIndex < $tokenCount ) {
+                $next = $tokens[ $nextIndex ];
+                if ( is_array( $next ) && in_array( $next[0], [ T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG, T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG ], true ) ) {
+                    $nextIndex++;
+                    continue;
+                }
+
+                if ( is_string( $next ) && trim( $next ) === '' ) {
+                    $nextIndex++;
+                    continue;
+                }
+
+                break;
+            }
+
+            if ( $nextIndex >= $tokenCount ) {
+                continue;
+            }
+
+            $nameToken = $tokens[ $nextIndex ];
+            if ( ! is_array( $nameToken ) || $nameToken[0] !== T_STRING ) {
+                continue;
+            }
+
+            $functionName = trim( (string) $nameToken[1] );
+            if ( $functionName === '' ) {
+                continue;
+            }
+
+            $functions[] = $functionName;
+        }
+
+        return array_values( array_unique( $functions ) );
     }
 }

@@ -21,6 +21,7 @@ $read = static function ( string $path ) use ( $root ): string {
 };
 
 $moduleInstall = $read( 'src/Metis/Core/Services/ModuleInstallService.php' );
+$moduleValidator = $read( 'src/Metis/Core/Modules/ModuleValidator.php' );
 $mediaBootstrap = file_get_contents( '/Users/jvitarius85/Documents/GitHub/metis-private/modules/media/bootstrap.php' );
 $mediaBootstrap = $mediaBootstrap === false ? '' : $mediaBootstrap;
 
@@ -55,6 +56,14 @@ $assert(
     str_contains( $mediaBootstrap, "if ( ! function_exists( 'metis_media_find_by_token' ) ) {" )
     && str_contains( $mediaBootstrap, "if ( ! function_exists( 'metis_media_find_by_filename' ) ) {" ),
     'Media bootstrap compatibility helpers must be guarded so core runtime helpers can coexist without fatal redeclarations.'
+);
+
+$assert(
+    str_contains( $moduleValidator, 'validateBootstrapFunctionCollisions' )
+    && str_contains( $moduleValidator, 'bootstrapDeclaredFunctions' )
+    && str_contains( $moduleValidator, 'bootstrap declares helper [%s] that conflicts with an existing runtime function.' )
+    && str_contains( $moduleValidator, 'token_get_all' ),
+    'Module validation must reject bootstrap helper collisions before the runtime includes the bundle.'
 );
 
 if ( $failures !== [] ) {
