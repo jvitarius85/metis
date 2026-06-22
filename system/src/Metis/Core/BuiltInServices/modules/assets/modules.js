@@ -108,6 +108,18 @@
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
       var replacement = doc.querySelector('[data-settings-live-root="modules"]');
+      if (!replacement) {
+        var replacementCard = doc.querySelector('[data-settings-modules-store]');
+        var replacementFeedback = doc.querySelector('[data-settings-live-feedback]');
+        if (replacementCard) {
+          replacement = document.createElement('div');
+          replacement.setAttribute('data-settings-live-root', 'modules');
+          replacement.appendChild(replacementCard.cloneNode(true));
+          if (replacementFeedback) {
+            replacement.appendChild(replacementFeedback.cloneNode(true));
+          }
+        }
+      }
       if (!replacement || !currentRoot.parentNode) {
         throw new Error('Updated modules content was not available.');
       }

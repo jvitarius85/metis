@@ -222,12 +222,14 @@ $release_apply_tag = trim( (string) ( $release_latest['tag'] ?? $release_latest[
                             <div>
                                 <div class="metis-module-card__title"><?php echo metis_escape_html( $module_name ); ?></div>
                                 <p class="metis-module-card__version">
-                                    <?php echo metis_escape_html( (string) $module_version ); ?>
                                     <?php if ( $has_module_update ) : ?>
                                         <span class="metis-settings-version-flow">
+                                            <span><?php echo metis_escape_html( (string) $module_version ); ?></span>
                                             <span class="metis-settings-version-flow__icon" aria-hidden="true"><?php echo $module_arrow_icon; ?></span>
                                             <span><?php echo metis_escape_html( (string) ( $module_update['latest'] ?? '' ) ); ?></span>
                                         </span>
+                                    <?php else : ?>
+                                        <?php echo metis_escape_html( (string) $module_version ); ?>
                                     <?php endif; ?>
                                 </p>
                             </div>

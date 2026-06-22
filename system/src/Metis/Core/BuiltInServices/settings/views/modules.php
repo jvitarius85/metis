@@ -139,12 +139,14 @@ $module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
                                     <div class="metis-module-card__title"><?php echo metis_escape_html( (string) $module['name'] ); ?></div>
                                     <p class="metis-module-card__version">
                                         <?php if ( ! empty( $module['installed'] ) ) : ?>
-                                            <?php echo metis_escape_html( (string) $module['current'] ); ?>
                                             <?php if ( ! empty( $module['update_available'] ) ) : ?>
                                                 <span class="metis-settings-version-flow">
+                                                    <span><?php echo metis_escape_html( (string) $module['current'] ); ?></span>
                                                     <span class="metis-settings-version-flow__icon" aria-hidden="true"><?php echo $module_arrow_icon; ?></span>
                                                     <span><?php echo metis_escape_html( (string) $module['latest'] ); ?></span>
                                                 </span>
+                                            <?php else : ?>
+                                                <?php echo metis_escape_html( (string) $module['current'] ); ?>
                                             <?php endif; ?>
                                         <?php else : ?>
                                             Latest <?php echo metis_escape_html( (string) $module['latest'] ); ?>

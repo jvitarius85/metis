@@ -2396,6 +2396,7 @@ function metisInitSettingsUi() {
                     body.append('metis_action_nonce', Metis.ajax.nonceFor(action, (window.metisAjax && window.metisAjax.nonce) || ''));
 
                     const originalLabel = button.textContent;
+                    let completedSuccessfully = false;
                     button.disabled = true;
                     button.textContent = 'Applying...';
                     updateReleaseProgressPanel(panel, { percent: 1, message: 'Starting release update.' });
@@ -2411,6 +2412,7 @@ function metisInitSettingsUi() {
                         };
                         updateReleaseProgressPanel(panel, progress);
                         if (result.ok) {
+                            completedSuccessfully = true;
                             showToast('success', String(data.message || 'Release update completed.'));
                             return refreshSettingsLiveRoot().catch(function (refreshError) {
                                 showToast('error', refreshError && refreshError.message ? refreshError.message : 'Release update completed, but the page could not refresh.');
@@ -2423,9 +2425,13 @@ function metisInitSettingsUi() {
                         showToast('error', error && error.message ? error.message : 'Release update failed.');
                     }).finally(function () {
                         stopProgressPolling();
-                        window.setTimeout(function () {
-                            pollReleaseProgress(token, panel, false);
-                        }, 500);
+                        if (!completedSuccessfully) {
+                            window.setTimeout(function () {
+                                pollReleaseProgress(token, panel, false);
+                            }, 500);
+                        } else {
+                            hideAboutProgress('core');
+                        }
                         button.disabled = false;
                         button.textContent = originalLabel;
                     });
@@ -2487,6 +2493,7 @@ function metisInitSettingsUi() {
 
                     const endLoading = beginSettingsAsyncButton(button);
                     const token = releaseProgressToken();
+                    let completedSuccessfully = false;
                     const stopProgressPolling = startSettingsProgressPolling('metis_module_install_all_updates_progress', token, 'modules');
                     setSettingsLiveFeedback('Installing available module updates...', '');
                     updateAboutProgress('modules', {
@@ -2500,6 +2507,7 @@ function metisInitSettingsUi() {
                     body.append('progress_token', token);
 
                     postSettingsAction('metis_module_install_all_updates', body).then(function (data) {
+                        completedSuccessfully = true;
                         updateAboutProgress('modules', {
                             title: 'Module Updates',
                             percent: 100,
@@ -2521,9 +2529,13 @@ function metisInitSettingsUi() {
                         showToast('error', error && error.message ? error.message : 'Module updates failed.');
                     }).finally(function () {
                         stopProgressPolling();
-                        window.setTimeout(function () {
-                            pollSettingsProgress('metis_module_install_all_updates_progress', token, 'modules', false);
-                        }, 500);
+                        if (!completedSuccessfully) {
+                            window.setTimeout(function () {
+                                pollSettingsProgress('metis_module_install_all_updates_progress', token, 'modules', false);
+                            }, 500);
+                        } else {
+                            hideAboutProgress('modules');
+                        }
                         endLoading();
                     });
                 });

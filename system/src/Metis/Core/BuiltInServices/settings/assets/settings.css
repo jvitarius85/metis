@@ -359,7 +359,12 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+}
+
+.metis-settings-stat-card__head > :first-child {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .metis-settings-stat-card.is-ok {
@@ -395,10 +400,11 @@
 .metis-settings-stat-card__actions {
     display: flex;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     margin-top: 0;
     justify-content: flex-end;
     align-self: flex-start;
+    flex: 0 0 auto;
 }
 
 .metis-settings-progress-stack {
@@ -412,18 +418,25 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    line-height: 1;
+    vertical-align: middle;
 }
 
 .metis-settings-version-flow__icon {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     color: #667085;
+    flex: 0 0 auto;
+    line-height: 0;
 }
 
 .metis-settings-version-flow__icon svg {
-    width: 16px;
-    height: 16px;
+    display: block;
+    width: 17px;
+    height: 17px;
 }
 
 @keyframes metis-spin {
