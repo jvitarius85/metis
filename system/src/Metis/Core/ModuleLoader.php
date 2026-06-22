@@ -402,7 +402,7 @@ final class ModuleLoader {
             return null;
         }
 
-        $raw      = file_get_contents( $manifest_path );
+        $raw = $this->readManifestFile( $manifest_path );
         $manifest = json_decode( is_string( $raw ) ? $raw : '', true );
         if ( ! is_array( $manifest ) ) {
             $this->log( 'error', 'Invalid module manifest JSON', [
@@ -448,6 +448,30 @@ final class ModuleLoader {
         }
 
         return $manifest;
+    }
+
+    private function readManifestFile( string $manifestPath ): string|false {
+        clearstatcache( true, $manifestPath );
+
+        for ( $attempt = 0; $attempt < 3; $attempt++ ) {
+            if ( ! is_file( $manifestPath ) || ! is_readable( $manifestPath ) ) {
+                clearstatcache( true, $manifestPath );
+                continue;
+            }
+
+            $raw = @file_get_contents( $manifestPath );
+            if ( is_string( $raw ) && $raw !== '' ) {
+                return $raw;
+            }
+
+            if ( $raw === '' ) {
+                return $raw;
+            }
+
+            clearstatcache( true, $manifestPath );
+        }
+
+        return false;
     }
 
     private function discoverModules(): array {
