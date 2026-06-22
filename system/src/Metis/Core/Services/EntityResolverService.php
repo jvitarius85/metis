@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace Metis\Core\Services;
 
-use Metis\Modules\Contacts\SchemaManager as ContactsSchemaManager;
 use Metis\Modules\People\SchemaManager as PeopleSchemaManager;
 use Metis\Services\DatabaseService;
 
@@ -695,10 +694,6 @@ final class EntityResolverService {
 
         if ( $entityType === 'user' ) {
             PeopleSchemaManager::ensureSchema();
-        }
-
-        if ( $entityType === 'contact' || $entityType === 'donor' ) {
-            ContactsSchemaManager::ensureSchema();
         }
 
         $ensured[ $entityType ] = true;

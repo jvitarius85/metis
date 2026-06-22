@@ -90,9 +90,7 @@ $allowed = [
     'src/Metis/Core/Editor/EditorPreviewService.php' => [ 'website' ],
     'src/Metis/Core/Editor/EditorVersionService.php' => [ 'website' ],
     'src/Metis/Core/Runtime/StandaloneApplicationBootstrap.php' => [ 'board', 'calendar', 'contacts', 'finance', 'forms', 'import', 'newsletter', 'website' ],
-    'src/Metis/Core/Services/EntityResolverService.php' => [ 'contacts' ],
     'src/Metis/Services/HermesCmsAdminService.php' => [ 'website' ],
-    'src/Metis/Services/HermesContactAdminService.php' => [ 'contacts' ],
     'src/Metis/Services/HermesNewsletterAdminService.php' => [ 'newsletter' ],
     'src/Metis/Services/HermesWebsiteAdminService.php' => [ 'website' ],
 ];

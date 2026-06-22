@@ -4,7 +4,6 @@ declare(strict_types=1);
 namespace Metis\Services;
 
 use Metis\Core\Services\EntityResolverService;
-use Metis\Modules\Contacts\SchemaManager as ContactsSchemaManager;
 
 final class HermesContactAdminService {
     public function __construct(
@@ -83,8 +82,6 @@ final class HermesContactAdminService {
             throw new \RuntimeException( 'Please provide the new value to apply.' );
         }
 
-        ContactsSchemaManager::ensureSchema();
-
         $contactsTable = \Metis_Tables::get( 'contacts' );
         $detailsTable = \Metis_Tables::get( 'contact_details' );
         $contactId = (int) ( $contact['id'] ?? 0 );
@@ -130,7 +127,6 @@ final class HermesContactAdminService {
             throw new \RuntimeException( 'Please specify which newsletter list should be updated.' );
         }
 
-        ContactsSchemaManager::ensureSchema();
         $contactId = (int) ( $contact['id'] ?? 0 );
         if ( $contactId < 1 ) {
             throw new \RuntimeException( 'Resolved contact is missing an internal ID and cannot be updated.' );
@@ -202,7 +198,7 @@ final class HermesContactAdminService {
         $format = [];
 
         foreach ( $patch as $column => $rawValue ) {
-            if ( ! ContactsSchemaManager::columnExists( $detailsTable, (string) $column ) ) {
+            if ( ! $this->columnExists( $detailsTable, (string) $column ) ) {
                 continue;
             }
 
@@ -214,7 +210,7 @@ final class HermesContactAdminService {
             throw new \RuntimeException( 'The requested contact field is not available in this environment.' );
         }
 
-        if ( ContactsSchemaManager::columnExists( $detailsTable, 'updated_at' ) ) {
+        if ( $this->columnExists( $detailsTable, 'updated_at' ) ) {
             $payload['updated_at'] = \metis_current_time( 'mysql' );
             $format[] = '%s';
         }
@@ -235,15 +231,15 @@ final class HermesContactAdminService {
 
         $insertPayload = [];
         $insertFormat = [];
-        if ( ContactsSchemaManager::columnExists( $detailsTable, 'contact_id' ) ) {
+        if ( $this->columnExists( $detailsTable, 'contact_id' ) ) {
             $insertPayload['contact_id'] = $contactId;
             $insertFormat[] = '%d';
         }
-        if ( ContactsSchemaManager::columnExists( $detailsTable, 'contact_cid' ) ) {
+        if ( $this->columnExists( $detailsTable, 'contact_cid' ) ) {
             $insertPayload['contact_cid'] = $cid !== '' ? $cid : null;
             $insertFormat[] = '%s';
         }
-        if ( ContactsSchemaManager::columnExists( $detailsTable, 'did' ) ) {
+        if ( $this->columnExists( $detailsTable, 'did' ) ) {
             $insertPayload['did'] = $did !== '' ? $did : null;
             $insertFormat[] = '%s';
         }
@@ -260,7 +256,7 @@ final class HermesContactAdminService {
     }
 
     private function touchContactUpdatedAt( string $contactsTable, int $contactId ): void {
-        if ( ! ContactsSchemaManager::columnExists( $contactsTable, 'updated_at' ) ) {
+        if ( ! $this->columnExists( $contactsTable, 'updated_at' ) ) {
             return;
         }
 
@@ -344,6 +340,14 @@ final class HermesContactAdminService {
             return $this->db;
         }
         return function_exists( 'metis_resolve_db_service' ) ? \metis_resolve_db_service() : new DatabaseService();
+    }
+
+    private function columnExists( string $table, string $column ): bool {
+        try {
+            return $this->database()->scalar( "SHOW COLUMNS FROM {$table} LIKE %s", [ $column ] ) !== null;
+        } catch ( \Throwable ) {
+            return false;
+        }
     }
 
     private function entityResolver(): EntityResolverService {
