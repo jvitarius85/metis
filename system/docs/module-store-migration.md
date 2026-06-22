@@ -45,6 +45,39 @@ Metis is migrating toward a module-store model where installable feature modules
     - Target: `grandys_stash`
     - Direction: normalize the legacy source directory name to the runtime/store slug.
 
+## Current Source Inventory
+
+`system/src/Metis/Modules/` is no longer a runtime discovery root, but it still contains legacy implementation code that must be migrated deliberately.
+
+- Legacy source-backed store modules still present:
+  - `board`
+  - `calendar`
+  - `contacts`
+  - `donations`
+  - `drive`
+  - `finance`
+  - `forms`
+  - `import`
+  - `media`
+  - `newsletter`
+  - `resources`
+  - `testimonies`
+  - `website`
+- Transitional source-only exceptions:
+  - `communicationsinbound`
+  - `formsimport`
+  - `grandystash`
+- Built-in core service source directories that remain valid:
+  - `help`
+  - `hermes`
+  - `modules`
+  - `people`
+  - `portal`
+  - `profile`
+  - `settings`
+
+The canonical inventory lives in `ModulePathRegistry::sourceModuleInventory()`. Any new directory added under `system/src/Metis/Modules/` should fail contract tests until the migration inventory and runtime plan are updated intentionally.
+
 ## Bundle Contract
 
 Each published module bundle should unpack to:

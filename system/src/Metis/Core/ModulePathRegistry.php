@@ -73,6 +73,123 @@ final class ModulePathRegistry {
             'notes' => 'Settings remains a built-in core service.',
         ],
     ];
+    private const SOURCE_MODULE_INVENTORY = [
+        'board' => [
+            'status' => 'legacy_store_module',
+            'target' => 'board',
+            'notes' => 'Board still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'calendar' => [
+            'status' => 'legacy_store_module',
+            'target' => 'calendar',
+            'notes' => 'Calendar still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'communicationsinbound' => [
+            'status' => 'core_service_runtime',
+            'target' => 'communications_inbound_runtime',
+            'notes' => 'Inbound mail processing should remain a core runtime integration surface that store modules can call into.',
+        ],
+        'contacts' => [
+            'status' => 'legacy_store_module',
+            'target' => 'contacts',
+            'notes' => 'Contacts still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'donations' => [
+            'status' => 'legacy_store_module',
+            'target' => 'donations',
+            'notes' => 'Donations still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'drive' => [
+            'status' => 'legacy_store_module',
+            'target' => 'drive',
+            'notes' => 'Drive still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'finance' => [
+            'status' => 'legacy_store_module',
+            'target' => 'finance',
+            'notes' => 'Finance still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'forms' => [
+            'status' => 'legacy_store_module',
+            'target' => 'forms',
+            'notes' => 'Forms still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'formsimport' => [
+            'status' => 'fold_into_store_module',
+            'target' => 'forms',
+            'notes' => 'Forms import should migrate into the Forms module package instead of shipping as a standalone source-side module.',
+        ],
+        'grandystash' => [
+            'status' => 'normalize_slug',
+            'target' => 'grandys_stash',
+            'notes' => 'Legacy source directory name does not match the store/runtime slug and should be normalized during migration.',
+        ],
+        'help' => [
+            'status' => 'built_in_service',
+            'target' => 'help',
+            'notes' => 'Help remains a built-in core service.',
+        ],
+        'hermes' => [
+            'status' => 'built_in_service',
+            'target' => 'hermes',
+            'notes' => 'Hermes remains a built-in core service.',
+        ],
+        'import' => [
+            'status' => 'legacy_store_module',
+            'target' => 'import',
+            'notes' => 'Import still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'media' => [
+            'status' => 'legacy_store_module',
+            'target' => 'media',
+            'notes' => 'Media still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'modules' => [
+            'status' => 'built_in_service',
+            'target' => 'modules',
+            'notes' => 'Module administration UI remains a built-in core service.',
+        ],
+        'newsletter' => [
+            'status' => 'legacy_store_module',
+            'target' => 'newsletter',
+            'notes' => 'Newsletter still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'people' => [
+            'status' => 'built_in_service',
+            'target' => 'people',
+            'notes' => 'People remains a built-in core service.',
+        ],
+        'portal' => [
+            'status' => 'built_in_service',
+            'target' => 'portal',
+            'notes' => 'Portal remains a built-in core service.',
+        ],
+        'profile' => [
+            'status' => 'built_in_service',
+            'target' => 'profile',
+            'notes' => 'Profile remains a built-in core service.',
+        ],
+        'resources' => [
+            'status' => 'legacy_store_module',
+            'target' => 'resources',
+            'notes' => 'Resources still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'settings' => [
+            'status' => 'built_in_service',
+            'target' => 'settings',
+            'notes' => 'Settings remains a built-in core service.',
+        ],
+        'testimonies' => [
+            'status' => 'legacy_store_module',
+            'target' => 'testimonies',
+            'notes' => 'Testimonies still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+        'website' => [
+            'status' => 'legacy_store_module',
+            'target' => 'website',
+            'notes' => 'Website still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
+        ],
+    ];
 
     public static function coreServiceSlugs(): array {
         return self::CORE_SERVICE_SLUGS;
@@ -98,6 +215,23 @@ final class ModulePathRegistry {
     }
 
     /**
+     * @return array<string,array<string,string>>
+     */
+    public static function sourceModuleInventory(): array {
+        return self::SOURCE_MODULE_INVENTORY;
+    }
+
+    /**
+     * @return array<string,array<string,string>>
+     */
+    public static function legacyStoreManagedSourceModules(): array {
+        return array_filter(
+            self::SOURCE_MODULE_INVENTORY,
+            static fn ( array $entry ): bool => (string) ( $entry['status'] ?? '' ) === 'legacy_store_module'
+        );
+    }
+
+    /**
      * @return array<string,string>|null
      */
     public static function transitionalSourceModule( string $slug ): ?array {
@@ -108,7 +242,7 @@ final class ModulePathRegistry {
     }
 
     /**
-     * @return array{module_root:string,core_service_root:string,store_modules:array<int,string>,core_services:array<int,string>,transitional_source_modules:array<string,array<string,string>>}
+     * @return array{module_root:string,core_service_root:string,store_modules:array<int,string>,core_services:array<int,string>,source_module_inventory:array<string,array<string,string>>,transitional_source_modules:array<string,array<string,string>>}
      */
     public static function migrationSnapshot(): array {
         return [
@@ -116,6 +250,7 @@ final class ModulePathRegistry {
             'core_service_root' => self::coreServiceRootPath(),
             'store_modules' => self::storeManagedModuleSlugs(),
             'core_services' => self::coreServiceSlugs(),
+            'source_module_inventory' => self::sourceModuleInventory(),
             'transitional_source_modules' => self::transitionalSourceModules(),
         ];
     }
