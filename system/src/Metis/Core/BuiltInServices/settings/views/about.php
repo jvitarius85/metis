@@ -106,14 +106,6 @@ $release_apply_tag = trim( (string) ( $release_latest['tag'] ?? $release_latest[
         <div class="metis-settings-stats-grid">
             <div class="metis-settings-stat-card<?php echo ! empty( $release_status['update_available'] ) ? ' is-warning' : ' is-ok'; ?>">
                 <div class="metis-settings-stat-card__label">Metis Update</div>
-                <div class="metis-release-progress" data-about-progress-panel="core" hidden>
-                    <div class="metis-release-progress__head">
-                        <strong data-about-progress-title="core">Metis Update</strong>
-                        <span data-about-progress-percent="core">0%</span>
-                    </div>
-                    <div class="metis-release-progress__bar" aria-hidden="true"><span data-about-progress-bar="core"></span></div>
-                    <div class="metis-release-progress__status" data-about-progress-status="core">Preparing update check...</div>
-                </div>
                 <div class="metis-settings-stat-card__value">
                     <?php if ( ! empty( $release_status['update_available'] ) ) : ?>
                         <span class="metis-settings-version-flow">
@@ -128,45 +120,41 @@ $release_apply_tag = trim( (string) ( $release_latest['tag'] ?? $release_latest[
                 <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( $release_checked_display ); ?></div>
                 <?php if ( $is_system_admin && ! empty( $release_status['update_available'] ) && $release_apply_tag !== '' ) : ?>
                     <div class="metis-settings-stat-card__actions">
-                        <button
-                            type="button"
-                            class="metis-module-action metis-module-action--install metis-module-action--icon"
-                            data-release-apply-tag="<?php echo metis_escape_attr( $release_apply_tag ); ?>"
-                            title="Install Metis Update"
-                            aria-label="Install Metis Update"
-                        >
-                            <span class="metis-module-action__label">Install Update</span>
-                            <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_install_icon; ?></span>
-                            <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
-                        </button>
+                        <div class="metis-module-action-group">
+                            <button
+                                type="button"
+                                class="metis-module-action metis-module-action--install metis-module-action--icon"
+                                data-release-apply-tag="<?php echo metis_escape_attr( $release_apply_tag ); ?>"
+                                title="Install Metis Update"
+                                aria-label="Install Metis Update"
+                            >
+                                <span class="metis-module-action__label">Install Update</span>
+                                <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_install_icon; ?></span>
+                                <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
+                            </button>
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>
             <div class="metis-settings-stat-card<?php echo $module_update_count > 0 ? ' is-warning' : ' is-ok'; ?>">
                 <div class="metis-settings-stat-card__label">Module Updates</div>
-                <div class="metis-release-progress" data-about-progress-panel="modules" hidden>
-                    <div class="metis-release-progress__head">
-                        <strong data-about-progress-title="modules">Module Updates</strong>
-                        <span data-about-progress-percent="modules">0%</span>
-                    </div>
-                    <div class="metis-release-progress__bar" aria-hidden="true"><span data-about-progress-bar="modules"></span></div>
-                    <div class="metis-release-progress__status" data-about-progress-status="modules">Preparing module updates...</div>
-                </div>
                 <div class="metis-settings-stat-card__value"><?php echo metis_escape_html( (string) $module_update_count ); ?></div>
                 <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( $module_checked_display ); ?></div>
                 <?php if ( $is_system_admin && $module_update_count > 0 ) : ?>
                     <div class="metis-settings-stat-card__actions">
-                        <button
-                            type="button"
-                            class="metis-module-action metis-module-action--install metis-module-action--icon"
-                            data-module-update-all="1"
-                            title="Install Module Updates"
-                            aria-label="Install Module Updates"
-                        >
-                            <span class="metis-module-action__label">Install Updates</span>
-                            <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_install_icon; ?></span>
-                            <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
-                        </button>
+                        <div class="metis-module-action-group">
+                            <button
+                                type="button"
+                                class="metis-module-action metis-module-action--install metis-module-action--icon"
+                                data-module-update-all="1"
+                                title="Install Module Updates"
+                                aria-label="Install Module Updates"
+                            >
+                                <span class="metis-module-action__label">Install Updates</span>
+                                <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_install_icon; ?></span>
+                                <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
+                            </button>
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>
@@ -179,6 +167,24 @@ $release_apply_tag = trim( (string) ( $release_latest['tag'] ?? $release_latest[
                 <div class="metis-settings-stat-card__label">Metis Version</div>
                 <div class="metis-settings-stat-card__value"><?php echo metis_escape_html( (string) ( $system_version['metis_version'] ?? 'unknown' ) ); ?></div>
                 <div class="metis-settings-stat-card__note">Build <?php echo metis_escape_html( (string) ( $system_version['build'] ?? 'unknown' ) ); ?></div>
+            </div>
+        </div>
+        <div class="metis-settings-progress-stack">
+            <div class="metis-release-progress" data-about-progress-panel="core" hidden>
+                <div class="metis-release-progress__head">
+                    <strong data-about-progress-title="core">Metis Update</strong>
+                    <span data-about-progress-percent="core">0%</span>
+                </div>
+                <div class="metis-release-progress__bar" aria-hidden="true"><span data-about-progress-bar="core"></span></div>
+                <div class="metis-release-progress__status" data-about-progress-status="core">Preparing update...</div>
+            </div>
+            <div class="metis-release-progress" data-about-progress-panel="modules" hidden>
+                <div class="metis-release-progress__head">
+                    <strong data-about-progress-title="modules">Module Updates</strong>
+                    <span data-about-progress-percent="modules">0%</span>
+                </div>
+                <div class="metis-release-progress__bar" aria-hidden="true"><span data-about-progress-bar="modules"></span></div>
+                <div class="metis-release-progress__status" data-about-progress-status="modules">Preparing module updates...</div>
             </div>
         </div>
         <?php if ( ! empty( $module_update_status['registry_error'] ) ) : ?>
