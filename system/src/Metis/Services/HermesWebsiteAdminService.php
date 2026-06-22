@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace Metis\Services;
 
-use Metis\Modules\Website\SchemaManager;
 use Metis\Modules\Website\Services\PostService;
 
 final class HermesWebsiteAdminService {
@@ -19,7 +18,6 @@ final class HermesWebsiteAdminService {
             throw new \RuntimeException( 'A post title is required.' );
         }
 
-        SchemaManager::ensureSchema();
         $post = PostService::create( [
             'title' => $title,
             'slug' => (string) ( $request['slug'] ?? '' ),
@@ -51,7 +49,6 @@ final class HermesWebsiteAdminService {
             throw new \RuntimeException( 'Specify a post title, slug, or post code to publish.' );
         }
 
-        SchemaManager::ensureSchema();
         $post = $this->resolvePost( $subject );
         if ( $post === null || (int) ( $post->id ?? 0 ) < 1 ) {
             throw new \RuntimeException( 'No matching post was found.' );
