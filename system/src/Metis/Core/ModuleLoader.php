@@ -136,7 +136,7 @@ final class ModuleLoader {
                     continue;
                 }
 
-                $module_class = $this->resolve_module_class( $manifest );
+                $module_class = $this->resolve_module_class( $dir, $manifest );
                 if ( $module_class === null ) {
                     $this->recordBootFailure( $slug, 'Module class resolution failed.', [
                         'path' => (string) ( $manifest['_manifest_path'] ?? $dir ),
@@ -287,7 +287,7 @@ final class ModuleLoader {
 
                 try {
                     $validated = $this->validator->validateModule( $dir, $manifest, $slug );
-                    if ( $this->resolve_module_class( $validated ) === null ) {
+                    if ( $this->resolve_module_class( $dir, $validated ) === null ) {
                         throw new \RuntimeException( 'Module class resolution failed.' );
                     }
                     $results[] = [
@@ -900,7 +900,9 @@ final class ModuleLoader {
         return false;
     }
 
-    private function resolve_module_class( array $manifest ): ?string {
+    private function resolve_module_class( string $dir, array $manifest ): ?string {
+        $this->prime_module_entry_file( $dir, $manifest );
+
         $candidates = [];
         $explicit   = trim( (string) ( $manifest['class'] ?? '' ) );
 
@@ -942,6 +944,20 @@ final class ModuleLoader {
         ] );
 
         return null;
+    }
+
+    private function prime_module_entry_file( string $dir, array $manifest ): void {
+        $entry = ltrim( (string) ( $manifest['entry'] ?? 'Module.php' ), '/' );
+        if ( $entry === '' ) {
+            return;
+        }
+
+        $entry_file = rtrim( $dir, '/\\' ) . '/' . $entry;
+        if ( ! is_file( $entry_file ) ) {
+            return;
+        }
+
+        $this->includeModuleFile( $entry_file );
     }
 
     private function studly_module_name( string $value ): string {

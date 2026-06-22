@@ -63,6 +63,8 @@ module-slug/
 
 The bundle must be self-contained for runtime behavior. It should not require feature implementation classes to already exist under `system/src/Metis/Modules/`.
 
+Metis now primes the declared module `entry` file before module-class resolution. This means a bundle can carry a real `Module.php` implementation instead of relying on a placeholder plus pre-bundled source classes.
+
 ## Migration Rules
 
 - Do not add new store-managed feature logic under `system/src/Metis/Modules/`.
