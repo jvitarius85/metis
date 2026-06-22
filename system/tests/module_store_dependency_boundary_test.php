@@ -86,8 +86,8 @@ ksort( $actual );
 
 $allowed = [
     'src/Metis/Core/Runtime/WebsiteModuleRuntimeBridge.php' => [ 'website' ],
+    'src/Metis/Core/Runtime/NewsletterModuleRuntimeBridge.php' => [ 'newsletter' ],
     'src/Metis/Core/Runtime/ModuleSchemaRuntimeBridge.php' => [ 'board', 'calendar', 'contacts', 'finance', 'forms', 'import', 'newsletter', 'website' ],
-    'src/Metis/Services/HermesNewsletterAdminService.php' => [ 'newsletter' ],
 ];
 
 $unexpectedFiles = array_diff_key( $actual, $allowed );
