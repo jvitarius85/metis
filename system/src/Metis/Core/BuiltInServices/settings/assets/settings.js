@@ -1,4 +1,8 @@
-document.addEventListener('DOMContentLoaded', function () {
+function metisInitSettingsUi() {
+    if (window.__metisSettingsUiInitialized) {
+        return;
+    }
+    window.__metisSettingsUiInitialized = true;
     function refreshSettingsColorBindingSelects(scope) {
         if (!(window.Metis && Metis.ui && Metis.ui.select && typeof Metis.ui.select.refresh === 'function')) {
             return;
@@ -342,6 +346,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (window.Metis && Metis.confirm && typeof Metis.confirm.open === 'function') {
             return Metis.confirm.open(Object.assign({ message: message }, options || {}));
         }
+        showToast('error', 'Confirmation dialog unavailable.');
         return Promise.resolve(false);
     };
 
@@ -3093,4 +3098,10 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', metisInitSettingsUi, { once: true });
+} else {
+    metisInitSettingsUi();
+}

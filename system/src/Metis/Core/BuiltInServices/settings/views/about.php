@@ -75,7 +75,10 @@ usort( $module_details, static function ( array $a, array $b ): int {
 
 $module_refresh_icon = metis_navigation_svg_icon_markup( 'refresh' );
 $module_update_icon = metis_navigation_svg_icon_markup( 'update' );
+$module_install_icon = metis_navigation_svg_icon_markup( 'download' );
 $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
+$module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
+$release_apply_tag = trim( (string) ( $release_latest['tag'] ?? $release_latest['version'] ?? '' ) );
 ?>
 <h1 class="metis-page-title"><?php echo metis_escape_html( metis_current_module_view_title( 'Settings' ) ); ?></h1>
 <p class="metis-subtitle">Review Metis version, update status, and loaded modules.</p>
@@ -96,17 +99,6 @@ $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
                 <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_refresh_icon; ?></span>
                 <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
             </button>
-            <?php if ( $is_system_admin && $module_update_count > 0 ) : ?>
-                <button
-                    type="button"
-                    class="metis-module-action metis-module-action--update"
-                    data-module-update-all="1"
-                >
-                    <span class="metis-module-action__label">Update All Modules</span>
-                    <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_update_icon; ?></span>
-                    <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
-                </button>
-            <?php endif; ?>
             <span class="metis-settings-status <?php echo $update_notice_count > 0 ? 'is-warning' : 'is-ok'; ?>"><?php echo metis_escape_html( (string) $update_notice_count ); ?></span>
         </div>
     </div>
@@ -124,12 +116,31 @@ $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
                 </div>
                 <div class="metis-settings-stat-card__value">
                     <?php if ( ! empty( $release_status['update_available'] ) ) : ?>
-                        <?php echo metis_escape_html( $release_installed_version . ' -> ' . (string) ( $release_latest['version'] ?? $release_latest['tag'] ?? '' ) ); ?>
+                        <span class="metis-settings-version-flow">
+                            <span><?php echo metis_escape_html( $release_installed_version ); ?></span>
+                            <span class="metis-settings-version-flow__icon" aria-hidden="true"><?php echo $module_arrow_icon; ?></span>
+                            <span><?php echo metis_escape_html( (string) ( $release_latest['version'] ?? $release_latest['tag'] ?? '' ) ); ?></span>
+                        </span>
                     <?php else : ?>
                         Current
                     <?php endif; ?>
                 </div>
                 <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( $release_checked_display ); ?></div>
+                <?php if ( $is_system_admin && ! empty( $release_status['update_available'] ) && $release_apply_tag !== '' ) : ?>
+                    <div class="metis-settings-stat-card__actions">
+                        <button
+                            type="button"
+                            class="metis-module-action metis-module-action--install metis-module-action--icon"
+                            data-release-apply-tag="<?php echo metis_escape_attr( $release_apply_tag ); ?>"
+                            title="Install Metis Update"
+                            aria-label="Install Metis Update"
+                        >
+                            <span class="metis-module-action__label">Install Update</span>
+                            <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_install_icon; ?></span>
+                            <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
+                        </button>
+                    </div>
+                <?php endif; ?>
             </div>
             <div class="metis-settings-stat-card<?php echo $module_update_count > 0 ? ' is-warning' : ' is-ok'; ?>">
                 <div class="metis-settings-stat-card__label">Module Updates</div>
@@ -143,6 +154,21 @@ $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
                 </div>
                 <div class="metis-settings-stat-card__value"><?php echo metis_escape_html( (string) $module_update_count ); ?></div>
                 <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( $module_checked_display ); ?></div>
+                <?php if ( $is_system_admin && $module_update_count > 0 ) : ?>
+                    <div class="metis-settings-stat-card__actions">
+                        <button
+                            type="button"
+                            class="metis-module-action metis-module-action--install metis-module-action--icon"
+                            data-module-update-all="1"
+                            title="Install Module Updates"
+                            aria-label="Install Module Updates"
+                        >
+                            <span class="metis-module-action__label">Install Updates</span>
+                            <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_install_icon; ?></span>
+                            <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
+                        </button>
+                    </div>
+                <?php endif; ?>
             </div>
             <div class="metis-settings-stat-card is-ok">
                 <div class="metis-settings-stat-card__label">Loaded Modules</div>
@@ -188,7 +214,10 @@ $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
                                 <p class="metis-module-card__version">
                                     <?php echo metis_escape_html( (string) $module_version ); ?>
                                     <?php if ( $has_module_update ) : ?>
-                                        → <?php echo metis_escape_html( (string) ( $module_update['latest'] ?? '' ) ); ?>
+                                        <span class="metis-settings-version-flow">
+                                            <span class="metis-settings-version-flow__icon" aria-hidden="true"><?php echo $module_arrow_icon; ?></span>
+                                            <span><?php echo metis_escape_html( (string) ( $module_update['latest'] ?? '' ) ); ?></span>
+                                        </span>
                                     <?php endif; ?>
                                 </p>
                             </div>

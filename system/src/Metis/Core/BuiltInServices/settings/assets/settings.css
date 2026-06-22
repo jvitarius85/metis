@@ -384,6 +384,31 @@
     font-size: 13px;
 }
 
+.metis-settings-stat-card__actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.metis-settings-version-flow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.metis-settings-version-flow__icon {
+    display: inline-flex;
+    align-items: center;
+    color: #667085;
+}
+
+.metis-settings-version-flow__icon svg {
+    width: 14px;
+    height: 14px;
+}
+
 @keyframes metis-spin {
     from {
         transform: rotate(0deg);

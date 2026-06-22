@@ -89,6 +89,7 @@ $module_update_icon = metis_navigation_svg_icon_markup( 'update' );
 $module_install_icon = metis_navigation_svg_icon_markup( 'download' );
 $module_uninstall_icon = metis_navigation_svg_icon_markup( 'close-outline' );
 $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
+$module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
 ?>
 <h1 class="metis-page-title">Modules Store</h1>
 <p class="metis-subtitle">Browse modules, manage installed packages, and install updates immediately.</p>
@@ -140,7 +141,10 @@ $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
                                         <?php if ( ! empty( $module['installed'] ) ) : ?>
                                             <?php echo metis_escape_html( (string) $module['current'] ); ?>
                                             <?php if ( ! empty( $module['update_available'] ) ) : ?>
-                                                → <?php echo metis_escape_html( (string) $module['latest'] ); ?>
+                                                <span class="metis-settings-version-flow">
+                                                    <span class="metis-settings-version-flow__icon" aria-hidden="true"><?php echo $module_arrow_icon; ?></span>
+                                                    <span><?php echo metis_escape_html( (string) $module['latest'] ); ?></span>
+                                                </span>
                                             <?php endif; ?>
                                         <?php else : ?>
                                             Latest <?php echo metis_escape_html( (string) $module['latest'] ); ?>
