@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Metis\Modules\Website\Services;
 
 use Metis\Core\Application;
+use Metis\Core\ModulePathRegistry;
 use Metis\Modules\People\PersonProfileService;
 use Metis\Modules\People\ReadService as PeopleReadService;
 use Metis\Modules\Website\Entities\Page;
@@ -1784,15 +1785,19 @@ final class WebsiteRenderer {
 
     private static function assetVersionToken( array $template_structure = [], bool $include_theme_state = false ): string {
         $version = defined( 'METIS_VERSION' ) ? (string) METIS_VERSION : '1';
+        $website_module_path = ModulePathRegistry::modulePath( 'website' );
         $candidates = [
             METIS_SRC_PATH . 'Metis/Modules/Website/Services/WebsiteRenderer.php',
             METIS_SRC_PATH . 'Metis/Modules/Website/Services/ThemeService.php',
-            METIS_MODULES_PATH . 'website/assets/public-navigation.js',
         ];
+        if ( is_string( $website_module_path ) && $website_module_path !== '' ) {
+            $website_module_path = rtrim( $website_module_path, '/\\' );
+            $candidates[] = $website_module_path . '/assets/public-navigation.js';
+        }
         $template_slug = self::templateVariantSlug( $template_structure );
-        if ( $template_slug !== '' ) {
-            $candidates[] = METIS_MODULES_PATH . 'website/Templates/' . $template_slug . '/structure.css';
-            $candidates[] = METIS_MODULES_PATH . 'website/Templates/' . $template_slug . '/menu.css';
+        if ( $template_slug !== '' && is_string( $website_module_path ) && $website_module_path !== '' ) {
+            $candidates[] = $website_module_path . '/Templates/' . $template_slug . '/structure.css';
+            $candidates[] = $website_module_path . '/Templates/' . $template_slug . '/menu.css';
         }
         $latest = 0;
         foreach ( $candidates as $path ) {
@@ -2288,7 +2293,12 @@ final class WebsiteRenderer {
             return '';
         }
 
-        $path = METIS_MODULES_PATH . 'website/Templates/shell/' . $slug . '.php';
+        $website_module_path = ModulePathRegistry::modulePath( 'website' );
+        if ( ! is_string( $website_module_path ) || $website_module_path === '' ) {
+            return '';
+        }
+
+        $path = rtrim( $website_module_path, '/\\' ) . '/Templates/shell/' . $slug . '.php';
         if ( ! is_file( $path ) ) {
             return '';
         }

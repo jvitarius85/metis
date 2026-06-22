@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Metis\Modules\Website\Services;
 
 use Metis\Core\Application;
+use Metis\Core\ModulePathRegistry;
 use Metis\Modules\Website\Services\LayoutProfileService;
 
 /**
@@ -1317,9 +1318,10 @@ final class ThemeService {
      * @return array<int,string>
      */
     private static function localFontFacesCss( array $selected_families = [] ): array {
+        $website_module_path = ModulePathRegistry::modulePath( 'website' );
         $roots = [
             [ 'dir' => METIS_ASSETS_PATH . 'fonts', 'source' => 'runtime' ],
-            [ 'dir' => METIS_MODULES_PATH . 'website/assets/fonts', 'source' => 'module' ],
+            [ 'dir' => is_string( $website_module_path ) ? rtrim( $website_module_path, '/\\' ) . '/assets/fonts' : '', 'source' => 'module' ],
         ];
         $faces = [];
         $variants = [];
@@ -1439,6 +1441,7 @@ final class ThemeService {
      * @return array<int,array{href:string,type:string}>
      */
     private static function localFontPreloadAssets( array $selected_families ): array {
+        $website_module_path = ModulePathRegistry::modulePath( 'website' );
         $preloads = [];
         $best_rank = [];
         $sources = [
@@ -1447,7 +1450,7 @@ final class ThemeService {
                 'source' => 'runtime',
             ],
             [
-                'dir' => defined( 'METIS_ROOT' ) ? METIS_ROOT . '/system/modules/website/assets/fonts' : '',
+                'dir' => is_string( $website_module_path ) ? rtrim( $website_module_path, '/\\' ) . '/assets/fonts' : '',
                 'source' => 'module',
             ],
         ];

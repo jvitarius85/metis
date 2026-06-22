@@ -94,7 +94,7 @@ final class ModuleInstallService {
                 throw new \RuntimeException(sprintf('Archive version [%s] does not match registry version [%s].', $manifestVersion, $latestVersion));
             }
 
-            $destination = $this->files->rootPath('modules/' . $moduleId);
+            $destination = rtrim(ModulePathRegistry::moduleRootPath(), '/\\') . '/' . $moduleId;
             if (is_dir($destination)) {
                 $backupRoot = $this->files->ensureDirectory($runtimeRoot . '/backups');
                 $this->copyDirectory($destination, $backupRoot . '/' . $moduleId . '-' . gmdate('YmdHis'));

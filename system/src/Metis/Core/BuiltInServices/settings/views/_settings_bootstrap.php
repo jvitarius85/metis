@@ -1077,7 +1077,7 @@ if ( ! function_exists( 'metis_settings_health_filesystem_targets' ) ) {
 
         return [
             [ 'path' => defined( 'METIS_CONFIG_PATH' ) ? (string) METIS_CONFIG_PATH : $root . '/system/config', 'label' => 'system/config', 'type' => 'sensitive', 'required' => true, 'mode' => 0755 ],
-            [ 'path' => defined( 'METIS_MODULES_PATH' ) ? (string) METIS_MODULES_PATH : $root . '/system/modules', 'label' => 'system/modules', 'type' => 'sensitive', 'required' => true, 'mode' => 0755 ],
+            [ 'path' => defined( 'METIS_MODULES_PATH' ) ? (string) METIS_MODULES_PATH : $root . '/system/modules', 'label' => 'module runtime root', 'type' => 'sensitive', 'required' => true, 'mode' => 0755 ],
             [ 'path' => defined( 'METIS_SRC_PATH' ) ? (string) METIS_SRC_PATH : $root . '/system/src', 'label' => 'system/src', 'type' => 'sensitive', 'required' => true, 'mode' => 0755 ],
             [ 'path' => metis_settings_storage_child_path(), 'label' => 'storage', 'type' => 'runtime', 'required' => true, 'mode' => 0775 ],
             [ 'path' => metis_settings_storage_child_path( 'runtime' ), 'label' => 'storage/runtime', 'type' => 'runtime', 'required' => true, 'mode' => 0775 ],

@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace Metis\Modules\Website\Services;
 
+use Metis\Core\ModulePathRegistry;
+
 /**
  * Import Service
  *
@@ -63,8 +65,12 @@ final class ImportService {
             return (bool) \metis_module_is_enabled( 'import' );
         }
 
-        $root = defined( 'METIS_ROOT' ) ? (string) METIS_ROOT : dirname( __DIR__, 6 );
-        return is_file( $root . '/system/modules/import/module.json' )
-            || is_file( $root . '/system/modules/import/Module.php' );
+        $module_path = ModulePathRegistry::modulePath( 'import' );
+        if ( ! is_string( $module_path ) || $module_path === '' ) {
+            return false;
+        }
+
+        return is_file( $module_path . '/module.json' )
+            || is_file( $module_path . '/Module.php' );
     }
 }
