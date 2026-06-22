@@ -24,6 +24,8 @@ foreach ( $update_rows as $row ) {
     }
 }
 
+$current_metis_version = (string) ( $system_version['metis_version'] ?? '' );
+
 $modules = [];
 foreach ( $registry_rows as $module_id => $registry_row ) {
     if ( ! is_array( $registry_row ) ) {
@@ -35,15 +37,19 @@ foreach ( $registry_rows as $module_id => $registry_row ) {
     }
     $update_row = is_array( $update_map[ $module_id ] ?? null ) ? (array) $update_map[ $module_id ] : [];
     $current_version = trim( (string) ( $update_row['current'] ?? '' ) );
-    $name = trim( (string) ( $update_row['name'] ?? '' ) );
+    $name = trim( (string) ( $update_row['name'] ?? $registry_row['name'] ?? '' ) );
     if ( $name === '' ) {
         $name = ucwords( str_replace( [ '_', '-' ], ' ', $module_id ) );
     }
+    $minimum_metis = trim( (string) ( $registry_row['minimum_metis'] ?? '' ) );
+    $requires_newer_metis = $minimum_metis !== '' && $current_metis_version !== '' && version_compare( $current_metis_version, $minimum_metis, '<' );
+    $description = trim( (string) ( $update_row['description'] ?? $registry_row['description'] ?? '' ) );
     $modules[] = [
         'id' => $module_id,
         'name' => $name,
+        'description' => $description,
         'latest' => trim( (string) ( $registry_row['latest'] ?? '' ) ),
-        'minimum_metis' => trim( (string) ( $registry_row['minimum_metis'] ?? '' ) ),
+        'minimum_metis' => $minimum_metis,
         'release_channel' => trim( (string) ( $registry_row['release_channel'] ?? 'stable' ) ) ?: 'stable',
         'download_url' => trim( (string) ( $registry_row['download_url'] ?? '' ) ),
         'installed' => $current_version !== '',
@@ -51,11 +57,13 @@ foreach ( $registry_rows as $module_id => $registry_row ) {
         'update_available' => ! empty( $update_row['update_available'] ),
         'status' => trim( (string) ( $update_row['status'] ?? ( $current_version !== '' ? 'installed' : 'available' ) ) ),
         'reason' => trim( (string) ( $update_row['reason'] ?? '' ) ),
+        'requires_newer_metis' => $requires_newer_metis,
     ];
 }
 
 usort( $modules, static fn ( array $left, array $right ): int => strcmp( (string) $left['name'], (string) $right['name'] ) );
-$module_update_icon = metis_navigation_icon_markup( 'icon:repeat' );
+$module_update_icon = metis_navigation_svg_icon_markup( 'update' );
+$module_uninstall_icon = metis_navigation_svg_icon_markup( 'close-outline' );
 $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
 ?>
 <h1 class="metis-page-title"><?php echo metis_escape_html( metis_current_module_view_title( 'Settings' ) ); ?></h1>
@@ -106,8 +114,11 @@ $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
                     $action_kind = ! empty( $module['update_available'] )
                         ? 'update'
                         : ( ! empty( $module['installed'] ) ? 'reinstall' : 'install' );
+                    $card_state = ! empty( $module['update_available'] )
+                        ? ' is-update-available'
+                        : ( ! empty( $module['installed'] ) ? ' is-installed' : ' is-available' );
                     ?>
-                    <div class="metis-module-card<?php echo ! empty( $module['update_available'] ) ? ' is-update-available' : ''; ?>">
+                    <div class="metis-module-card<?php echo $card_state; ?>">
                         <div class="metis-module-card__head">
                             <div>
                                 <div class="metis-module-card__title"><?php echo metis_escape_html( (string) $module['name'] ); ?></div>
@@ -123,18 +134,38 @@ $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
                                 </p>
                             </div>
                             <div class="metis-module-card__actions">
-                                <button
-                                    type="button"
-                                    class="metis-module-action metis-module-action--<?php echo metis_escape_attr( $action_kind ); ?>"
-                                    data-module-install-id="<?php echo metis_escape_attr( (string) $module['id'] ); ?>"
-                                    data-module-install-name="<?php echo metis_escape_attr( (string) $module['name'] ); ?>"
-                                    data-module-install-version="<?php echo metis_escape_attr( (string) $module['latest'] ); ?>"
-                                    data-module-action-kind="<?php echo metis_escape_attr( $action_kind ); ?>"
-                                >
-                                    <span class="metis-module-action__label"><?php echo metis_escape_html( $action_label ); ?></span>
-                                    <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_update_icon; ?></span>
-                                    <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
-                                </button>
+                                <div class="metis-module-action-group">
+                                    <button
+                                        type="button"
+                                        class="metis-module-action metis-module-action--<?php echo metis_escape_attr( $action_kind ); ?> metis-module-action--icon"
+                                        data-module-install-id="<?php echo metis_escape_attr( (string) $module['id'] ); ?>"
+                                        data-module-install-name="<?php echo metis_escape_attr( (string) $module['name'] ); ?>"
+                                        data-module-install-version="<?php echo metis_escape_attr( (string) $module['latest'] ); ?>"
+                                        data-module-action-kind="<?php echo metis_escape_attr( $action_kind ); ?>"
+                                        title="<?php echo metis_escape_attr( $action_label . ' ' . (string) $module['name'] ); ?>"
+                                        aria-label="<?php echo metis_escape_attr( $action_label . ' ' . (string) $module['name'] ); ?>"
+                                    >
+                                        <span class="metis-module-action__label"><?php echo metis_escape_html( $action_label ); ?></span>
+                                        <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_update_icon; ?></span>
+                                        <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
+                                    </button>
+                                    <?php if ( ! empty( $module['installed'] ) ) : ?>
+                                        <button
+                                            type="button"
+                                            class="metis-module-action metis-module-action--danger metis-module-action--icon"
+                                            data-module-install-id="<?php echo metis_escape_attr( (string) $module['id'] ); ?>"
+                                            data-module-install-name="<?php echo metis_escape_attr( (string) $module['name'] ); ?>"
+                                            data-module-install-version="<?php echo metis_escape_attr( (string) $module['current'] ); ?>"
+                                            data-module-action-kind="uninstall"
+                                            title="<?php echo metis_escape_attr( 'Uninstall ' . (string) $module['name'] ); ?>"
+                                            aria-label="<?php echo metis_escape_attr( 'Uninstall ' . (string) $module['name'] ); ?>"
+                                        >
+                                            <span class="metis-module-action__label">Uninstall</span>
+                                            <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_uninstall_icon; ?></span>
+                                            <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
+                                        </button>
+                                    <?php endif; ?>
+                                </div>
                             </div>
                         </div>
                         <div class="metis-module-card__summary">
@@ -149,14 +180,14 @@ $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
                                 }
                                 ?>
                             </p>
-                            <p class="metis-module-card__note">
-                                <?php echo metis_escape_html( ucfirst( (string) $module['release_channel'] ) ); ?> channel
-                                <?php if ( ! empty( $module['installed'] ) ) : ?>
-                                    · Installed
-                                <?php endif; ?>
-                            </p>
+                            <p class="metis-module-card__note"><?php echo metis_escape_html( ! empty( $module['installed'] ) ? 'Installed' : 'Not installed' ); ?></p>
                         </div>
-                        <p class="metis-module-card__note">Minimum Metis <?php echo metis_escape_html( (string) $module['minimum_metis'] ); ?></p>
+                        <?php if ( ! empty( $module['description'] ) ) : ?>
+                            <p class="metis-module-card__description"><?php echo metis_escape_html( (string) $module['description'] ); ?></p>
+                        <?php endif; ?>
+                        <?php if ( ! empty( $module['requires_newer_metis'] ) ) : ?>
+                            <p class="metis-module-card__note is-warning">Requires Metis <?php echo metis_escape_html( (string) $module['minimum_metis'] ); ?>+</p>
+                        <?php endif; ?>
                         <?php if ( ! empty( $module['reason'] ) ) : ?>
                             <p class="metis-module-card__note is-warning"><?php echo metis_escape_html( (string) $module['reason'] ); ?></p>
                         <?php endif; ?>

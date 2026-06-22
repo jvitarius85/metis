@@ -968,6 +968,47 @@ metis_ajax_register_handler( 'metis_module_install_now', function () {
     'nonce_action' => metis_ajax_nonce_action( 'metis_module_install_now' ),
 ] );
 
+metis_ajax_register_handler( 'metis_module_uninstall_now', function () {
+    if ( ! function_exists( 'metis_module_install_service' ) ) {
+        metis_runtime_send_json_error( [ 'message' => 'Module installer is not available.' ], 503 );
+    }
+
+    $module_id = metis_key_clean( (string) ( metis_request_post()['module_id'] ?? '' ) );
+    if ( $module_id === '' ) {
+        metis_runtime_send_json_error( [ 'message' => 'A module ID is required.' ], 400 );
+    }
+
+    @ignore_user_abort( true );
+    @set_time_limit( 0 );
+
+    if ( function_exists( 'session_status' ) && session_status() === PHP_SESSION_ACTIVE ) {
+        session_write_close();
+    }
+
+    $result = metis_module_install_service()->uninstall( $module_id );
+    $summary = function_exists( 'metis_update_service' )
+        ? metis_update_service()->refreshUpdateState( true, 'module_uninstall' )
+        : [ 'modules' => function_exists( 'metis_module_update_status' ) ? metis_module_update_status( true ) : [] ];
+
+    if ( empty( $result['ok'] ) ) {
+        metis_runtime_send_json_error( [
+            'message' => (string) ( $result['message'] ?? 'Module uninstall failed.' ),
+            'module_result' => $result,
+            'module_update_status' => (array) ( $summary['modules'] ?? [] ),
+        ], 400 );
+    }
+
+    metis_runtime_send_json_success( [
+        'message' => (string) ( $result['message'] ?? 'Module uninstalled.' ),
+        'module_result' => $result,
+        'module_update_status' => (array) ( $summary['modules'] ?? [] ),
+    ] );
+}, [
+    'module' => 'settings',
+    'permission' => 'edit',
+    'nonce_action' => metis_ajax_nonce_action( 'metis_module_uninstall_now' ),
+] );
+
 metis_ajax_register_handler( 'metis_module_install_all_updates', function () {
     if ( ! function_exists( 'metis_module_install_service' ) || ! function_exists( 'metis_update_service' ) ) {
         metis_runtime_send_json_error( [ 'message' => 'Module update services are not available.' ], 503 );

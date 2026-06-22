@@ -661,6 +661,8 @@ final class GitHubUpdateService {
             }
 
             $modules[$slug] = [
+                'name' => trim((string) ($row['name'] ?? $row['label'] ?? $slug)),
+                'description' => trim((string) ($row['description'] ?? '')),
                 'latest' => $latest,
                 'minimum_metis' => trim((string) ($row['minimum_metis'] ?? '')),
                 'release_channel' => trim((string) ($row['release_channel'] ?? 'stable')) ?: 'stable',
