@@ -51,6 +51,7 @@ Optional:
 - all actions must register with the Secure Enclave
 - route declarations, when needed, must be defined in `module.json -> routes` and handled through module route handlers
 - module bootstrap files must not register custom `/api` routes
+- module bootstrap files must not declare helpers that collide with already-loaded runtime functions
 - module manifest permissions must be structurally valid arrays/objects accepted by the core validator
 - dependency declarations must resolve before module boot
 - non-compliant modules are disabled at boot and must not block platform startup

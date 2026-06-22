@@ -83,6 +83,7 @@ The audit returns JSON and exits non-zero when:
 - `module.json` is invalid or fails the runtime validator
 - the declared entry file is missing
 - the entry file is still a placeholder instead of defining the expected module class
+- `bootstrap.php` declares a helper that collides with an already-loaded runtime function
 
 The audit also reports `runtime_coupling_status` for each bundle:
 
@@ -107,5 +108,6 @@ Current bundle-audit baseline:
 
 - Do not add new store-managed feature logic under `system/src/Metis/Modules/`.
 - New store-managed module work should ship inside the runtime bundle under `system/modules/<slug>/`.
+- Treat `system/modules/` as the only runtime location for store-delivered modules. Do not split feature behavior between runtime bundles and source-side module stubs.
 - Runtime discovery, compliance, recovery, and asset resolution should read the installed runtime module root, not source-side stubs.
 - Remove source-side module implementations only after the matching runtime bundle is self-contained and verified in deployment.

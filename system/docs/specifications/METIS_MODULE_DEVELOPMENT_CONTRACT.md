@@ -24,6 +24,7 @@ Before building a module, read:
 - do not create custom API stacks, alternate routing frameworks, or parallel ajax dispatchers
 - declare API and page routes in `module.json` and `routes/*.php`, not in `bootstrap.php`
 - do not bypass module manifest contracts for permissions, dependencies, or route ownership
+- bootstrap helpers must use module-scoped names and must not collide with existing runtime globals loaded by core or other installed modules
 - use core UI services for user feedback (toast/tooltip) instead of per-module frameworks
 - process execution must not be used in web request handlers
 - if process execution is required, it must run through a registered background worker with strict input allowlist and hash/path validation
