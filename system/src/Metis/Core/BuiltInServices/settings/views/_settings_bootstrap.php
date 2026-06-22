@@ -131,7 +131,6 @@ if ( ! function_exists( 'metis_settings_ia' ) ) {
                 'label' => 'PLATFORM',
                 'pages' => [
                     'about' => [ 'label' => 'About', 'section' => 'about' ],
-                    'modules' => [ 'label' => 'Modules', 'section' => 'modules' ],
                 ],
             ],
             'help' => [
@@ -333,6 +332,9 @@ if ( ! function_exists( 'metis_settings_section_url' ) ) {
     function metis_settings_section_url( string $section, string $page = '' ): string {
         $section = metis_key_clean( $section );
         $page = metis_key_clean( $page );
+        if ( $section === 'modules' ) {
+            return rtrim( metis_portal_url( 'modules' ), '/' ) . '/';
+        }
         if ( $section === '' ) {
             $section = 'identity';
         }

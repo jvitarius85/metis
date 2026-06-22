@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace Metis\Core;
 
 final class ModulePathRegistry {
-    private const CORE_SERVICE_SLUGS = [ 'help', 'hermes', 'people', 'portal', 'profile', 'settings' ];
+    private const CORE_SERVICE_SLUGS = [ 'help', 'hermes', 'modules', 'people', 'portal', 'profile', 'settings' ];
 
     public static function coreServiceSlugs(): array {
         return self::CORE_SERVICE_SLUGS;

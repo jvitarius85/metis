@@ -1021,12 +1021,38 @@ metis_ajax_register_handler( 'metis_module_install_all_updates', function () {
         session_write_close();
     }
 
+    $token = metis_settings_release_progress_token( (string) ( metis_request_post()['progress_token'] ?? '' ) );
+    $write_progress = static function ( array $progress ) use ( $token ): void {
+        if ( $token === '' ) {
+            return;
+        }
+
+        $payload = [
+            'stage' => (string) ( $progress['stage'] ?? 'running' ),
+            'message' => (string) ( $progress['message'] ?? 'Installing module updates.' ),
+            'percent' => (int) ( $progress['percent'] ?? 0 ),
+            'context' => is_array( $progress['context'] ?? null ) ? $progress['context'] : [],
+            'updated_at' => gmdate( 'c' ),
+            'done' => ! empty( $progress['done'] ),
+        ];
+        metis_settings_write_release_progress( $token, $payload );
+    };
+
+    $write_progress( [
+        'stage' => 'running',
+        'message' => 'Downloading module updates...',
+        'percent' => 5,
+        'context' => [],
+        'done' => false,
+    ] );
+
     $initial_summary = metis_update_service()->refreshUpdateState( true, 'module_install_all_prepare' );
     $module_rows = is_array( $initial_summary['modules']['modules'] ?? null )
         ? (array) $initial_summary['modules']['modules']
         : [];
 
     $target_ids = [];
+    $target_labels = [];
     foreach ( $module_rows as $row ) {
         if ( ! is_array( $row ) || empty( $row['update_available'] ) ) {
             continue;
@@ -1035,10 +1061,18 @@ metis_ajax_register_handler( 'metis_module_install_all_updates', function () {
         $module_id = metis_key_clean( (string) ( $row['id'] ?? '' ) );
         if ( $module_id !== '' ) {
             $target_ids[] = $module_id;
+            $target_labels[ $module_id ] = trim( (string) ( $row['name'] ?? $module_id ) );
         }
     }
 
     if ( $target_ids === [] ) {
+        $write_progress( [
+            'stage' => 'complete',
+            'message' => 'No module updates are currently available.',
+            'percent' => 100,
+            'context' => [],
+            'done' => true,
+        ] );
         metis_runtime_send_json_success( [
             'message' => 'No module updates are currently available.',
             'results' => [],
@@ -1049,8 +1083,23 @@ metis_ajax_register_handler( 'metis_module_install_all_updates', function () {
     $results = [];
     $success_count = 0;
     $failure_count = 0;
+    $target_total = count( $target_ids );
 
-    foreach ( $target_ids as $module_id ) {
+    foreach ( $target_ids as $index => $module_id ) {
+        $module_name = $target_labels[ $module_id ] ?? $module_id;
+        $percent = 10 + (int) floor( ( ( $index ) / max( 1, $target_total ) ) * 80 );
+        $write_progress( [
+            'stage' => 'running',
+            'message' => sprintf( 'Installing %s...', $module_name ),
+            'percent' => $percent,
+            'context' => [
+                'module' => $module_id,
+                'module_name' => $module_name,
+                'current' => $index + 1,
+                'total' => $target_total,
+            ],
+            'done' => false,
+        ] );
         $result = metis_module_install_service()->installLatest( $module_id, true );
         $results[ $module_id ] = $result;
         if ( ! empty( $result['ok'] ) ) {
@@ -1065,6 +1114,18 @@ metis_ajax_register_handler( 'metis_module_install_all_updates', function () {
         ? sprintf( 'Updated %d module%s. %d failed.', $success_count, $success_count === 1 ? '' : 's', $failure_count )
         : sprintf( 'Updated %d module%s.', $success_count, $success_count === 1 ? '' : 's' );
 
+    $write_progress( [
+        'stage' => $failure_count > 0 ? 'failed' : 'complete',
+        'message' => $message,
+        'percent' => 100,
+        'context' => [
+            'total' => $target_total,
+            'success_count' => $success_count,
+            'failure_count' => $failure_count,
+        ],
+        'done' => true,
+    ] );
+
     metis_runtime_send_json_success( [
         'message' => $message,
         'results' => $results,
@@ -1075,6 +1136,29 @@ metis_ajax_register_handler( 'metis_module_install_all_updates', function () {
     'module' => 'settings',
     'permission' => 'edit',
     'nonce_action' => metis_ajax_nonce_action( 'metis_module_install_all_updates' ),
+] );
+
+metis_ajax_register_handler( 'metis_module_install_all_updates_progress', function () {
+    $token = metis_settings_release_progress_token( (string) ( metis_request_post()['progress_token'] ?? '' ) );
+    if ( $token === '' ) {
+        metis_runtime_send_json_error( [ 'message' => 'A progress token is required.' ], 400 );
+    }
+
+    $path = metis_settings_release_progress_path( $token );
+    $progress = [];
+    if ( is_file( $path ) ) {
+        $decoded = json_decode( (string) @file_get_contents( $path ), true );
+        $progress = is_array( $decoded ) ? $decoded : [];
+    }
+
+    metis_runtime_send_json_success( [
+        'message' => 'Module update progress loaded.',
+        'progress' => $progress,
+    ] );
+}, [
+    'module' => 'settings',
+    'permission' => 'edit',
+    'nonce_action' => metis_ajax_nonce_action( 'metis_module_install_all_updates_progress' ),
 ] );
 
 metis_ajax_register_handler( 'metis_release_apply', function () {

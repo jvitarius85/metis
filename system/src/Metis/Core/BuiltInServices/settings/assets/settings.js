@@ -2175,7 +2175,11 @@ document.addEventListener('DOMContentLoaded', function () {
             return Promise.resolve();
         }
 
-        return fetch(window.location.href, {
+        const refreshUrl = new URL(window.location.href, window.location.origin);
+        refreshUrl.searchParams.set('_settings_refresh', String(Date.now()));
+
+        return fetch(refreshUrl.toString(), {
+            cache: 'no-store',
             credentials: 'same-origin',
             headers: {
                 'X-Requested-With': 'XMLHttpRequest'
@@ -2228,6 +2232,83 @@ document.addEventListener('DOMContentLoaded', function () {
         return Metis.request.postForm(window.metisAjax || null, action, body, 'Settings AJAX not configured.');
     }
 
+    function aboutProgressPanel(key) {
+        return document.querySelector('[data-about-progress-panel="' + key + '"]');
+    }
+
+    function updateAboutProgress(key, progress) {
+        const panel = aboutProgressPanel(key);
+        if (!panel) return;
+        const percent = Math.max(0, Math.min(100, parseInt((progress && progress.percent) || 0, 10) || 0));
+        const stage = String((progress && progress.stage) || '').trim();
+        const title = String((progress && progress.title) || (key === 'core' ? 'Metis Update' : 'Module Updates'));
+        const message = String((progress && progress.message) || 'Working...');
+        const bar = panel.querySelector('[data-about-progress-bar="' + key + '"]');
+        const percentEl = panel.querySelector('[data-about-progress-percent="' + key + '"]');
+        const statusEl = panel.querySelector('[data-about-progress-status="' + key + '"]');
+        const titleEl = panel.querySelector('[data-about-progress-title="' + key + '"]');
+        panel.hidden = false;
+        panel.classList.toggle('is-complete', stage === 'complete');
+        panel.classList.toggle('is-failed', stage === 'failed');
+        if (bar) bar.style.width = percent + '%';
+        if (percentEl) percentEl.textContent = percent + '%';
+        if (statusEl) statusEl.textContent = message;
+        if (titleEl) titleEl.textContent = title;
+    }
+
+    function pollSettingsProgress(action, token, key, stopWhenDone) {
+        const body = new FormData();
+        body.append('progress_token', token);
+        return postSettingsAction(action, body).then(function (data) {
+            const progress = data && data.progress ? data.progress : {};
+            updateAboutProgress(key, progress);
+            return { ok: true, done: !!(stopWhenDone && progress && progress.done) };
+        }).catch(function (error) {
+            return { ok: false, done: false, message: error && error.message ? String(error.message) : 'Progress update failed.' };
+        });
+    }
+
+    function startSettingsProgressPolling(action, token, key) {
+        let active = true;
+        let timer = null;
+        let inFlight = false;
+        let failures = 0;
+
+        const schedule = function (delay) {
+            if (!active) return;
+            window.clearTimeout(timer);
+            timer = window.setTimeout(run, delay);
+        };
+
+        const run = function () {
+            if (!active || inFlight) return;
+            inFlight = true;
+            pollSettingsProgress(action, token, key, true).then(function (result) {
+                if (!active) return;
+                if (result && result.done) {
+                    active = false;
+                    window.clearTimeout(timer);
+                    return;
+                }
+                if (result && result.ok) {
+                    failures = 0;
+                    schedule(1250);
+                    return;
+                }
+                failures += 1;
+                schedule(Math.min(6000, 1250 * (failures + 1)));
+            }).finally(function () {
+                inFlight = false;
+            });
+        };
+
+        schedule(250);
+        return function () {
+            active = false;
+            window.clearTimeout(timer);
+        };
+    }
+
     function moduleActionPrompt(kind, label) {
         if (kind === 'update') {
             return {
@@ -2264,13 +2345,49 @@ document.addEventListener('DOMContentLoaded', function () {
             button.addEventListener('click', function () {
                 const endLoading = beginSettingsAsyncButton(button, 'Refreshing...');
                 setSettingsLiveFeedback('Refreshing module registry and update metadata...', '');
+                updateAboutProgress('core', {
+                    title: 'Metis Update',
+                    percent: 25,
+                    stage: 'running',
+                    message: 'Checking Metis update status...'
+                });
+                updateAboutProgress('modules', {
+                    title: 'Module Updates',
+                    percent: 25,
+                    stage: 'running',
+                    message: 'Refreshing Module Store metadata...'
+                });
 
                 postSettingsAction('metis_release_check_updates', new FormData()).then(function (data) {
+                    updateAboutProgress('core', {
+                        title: 'Metis Update',
+                        percent: 100,
+                        stage: 'complete',
+                        message: 'Metis update status refreshed.'
+                    });
+                    updateAboutProgress('modules', {
+                        title: 'Module Updates',
+                        percent: 100,
+                        stage: 'complete',
+                        message: 'Module update status refreshed.'
+                    });
                     return refreshSettingsLiveRoot().then(function () {
                         setSettingsLiveFeedback('', '');
                         showToast('success', String(data.message || 'Release metadata refreshed.'));
                     });
                 }).catch(function (error) {
+                    updateAboutProgress('core', {
+                        title: 'Metis Update',
+                        percent: 100,
+                        stage: 'failed',
+                        message: error && error.message ? error.message : 'Release refresh failed.'
+                    });
+                    updateAboutProgress('modules', {
+                        title: 'Module Updates',
+                        percent: 100,
+                        stage: 'failed',
+                        message: error && error.message ? error.message : 'Release refresh failed.'
+                    });
                     setSettingsLiveFeedback(error && error.message ? error.message : 'Release refresh failed.', 'error');
                     showToast('error', error && error.message ? error.message : 'Release refresh failed.');
                 }).finally(function () {
@@ -2332,17 +2449,44 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (!confirmed) return;
 
                     const endLoading = beginSettingsAsyncButton(button);
+                    const token = releaseProgressToken();
+                    const stopProgressPolling = startSettingsProgressPolling('metis_module_install_all_updates_progress', token, 'modules');
                     setSettingsLiveFeedback('Installing available module updates...', '');
+                    updateAboutProgress('modules', {
+                        title: 'Module Updates',
+                        percent: 5,
+                        stage: 'running',
+                        message: 'Downloading module updates...'
+                    });
 
-                    postSettingsAction('metis_module_install_all_updates', new FormData()).then(function (data) {
+                    const body = new FormData();
+                    body.append('progress_token', token);
+
+                    postSettingsAction('metis_module_install_all_updates', body).then(function (data) {
+                        updateAboutProgress('modules', {
+                            title: 'Module Updates',
+                            percent: 100,
+                            stage: 'complete',
+                            message: String((data && data.message) || 'Module updates applied.')
+                        });
                         return refreshSettingsLiveRoot().then(function () {
                             setSettingsLiveFeedback('', '');
                             showToast('success', String((data && data.message) || 'Module updates applied.'));
                         });
                     }).catch(function (error) {
+                        updateAboutProgress('modules', {
+                            title: 'Module Updates',
+                            percent: 100,
+                            stage: 'failed',
+                            message: error && error.message ? error.message : 'Module updates failed.'
+                        });
                         setSettingsLiveFeedback(error && error.message ? error.message : 'Module updates failed.', 'error');
                         showToast('error', error && error.message ? error.message : 'Module updates failed.');
                     }).finally(function () {
+                        stopProgressPolling();
+                        window.setTimeout(function () {
+                            pollSettingsProgress('metis_module_install_all_updates_progress', token, 'modules', false);
+                        }, 500);
                         endLoading();
                     });
                 });
