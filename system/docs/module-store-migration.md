@@ -100,15 +100,11 @@ Current bundle-audit baseline:
 - Entry contract readiness:
   - `14/14` runtime bundles define their own module entry class.
 - Runtime isolation readiness:
-  - `9/14` currently audit as `bundle_only`
-  - `5/14` still audit as `source_coupled`
+  - `11/14` currently audit as `bundle_only`
+  - `3/14` still audit as `source_coupled`
 
 Current `source_coupled` bundles and first detected reasons:
 
-- `donations`
-  - Public portal/bootstrap still references `WebsiteRenderer`, `Forms\Repository`, and finance/contact runtime classes.
-- `grandys_stash`
-  - View route still includes the core shell through a source-path runtime include.
 - `import`
   - Import service still calls website runtime services such as `MenuService`, `PageService`, and `PostService`.
 - `newsletter`

@@ -222,6 +222,57 @@ function metis_navigation_svg_icon_directory(): string {
     return $directory;
 }
 
+/**
+ * Render the standard portal shell for a module/view without exposing source-path
+ * include logic in runtime bundles.
+ *
+ * @param array<string, mixed> $query_vars
+ */
+function metis_render_portal_shell_html( string $domain, string $view, array $query_vars = [] ): string|false {
+    $domain = metis_key_clean( $domain );
+    $view   = metis_key_clean( $view );
+    if ( $domain === '' || $view === '' ) {
+        return false;
+    }
+
+    metis_set_query_var( 'metis_domain', $domain );
+    metis_set_query_var( 'metis_view', $view );
+    foreach ( $query_vars as $key => $value ) {
+        if ( is_string( $key ) && $key !== '' ) {
+            metis_set_query_var( $key, $value );
+        }
+    }
+
+    global $metis_query_state;
+    if ( isset( $metis_query_state ) && $metis_query_state instanceof MetisQueryState ) {
+        $metis_query_state->is_404      = false;
+        $metis_query_state->is_home     = false;
+        $metis_query_state->is_archive  = false;
+        $metis_query_state->is_singular = false;
+    }
+
+    if ( function_exists( 'nocache_headers' ) ) {
+        nocache_headers();
+    }
+    if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+        define( 'DONOTCACHEPAGE', true );
+    }
+
+    $shell = __DIR__ . '/Runtime/ShellTemplate.php';
+    if ( ! file_exists( $shell ) ) {
+        return false;
+    }
+
+    ob_start();
+    if ( function_exists( 'metis_security_trusted_include' ) ) {
+        metis_security_trusted_include( $shell );
+    } else {
+        require $shell;
+    }
+
+    return (string) ob_get_clean();
+}
+
 function metis_navigation_normalize_svg_icon_slug( string $slug ): string {
     $lookup = str_replace( '_', '-', metis_key_clean( $slug ) );
     if ( $lookup === '' ) {
