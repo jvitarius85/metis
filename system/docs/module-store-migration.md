@@ -66,6 +66,24 @@ The bundle must be self-contained for runtime behavior. It should not require fe
 
 Metis now primes the declared module `entry` file before module-class resolution. This means a bundle can carry a real `Module.php` implementation instead of relying on a placeholder plus pre-bundled source classes.
 
+Use the bundle audit tool before publishing or packaging a module:
+
+```bash
+php system/tools/module_bundle_audit.php /path/to/module-slug
+```
+
+To audit an entire bundle source root and see which modules still depend on source-side placeholders:
+
+```bash
+php system/tools/module_bundle_audit.php /path/to/modules-root
+```
+
+The audit returns JSON and exits non-zero when:
+
+- `module.json` is invalid or fails the runtime validator
+- the declared entry file is missing
+- the entry file is still a placeholder instead of defining the expected module class
+
 ## Migration Rules
 
 - Do not add new store-managed feature logic under `system/src/Metis/Modules/`.
