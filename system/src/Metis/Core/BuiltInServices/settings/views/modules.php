@@ -92,80 +92,12 @@ $module_install_icon = metis_navigation_svg_icon_markup( 'download' );
 $module_uninstall_icon = metis_navigation_svg_icon_markup( 'close-outline' );
 $module_loading_icon = metis_navigation_svg_icon_markup( 'loading-circle' );
 $module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
-$module_migration = class_exists( '\Metis\Core\ModulePathRegistry' )
-    ? (array) \Metis\Core\ModulePathRegistry::migrationSnapshot()
-    : [];
-$module_runtime_root = trim( (string) ( $module_migration['module_root'] ?? '' ) );
-$core_service_root = trim( (string) ( $module_migration['core_service_root'] ?? '' ) );
-$store_managed_slugs = is_array( $module_migration['store_modules'] ?? null ) ? array_values( (array) $module_migration['store_modules'] ) : [];
-$core_service_slugs = is_array( $module_migration['core_services'] ?? null ) ? array_values( (array) $module_migration['core_services'] ) : [];
-$transitional_modules = is_array( $module_migration['transitional_source_modules'] ?? null ) ? (array) $module_migration['transitional_source_modules'] : [];
 ?>
 <h1 class="metis-page-title">Modules Store</h1>
 <p class="metis-subtitle">Browse modules, manage installed packages, and install updates immediately.</p>
 <?php metis_settings_render_messages( $saved, $errors ); ?>
 
 <div data-settings-live-root="modules">
-<div class="metis-settings-card" data-settings-module-migration>
-    <div class="metis-settings-header">
-        <h2>Runtime Ownership</h2>
-        <span class="metis-settings-status <?php echo $transitional_modules !== [] ? 'is-warning' : 'is-ok'; ?>">
-            <?php echo metis_escape_html( (string) count( $transitional_modules ) ); ?>
-        </span>
-    </div>
-    <div class="metis-settings-body">
-        <p class="metis-help">Store-managed modules should install into the runtime root and eventually stop depending on source-side implementations.</p>
-        <div class="metis-settings-stats-grid">
-            <div class="metis-settings-stat-card is-ok">
-                <div class="metis-settings-stat-card__label">Runtime Root</div>
-                <div class="metis-settings-stat-card__value" style="font-size:0.95rem;"><?php echo metis_escape_html( $module_runtime_root !== '' ? $module_runtime_root : 'Unavailable' ); ?></div>
-                <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( (string) count( $store_managed_slugs ) . ' store-managed slugs' ); ?></div>
-            </div>
-            <div class="metis-settings-stat-card is-ok">
-                <div class="metis-settings-stat-card__label">Core Services</div>
-                <div class="metis-settings-stat-card__value"><?php echo metis_escape_html( (string) count( $core_service_slugs ) ); ?></div>
-                <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( $core_service_root !== '' ? $core_service_root : 'Unavailable' ); ?></div>
-            </div>
-            <div class="metis-settings-stat-card<?php echo $transitional_modules !== [] ? ' is-warning' : ' is-ok'; ?>">
-                <div class="metis-settings-stat-card__label">Transitional Source Modules</div>
-                <div class="metis-settings-stat-card__value"><?php echo metis_escape_html( (string) count( $transitional_modules ) ); ?></div>
-                <div class="metis-settings-stat-card__note"><?php echo $transitional_modules !== [] ? 'Migration still in progress' : 'No source-side transitional modules remain'; ?></div>
-            </div>
-        </div>
-        <?php if ( $transitional_modules !== [] ) : ?>
-            <div class="metis-settings-card" style="margin-top:16px;">
-                <div class="metis-settings-header">
-                    <h2>Transitional Modules</h2>
-                </div>
-                <div class="metis-settings-body">
-                    <div class="metis-table-wrap">
-                        <table class="metis-table">
-                            <thead>
-                                <tr>
-                                    <th>Source Slug</th>
-                                    <th>Status</th>
-                                    <th>Target</th>
-                                    <th>Notes</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ( $transitional_modules as $source_slug => $meta ) : ?>
-                                    <?php if ( ! is_array( $meta ) ) { continue; } ?>
-                                    <tr>
-                                        <td><?php echo metis_escape_html( (string) $source_slug ); ?></td>
-                                        <td><?php echo metis_escape_html( (string) ( $meta['status'] ?? '' ) ); ?></td>
-                                        <td><?php echo metis_escape_html( (string) ( $meta['target'] ?? '' ) ); ?></td>
-                                        <td><?php echo metis_escape_html( (string) ( $meta['notes'] ?? '' ) ); ?></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        <?php endif; ?>
-    </div>
-</div>
 <div class="metis-settings-card" data-settings-modules-store>
     <div class="metis-settings-header">
         <h2>Modules Store</h2>

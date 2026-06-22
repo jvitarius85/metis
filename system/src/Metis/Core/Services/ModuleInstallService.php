@@ -97,13 +97,34 @@ final class ModuleInstallService {
             $manifest = (new ModuleValidator())->validateModule($moduleSource, $manifest, $moduleId);
 
             $destination = rtrim(ModulePathRegistry::moduleRootPath(), '/\\') . '/' . $moduleId;
+            $stagedDestination = $workspace . '/runtime-module';
+            $this->copyDirectory($moduleSource, $stagedDestination);
+            $this->verifyInstalledRuntimeContract($stagedDestination, $manifest, $moduleId);
+
+            $previousDestination = '';
             if (is_dir($destination)) {
                 $backupRoot = $this->files->ensureDirectory($runtimeRoot . '/backups');
                 $this->copyDirectory($destination, $backupRoot . '/' . $moduleId . '-' . gmdate('YmdHis'));
-                $this->files->remove($destination);
+                $previousDestination = $workspace . '/previous-runtime';
+                if (is_dir($previousDestination)) {
+                    $this->files->remove($previousDestination);
+                }
+                if (!@rename($destination, $previousDestination)) {
+                    throw new \RuntimeException(sprintf('Unable to stage the existing runtime module [%s] for replacement.', $moduleId));
+                }
             }
 
-            $this->copyDirectory($moduleSource, $destination);
+            try {
+                if (!@rename($stagedDestination, $destination)) {
+                    throw new \RuntimeException(sprintf('Unable to promote the staged runtime module [%s] into place.', $moduleId));
+                }
+            } catch (\Throwable $exception) {
+                if ($previousDestination !== '' && !is_dir($destination) && is_dir($previousDestination)) {
+                    @rename($previousDestination, $destination);
+                }
+                throw $exception;
+            }
+
             $this->refreshRuntimeState();
             $protectionRefresh = $this->refreshProtectionState('module_install:' . $moduleId . ':' . $latestVersion);
             $status = $this->moduleUpdates->checkForUpdates(true);
@@ -291,6 +312,23 @@ final class ModuleInstallService {
             }
 
             $this->files->copy($item->getPathname(), $target);
+        }
+    }
+
+    private function verifyInstalledRuntimeContract(string $modulePath, array $manifest, string $moduleId): void {
+        $modulePath = rtrim($modulePath, '/\\');
+        if (!is_file($modulePath . '/module.json')) {
+            throw new \RuntimeException(sprintf('Installed module runtime [%s] is missing module.json after staging.', $moduleId));
+        }
+
+        $entry = ltrim((string) ($manifest['entry'] ?? 'Module.php'), '/\\');
+        if ($entry !== '' && !is_file($modulePath . '/' . $entry)) {
+            throw new \RuntimeException(sprintf('Installed module runtime [%s] is missing entry file [%s] after staging.', $moduleId, $entry));
+        }
+
+        $bootstrap = ltrim((string) ($manifest['bootstrap'] ?? 'bootstrap.php'), '/\\');
+        if ($bootstrap !== '' && !is_file($modulePath . '/' . $bootstrap)) {
+            throw new \RuntimeException(sprintf('Installed module runtime [%s] is missing bootstrap file [%s] after staging.', $moduleId, $bootstrap));
         }
     }
 
