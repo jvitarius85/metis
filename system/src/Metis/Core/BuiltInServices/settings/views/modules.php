@@ -71,6 +71,8 @@ foreach ( $registry_rows as $module_id => $registry_row ) {
         'status' => trim( (string) ( $update_row['status'] ?? ( $current_version !== '' ? 'installed' : 'available' ) ) ),
         'reason' => trim( (string) ( $update_row['reason'] ?? '' ) ),
         'requires_newer_metis' => $requires_newer_metis,
+        'runtime_contract_status' => trim( (string) ( $installed_row['runtime_contract_status'] ?? '' ) ),
+        'runtime_contract_note' => trim( (string) ( $installed_row['runtime_contract_note'] ?? '' ) ),
     ];
 }
 
@@ -261,6 +263,10 @@ $transitional_modules = is_array( $module_migration['transitional_source_modules
                             <?php endif; ?>
                             <?php if ( ! empty( $module['requires_newer_metis'] ) ) : ?>
                                 <p class="metis-module-card__note is-warning">Requires Metis <?php echo metis_escape_html( (string) $module['minimum_metis'] ); ?>+</p>
+                            <?php endif; ?>
+                            <?php if ( ! empty( $module['runtime_contract_note'] ) ) : ?>
+                                <?php $runtime_note_warning = in_array( (string) ( $module['runtime_contract_status'] ?? '' ), [ 'source_backed_entry', 'missing_entry', 'unreadable_entry', 'unknown_entry_contract' ], true ); ?>
+                                <p class="metis-module-card__note <?php echo $runtime_note_warning ? 'is-warning' : ''; ?>"><?php echo metis_escape_html( (string) $module['runtime_contract_note'] ); ?></p>
                             <?php endif; ?>
                             <?php if ( ! empty( $module['reason'] ) ) : ?>
                                 <p class="metis-module-card__note is-warning"><?php echo metis_escape_html( (string) $module['reason'] ); ?></p>

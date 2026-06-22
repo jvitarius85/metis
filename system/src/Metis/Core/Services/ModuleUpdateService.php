@@ -181,6 +181,8 @@ final class ModuleUpdateService {
                 $moduleName = $moduleId;
             }
 
+            $runtimeContract = $this->runtimeContractSnapshot( dirname( $manifestPath ), $payload, $moduleId );
+
             $modules[] = [
                 'id' => $moduleId,
                 'name' => $moduleName,
@@ -189,6 +191,10 @@ final class ModuleUpdateService {
                 'minimum_metis' => trim( (string) ( $payload['minimum_metis'] ?? '' ) ),
                 'release_channel' => trim( (string) ( $payload['release_channel'] ?? 'stable' ) ),
                 'manifest_path' => $manifestPath,
+                'entry_path' => (string) ( $runtimeContract['entry_path'] ?? '' ),
+                'entry_class' => (string) ( $runtimeContract['entry_class'] ?? '' ),
+                'runtime_contract_status' => (string) ( $runtimeContract['status'] ?? 'unknown' ),
+                'runtime_contract_note' => (string) ( $runtimeContract['note'] ?? '' ),
             ];
         }
 
@@ -223,5 +229,89 @@ final class ModuleUpdateService {
 
     private function isSemanticVersion( string $version ): bool {
         return preg_match( self::SEMVER_PATTERN, trim( $version ) ) === 1;
+    }
+
+    /**
+     * @param array<string,mixed> $manifest
+     * @return array{entry_path:string,entry_class:string,status:string,note:string}
+     */
+    private function runtimeContractSnapshot( string $modulePath, array $manifest, string $moduleId ): array {
+        $entry = ltrim( (string) ( $manifest['entry'] ?? 'Module.php' ), '/' );
+        $entryPath = $entry !== '' ? rtrim( $modulePath, '/\\' ) . '/' . $entry : '';
+        $entryClass = trim( (string) ( $manifest['class'] ?? '' ) );
+        if ( $entryClass === '' ) {
+            $studly = $this->studlyName( (string) ( $manifest['name'] ?? $moduleId ) );
+            if ( $studly !== '' ) {
+                $entryClass = 'Metis\\Modules\\' . $studly . '\\' . $studly . 'Module';
+            }
+        }
+
+        if ( $entryPath === '' || ! is_file( $entryPath ) ) {
+            return [
+                'entry_path' => $entryPath,
+                'entry_class' => $entryClass,
+                'status' => 'missing_entry',
+                'note' => 'Bundle entry file is missing.',
+            ];
+        }
+
+        $source = (string) @file_get_contents( $entryPath );
+        if ( $source === '' ) {
+            return [
+                'entry_path' => $entryPath,
+                'entry_class' => $entryClass,
+                'status' => 'unreadable_entry',
+                'note' => 'Bundle entry file could not be read.',
+            ];
+        }
+
+        $classBase = $entryClass !== '' && str_contains( $entryClass, '\\' )
+            ? substr( $entryClass, (int) strrpos( $entryClass, '\\' ) + 1 )
+            : $entryClass;
+        $classPattern = $classBase !== ''
+            ? '/\b(?:final\s+|abstract\s+)?class\s+' . preg_quote( $classBase, '/' ) . '\b/'
+            : '';
+
+        if ( $classPattern !== '' && preg_match( $classPattern, $source ) === 1 ) {
+            return [
+                'entry_path' => $entryPath,
+                'entry_class' => $entryClass,
+                'status' => 'self_contained_entry',
+                'note' => 'Bundle entry file defines its own module class.',
+            ];
+        }
+
+        if ( str_contains( $source, 'placeholder' ) || str_contains( $source, 'Runtime boot/registration is handled by src/Metis services' ) ) {
+            return [
+                'entry_path' => $entryPath,
+                'entry_class' => $entryClass,
+                'status' => 'source_backed_entry',
+                'note' => 'Bundle entry file is still a placeholder and depends on source-side module code.',
+            ];
+        }
+
+        return [
+            'entry_path' => $entryPath,
+            'entry_class' => $entryClass,
+            'status' => 'unknown_entry_contract',
+            'note' => 'Bundle entry file exists but does not clearly declare the expected module class.',
+        ];
+    }
+
+    private function studlyName( string $value ): string {
+        $parts = preg_split( '/[^a-z0-9]+/i', strtolower( $value ) ) ?: [];
+
+        return implode(
+            '',
+            array_map(
+                static fn ( string $part ): string => ucfirst( $part ),
+                array_values(
+                    array_filter(
+                        $parts,
+                        static fn ( string $part ): bool => $part !== ''
+                    )
+                )
+            )
+        );
     }
 }
