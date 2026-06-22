@@ -53,17 +53,19 @@ $assert(
 );
 
 $assert(
-    str_contains( $mediaBootstrap, "if ( ! function_exists( 'metis_media_find_by_token' ) ) {" )
-    && str_contains( $mediaBootstrap, "if ( ! function_exists( 'metis_media_find_by_filename' ) ) {" ),
-    'Media bootstrap compatibility helpers must be guarded so core runtime helpers can coexist without fatal redeclarations.'
+    ! str_contains( $mediaBootstrap, 'function metis_media_find_by_token' )
+    && ! str_contains( $mediaBootstrap, 'function metis_media_find_by_filename' ),
+    'Media runtime bundles must not redeclare upload helper functions that already belong to core runtime.'
 );
 
 $assert(
     str_contains( $moduleValidator, 'validateBootstrapFunctionCollisions' )
     && str_contains( $moduleValidator, 'bootstrapDeclaredFunctions' )
+    && str_contains( $moduleValidator, 'coreDeclaredFunctions' )
     && str_contains( $moduleValidator, 'bootstrap declares helper [%s] that conflicts with an existing runtime function.' )
+    && str_contains( $moduleValidator, 'RecursiveDirectoryIterator' )
     && str_contains( $moduleValidator, 'token_get_all' ),
-    'Module validation must reject bootstrap helper collisions before the runtime includes the bundle.'
+    'Module validation must reject bootstrap helper collisions against core runtime declarations before the runtime includes the bundle.'
 );
 
 if ( $failures !== [] ) {

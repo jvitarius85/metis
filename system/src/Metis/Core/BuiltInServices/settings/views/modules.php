@@ -119,7 +119,7 @@ $module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
             <p class="metis-help">No registry modules are currently available.</p>
         <?php else : ?>
             <?php
-            $render_module_grid = static function ( array $module_rows ) use ( $module_install_icon, $module_loading_icon, $module_uninstall_icon, $module_update_icon ): void {
+            $render_module_grid = static function ( array $module_rows ) use ( $module_install_icon, $module_loading_icon, $module_uninstall_icon, $module_update_icon, $module_arrow_icon ): void {
                 ?>
                 <div class="metis-module-grid">
                     <?php foreach ( $module_rows as $module ) : ?>
