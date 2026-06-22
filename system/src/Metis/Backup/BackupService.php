@@ -421,6 +421,7 @@ final class BackupService {
             ] );
 
             $this->clearBackupPause();
+            $this->clearBackupCronTaskFailureState( (string) ( $row['trigger_source'] ?? '' ), $completed_at );
             $this->applyRetentionPolicy( $environment, $run_id, $drive_cfg );
             $this->cleanupLocalRunArtifacts( $run_id, $run_uuid, $local_dir );
 
@@ -691,6 +692,28 @@ final class BackupService {
             \Core_Settings_Service::set( self::PAUSED_REASON_SETTING, '', false );
             \Core_Settings_Service::set( self::PAUSED_AT_SETTING, '', false );
         }
+    }
+
+    private function clearBackupCronTaskFailureState( string $trigger, string $completed_at ): void {
+        $slug = 'system_backup_snapshot';
+        $option_key = 'metis_cron_task_state_' . $slug;
+        $state = \metis_get_option( $option_key, [] );
+        if ( ! \is_array( $state ) ) {
+            $state = [];
+        }
+
+        $trigger = \metis_key_clean( $trigger );
+        if ( '' === $trigger ) {
+            $trigger = 'manual';
+        }
+
+        $state['last_finished_at'] = $completed_at;
+        $state['last_status'] = 'ok';
+        $state['running'] = false;
+        $state['last_error'] = '';
+        $state['last_trigger'] = $trigger;
+
+        \metis_update_option( $option_key, $state, false );
     }
 
     private function backupPauseStatus(): array {

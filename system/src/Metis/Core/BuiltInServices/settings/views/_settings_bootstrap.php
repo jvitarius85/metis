@@ -1316,14 +1316,35 @@ if ( ! function_exists( 'metis_settings_health_help_service_status' ) ) {
             metis_register_core_services();
         }
 
-        $manifest_base = defined( 'METIS_MODULES_PATH' ) ? (string) METIS_MODULES_PATH : metis_settings_root_path() . '/system/modules';
         $seed_base = defined( 'METIS_SRC_PATH' ) ? (string) METIS_SRC_PATH : metis_settings_root_path() . '/system/src';
-        $manifest_path = rtrim( $manifest_base, '/\\' ) . '/help/module.json';
-        $seed_path = rtrim( $seed_base, '/\\' ) . '/Metis/Core/Help/Seeds/HelpDocumentsSeed.php';
+        $manifest_candidates = [
+            metis_settings_root_path() . '/system/src/Metis/Core/BuiltInServices/help/module.json',
+        ];
+        if ( defined( 'METIS_MODULES_PATH' ) ) {
+            $manifest_candidates[] = rtrim( (string) METIS_MODULES_PATH, '/\\' ) . '/help/module.json';
+        }
+        $manifest_path = '';
+        foreach ( $manifest_candidates as $candidate ) {
+            if ( is_file( $candidate ) ) {
+                $manifest_path = $candidate;
+                break;
+            }
+        }
+
+        $seed_candidates = [
+            rtrim( $seed_base, '/\\' ) . '/Metis/Core/Help/Seeds/HelpDocumentsSeed.php',
+        ];
+        $seed_path = '';
+        foreach ( $seed_candidates as $candidate ) {
+            if ( is_file( $candidate ) ) {
+                $seed_path = $candidate;
+                break;
+            }
+        }
         $problems = [];
         $route_count = 0;
 
-        if ( ! is_file( $manifest_path ) ) {
+        if ( '' === $manifest_path ) {
             $problems[] = 'Help module manifest is missing.';
         } else {
             $manifest = json_decode( (string) @file_get_contents( $manifest_path ), true );
@@ -1346,7 +1367,7 @@ if ( ! function_exists( 'metis_settings_health_help_service_status' ) ) {
             }
         }
 
-        if ( ! is_file( $seed_path ) ) {
+        if ( '' === $seed_path ) {
             $problems[] = 'Help document seed file is missing.';
         }
 

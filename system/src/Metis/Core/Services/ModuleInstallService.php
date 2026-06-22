@@ -6,6 +6,7 @@ namespace Metis\Core\Services;
 use Metis\Core\Application;
 use Metis\Core\Cache\CacheService;
 use Metis\Core\ModulePathRegistry;
+use Metis\Core\Recovery\RecoveryVerifier;
 use Metis\Core\Version;
 
 final class ModuleInstallService {
@@ -102,6 +103,7 @@ final class ModuleInstallService {
 
             $this->copyDirectory($moduleSource, $destination);
             $this->refreshRuntimeState();
+            $protectionRefresh = $this->refreshProtectionState('module_install:' . $moduleId . ':' . $latestVersion);
             $status = $this->moduleUpdates->checkForUpdates(true);
             $moduleStatus = [];
             foreach ((array) ($status['modules'] ?? []) as $row) {
@@ -122,6 +124,7 @@ final class ModuleInstallService {
                 'minimum_metis' => $minimumMetis,
                 'download_url' => $downloadUrl,
                 'module_status' => $moduleStatus,
+                'protection_refresh' => $protectionRefresh,
             ];
 
             $this->logger->activity('module_install_completed', [
@@ -190,6 +193,7 @@ final class ModuleInstallService {
             $this->copyDirectory($modulePath, $backupRoot . '/' . $moduleId . '-uninstall-' . gmdate('YmdHis'));
             $this->files->remove($modulePath);
             $this->refreshRuntimeState();
+            $protectionRefresh = $this->refreshProtectionState('module_uninstall:' . $moduleId . ':' . ($currentVersion !== '' ? $currentVersion : 'removed'));
             $status = $this->moduleUpdates->checkForUpdates(true);
 
             $result = [
@@ -200,6 +204,7 @@ final class ModuleInstallService {
                 'name' => $moduleName,
                 'current' => $currentVersion,
                 'module_update_status' => $status,
+                'protection_refresh' => $protectionRefresh,
             ];
 
             $this->logger->activity('module_uninstall_completed', [
@@ -304,6 +309,56 @@ final class ModuleInstallService {
         }
 
         CacheService::rebuildSystemCaches();
+    }
+
+    private function refreshProtectionState(string $reason): array {
+        $result = [
+            'baseline_built' => true,
+            'baseline_signed' => true,
+            'signature_required' => false,
+            'recovery_manifest' => [
+                'status' => 'skipped',
+            ],
+            'module_compliance' => [
+                'status' => 'unavailable',
+                'summary' => [
+                    'checked' => 0,
+                    'failed' => 0,
+                    'passed' => 0,
+                ],
+                'failures' => [],
+            ],
+        ];
+
+        if (class_exists('Metis_Integrity_Manager')) {
+            \Metis_Integrity_Manager::ensure_runtime();
+            $result['baseline_built'] = \Metis_Integrity_Manager::build_baseline($reason);
+            $verification = (array) \Metis_Integrity_Manager::verify_baseline();
+            $result['signature_required'] = !empty($verification['signature_required']);
+            $result['baseline_signed'] = !$result['signature_required'] ? true : \Metis_Integrity_Manager::sign_baseline();
+        }
+
+        if (class_exists(RecoveryVerifier::class)) {
+            $result['recovery_manifest'] = (new RecoveryVerifier())->rebuildManifest($reason);
+        }
+
+        if (function_exists('metis_module_compliance_report')) {
+            $result['module_compliance'] = (array) metis_module_compliance_report(true);
+        }
+
+        $complianceSummary = is_array($result['module_compliance']['summary'] ?? null) ? (array) $result['module_compliance']['summary'] : [];
+        $complianceFailed = (int) ($complianceSummary['failed'] ?? 0);
+
+        if (
+            empty($result['baseline_built'])
+            || empty($result['baseline_signed'])
+            || (string) ($result['recovery_manifest']['status'] ?? '') !== 'success'
+            || $complianceFailed > 0
+        ) {
+            throw new \RuntimeException('Module update completed, but integrity or module compliance state could not be fully refreshed.');
+        }
+
+        return $result;
     }
 
     private function failure(string $status, string $message, array $payload = []): array {

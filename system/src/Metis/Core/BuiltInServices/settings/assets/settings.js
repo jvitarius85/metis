@@ -1497,12 +1497,13 @@ function metisInitSettingsUi() {
         if (!backupStatusAlert) return;
 
         const paused = !!(pauseStatus && pauseStatus.paused);
-        const failedRun = Array.isArray(runs)
-            ? runs.find(function (run) { return String((run && run.last_error) || '').trim() !== ''; })
+        const latestRun = Array.isArray(runs) && runs.length > 0
+            ? runs[0]
             : null;
+        const latestRunError = String((latestRun && latestRun.last_error) || '').trim();
         const message = paused
             ? 'Scheduled backups are paused because: ' + String((pauseStatus && pauseStatus.reason) || 'manual repair is required.')
-            : (failedRun ? String(failedRun.last_error || '') : '');
+            : latestRunError;
 
         if (!message) {
             backupStatusAlert.hidden = true;
