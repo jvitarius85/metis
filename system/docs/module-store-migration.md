@@ -100,17 +100,8 @@ Current bundle-audit baseline:
 - Entry contract readiness:
   - `14/14` runtime bundles define their own module entry class.
 - Runtime isolation readiness:
-  - `11/14` currently audit as `bundle_only`
-  - `3/14` still audit as `source_coupled`
-
-Current `source_coupled` bundles and first detected reasons:
-
-- `import`
-  - Import service still calls website runtime services such as `MenuService`, `PageService`, and `PostService`.
-- `newsletter`
-  - Newsletter runtime still reaches into website theme/layout helpers and media library services.
-- `website`
-  - Website AJAX/runtime still references newsletter and forms runtime classes.
+  - `14/14` currently audit as `bundle_only`
+  - `0/14` currently audit as `source_coupled`
 
 ## Migration Rules
 
