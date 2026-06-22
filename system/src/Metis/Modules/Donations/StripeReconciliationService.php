@@ -50,6 +50,8 @@ final class StripeReconciliationService {
         }
 
         $summary = [
+            'transactions_imported' => 0,
+            'transactions_skipped' => 0,
             'transactions_scanned' => 0,
             'transactions_updated' => 0,
             'emails_captured' => 0,
@@ -63,6 +65,7 @@ final class StripeReconciliationService {
             'errors' => [],
         ];
 
+        self::importRecentTransactions( $stripe, $summary, $transaction_limit );
         self::reconcileTransactions( $stripe, $summary, $transaction_limit );
         self::reconcilePayouts( $stripe, $summary, $payout_limit );
 
@@ -77,6 +80,166 @@ final class StripeReconciliationService {
             ),
             'summary' => $summary,
         ];
+    }
+
+    private static function importRecentTransactions( StripeApiClient $stripe, array &$summary, int $limit ): void {
+        $tx_table = \Metis_Tables::get( 'transactions' );
+        if ( $tx_table === '' ) {
+            return;
+        }
+
+        $page_limit = max( 1, min( 100, $limit ) );
+        $remaining = max( 1, $limit );
+        $starting_after = '';
+        $email_to_did = ContactMutationService::emailDidMap();
+        $payout_to_deposit = StripeDepositService::payoutToDepositMap();
+        $deposit_date_cache = [];
+        $existing_charge_ids = TransactionRecordService::existingStripeChargeIds();
+        $existing_pi_ids = TransactionRecordService::existingStripePaymentIntentIds();
+        $pages = 0;
+
+        $params = [
+            'limit' => $page_limit,
+            'created' => [
+                'gte' => self::transactionImportStartTimestamp(),
+                'lte' => time(),
+            ],
+            'expand' => [
+                'data.latest_charge',
+                'data.latest_charge.balance_transaction',
+                'data.customer',
+            ],
+        ];
+
+        while ( $remaining > 0 && $pages < self::MAX_PAYOUT_PAGES ) {
+            $pages++;
+            if ( $starting_after !== '' ) {
+                $params['starting_after'] = $starting_after;
+            } else {
+                unset( $params['starting_after'] );
+            }
+
+            $response = $stripe->listPaymentIntents( $params );
+            $payment_intents = (array) ( $response->data ?? [] );
+            if ( $payment_intents === [] ) {
+                break;
+            }
+
+            foreach ( $payment_intents as $intent ) {
+                if ( ! is_object( $intent ) || $remaining < 1 ) {
+                    continue;
+                }
+
+                $pi_id = trim( (string) ( $intent->id ?? '' ) );
+                $charge = $intent->latest_charge ?? null;
+                if ( $pi_id === '' || ! is_object( $charge ) || trim( (string) ( $intent->status ?? '' ) ) !== 'succeeded' ) {
+                    $summary['transactions_skipped']++;
+                    continue;
+                }
+
+                $charge_id = trim( (string) ( $charge->id ?? '' ) );
+                if ( $charge_id === '' ) {
+                    $summary['transactions_skipped']++;
+                    continue;
+                }
+
+                if ( isset( $existing_charge_ids[ $charge_id ] ) || isset( $existing_pi_ids[ $pi_id ] ) ) {
+                    $summary['transactions_skipped']++;
+                    continue;
+                }
+
+                $customer = self::resolveCustomer( $stripe, $intent, $charge, '' );
+                $balance = self::resolveBalanceTransaction( $stripe, $charge, '' );
+                $profile = self::extractDonorProfile( $intent, $charge, $customer );
+                $did = '';
+                if ( $profile['email'] !== '' ) {
+                    $did = trim( (string) ( $email_to_did[ $profile['email'] ] ?? '' ) );
+                    if ( $did === '' ) {
+                        $contact = ContactMutationService::resolveOrCreateDonorContact(
+                            $profile['email'],
+                            $profile['first_name'],
+                            $profile['last_name']
+                        );
+                        $did = trim( (string) ( $contact['did'] ?? '' ) );
+                        if ( $did !== '' ) {
+                            $summary['donors_linked']++;
+                            $email_to_did[ $profile['email'] ] = $did;
+                            if ( ! empty( $contact['created'] ) ) {
+                                $summary['donors_created']++;
+                            }
+                        }
+                    }
+                }
+
+                $bt_id = is_object( $balance ) ? trim( (string) ( $balance->id ?? '' ) ) : '';
+                $payout_id = is_object( $balance ) ? trim( (string) ( $balance->payout ?? '' ) ) : '';
+                $customer_id = is_object( $customer ) ? trim( (string) ( $customer->id ?? '' ) ) : trim( (string) ( $intent->customer ?? $charge->customer ?? '' ) );
+                $deposit_batch_id = null;
+                $deposit_date = null;
+                if ( $payout_id !== '' && isset( $payout_to_deposit[ $payout_id ] ) ) {
+                    $deposit_batch_id = (string) $payout_to_deposit[ $payout_id ];
+                    if ( ! isset( $deposit_date_cache[ $deposit_batch_id ] ) ) {
+                        $deposit_date_cache[ $deposit_batch_id ] = StripeDepositService::depositDateByCode( $deposit_batch_id );
+                    }
+                    $deposit_date = $deposit_date_cache[ $deposit_batch_id ];
+                }
+
+                $amount_cents = (int) ( $charge->amount ?? 0 );
+                $fee_cents = is_object( $balance ) ? (int) ( $balance->fee ?? 0 ) : 0;
+                $method_details = DonationsModule::stripePaymentMethodDetails( $charge );
+                $payload = [
+                    'did' => $did !== '' ? $did : null,
+                    'donor_email' => $profile['email'] !== '' ? $profile['email'] : null,
+                    'tran_date' => gmdate( 'Y-m-d H:i:s', (int) ( $charge->created ?? time() ) ),
+                    'amount' => round( ( $amount_cents - $fee_cents ) / 100, 2 ),
+                    'fee' => round( $fee_cents / 100, 2 ),
+                    'payout' => round( ( $amount_cents - $fee_cents ) / 100, 2 ),
+                    'platform' => 'ST',
+                    'payment_method' => (string) ( $method_details['payment_method'] ?? 'cc' ),
+                    'card_brand' => $method_details['card_brand'] ?? null,
+                    'card_last4' => $method_details['card_last4'] ?? null,
+                    'status' => 'Completed',
+                    'stripe_pay_int' => $pi_id,
+                    'stripe_charge_id' => $charge_id,
+                    'stripe_customer_id' => $customer_id !== '' ? $customer_id : null,
+                    'stripe_balance_txn' => $bt_id !== '' ? $bt_id : null,
+                    'stripe_payout_id' => $payout_id !== '' ? $payout_id : null,
+                    'deposit_batch_id' => $deposit_batch_id,
+                    'deposit_date' => $deposit_date,
+                    'created_at' => \metis_current_time( 'mysql' ),
+                    'updated_at' => \metis_current_time( 'mysql' ),
+                ];
+
+                if ( \function_exists( 'metis_entity_id_service' ) ) {
+                    $payload = \metis_entity_id_service()->assignForInsert( 'donation_transaction', $payload );
+                } else {
+                    $payload['tid'] = \metis_generate_code( 'TR', $tx_table, 'tid' );
+                }
+
+                if ( \metis_db()->insert( $tx_table, $payload ) ) {
+                    if ( \function_exists( 'metis_entity_id_service' ) ) {
+                        \metis_entity_id_service()->register( 'donation_transaction', \metis_db()->lastInsertId(), (string) ( $payload['transaction_uid'] ?? $payload['tid'] ?? '' ) );
+                    }
+                    $existing_charge_ids[ $charge_id ] = true;
+                    $existing_pi_ids[ $pi_id ] = true;
+                    $summary['transactions_imported']++;
+                    $remaining--;
+                } else {
+                    $summary['errors'][] = [
+                        'scope' => 'transaction_import',
+                        'payment_intent_id' => $pi_id,
+                        'charge_id' => $charge_id,
+                        'error' => 'Could not insert Stripe transaction.',
+                    ];
+                }
+            }
+
+            $last = end( $payment_intents );
+            $starting_after = is_object( $last ) ? trim( (string) ( $last->id ?? '' ) ) : '';
+            if ( empty( $response->has_more ) || $starting_after === '' ) {
+                break;
+            }
+        }
     }
 
     private static function reconcileTransactions( StripeApiClient $stripe, array &$summary, int $limit ): void {
@@ -449,6 +612,19 @@ final class StripeReconciliationService {
         }
 
         return gmdate( 'Y-m-d', $timestamp );
+    }
+
+    private static function transactionImportStartTimestamp(): int {
+        $fallback = time() - ( 45 * DAY_IN_SECONDS );
+        $latest = (string) \metis_db()->scalar(
+            'SELECT MAX(tran_date) FROM ' . \Metis_Tables::get( 'transactions' ) . " WHERE platform IN ('ST', 'stripe')"
+        );
+        $latest_ts = $latest !== '' ? strtotime( $latest . ' UTC' ) : false;
+        if ( $latest_ts === false || $latest_ts < 1 ) {
+            return time() - ( 400 * DAY_IN_SECONDS );
+        }
+
+        return max( $fallback, (int) $latest_ts - ( 7 * DAY_IN_SECONDS ) );
     }
 
     /**
