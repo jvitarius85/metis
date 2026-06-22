@@ -151,7 +151,7 @@ $module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
                                                 <?php echo metis_escape_html( (string) $module['current'] ); ?>
                                             <?php endif; ?>
                                         <?php else : ?>
-                                            Latest <?php echo metis_escape_html( (string) $module['latest'] ); ?>
+                                            <?php echo metis_escape_html( (string) $module['latest'] ); ?>
                                         <?php endif; ?>
                                     </p>
                                 </div>
@@ -198,7 +198,9 @@ $module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
                             <?php endif; ?>
                             <?php if ( ! empty( $module['runtime_contract_note'] ) ) : ?>
                                 <?php $runtime_note_warning = in_array( (string) ( $module['runtime_contract_status'] ?? '' ), [ 'source_backed_entry', 'missing_entry', 'unreadable_entry', 'unknown_entry_contract' ], true ); ?>
-                                <p class="metis-module-card__note <?php echo $runtime_note_warning ? 'is-warning' : ''; ?>"><?php echo metis_escape_html( (string) $module['runtime_contract_note'] ); ?></p>
+                                <?php if ( $runtime_note_warning ) : ?>
+                                    <p class="metis-module-card__note is-warning"><?php echo metis_escape_html( (string) $module['runtime_contract_note'] ); ?></p>
+                                <?php endif; ?>
                             <?php endif; ?>
                             <?php if ( ! empty( $module['reason'] ) ) : ?>
                                 <p class="metis-module-card__note is-warning"><?php echo metis_escape_html( (string) $module['reason'] ); ?></p>
