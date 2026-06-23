@@ -84,11 +84,8 @@ foreach ( $scanRoots as $scanRoot ) {
 
 ksort( $actual );
 
-$allowed = [
-    'src/Metis/Core/Runtime/WebsiteModuleRuntimeBridge.php' => [ 'website' ],
-    'src/Metis/Core/Runtime/NewsletterModuleRuntimeBridge.php' => [ 'newsletter' ],
-    'src/Metis/Core/Runtime/ModuleSchemaRuntimeBridge.php' => [ 'board', 'calendar', 'contacts', 'finance', 'forms', 'import', 'newsletter', 'website' ],
-];
+$allowed = \Metis\Core\ModulePathRegistry::legacyStoreManagedRuntimeBridges();
+ksort( $allowed );
 
 $unexpectedFiles = array_diff_key( $actual, $allowed );
 foreach ( $unexpectedFiles as $path => $slugs ) {
@@ -115,6 +112,17 @@ foreach ( $allowed as $path => $allowedSlugs ) {
             )
         );
     }
+}
+
+$missingFiles = array_diff_key( $allowed, $actual );
+foreach ( array_keys( $missingFiles ) as $path ) {
+    $assert(
+        false,
+        sprintf(
+            'Declared legacy runtime bridge [%s] no longer references a store-managed source module. Remove it from ModulePathRegistry when the bridge is fully retired.',
+            $path
+        )
+    );
 }
 
 if ( $failures !== [] ) {

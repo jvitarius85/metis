@@ -190,6 +190,24 @@ final class ModulePathRegistry {
             'notes' => 'Website still ships source-side PHP and must migrate fully into the runtime bundle before the source directory can be removed.',
         ],
     ];
+    private const LEGACY_STORE_MANAGED_RUNTIME_BRIDGES = [
+        'src/Metis/Core/Runtime/ModuleSchemaRuntimeBridge.php' => [
+            'board',
+            'calendar',
+            'contacts',
+            'finance',
+            'forms',
+            'import',
+            'newsletter',
+            'website',
+        ],
+        'src/Metis/Core/Runtime/NewsletterModuleRuntimeBridge.php' => [
+            'newsletter',
+        ],
+        'src/Metis/Core/Runtime/WebsiteModuleRuntimeBridge.php' => [
+            'website',
+        ],
+    ];
 
     public static function coreServiceSlugs(): array {
         return self::CORE_SERVICE_SLUGS;
@@ -239,6 +257,13 @@ final class ModulePathRegistry {
     }
 
     /**
+     * @return array<string,array<int,string>>
+     */
+    public static function legacyStoreManagedRuntimeBridges(): array {
+        return self::LEGACY_STORE_MANAGED_RUNTIME_BRIDGES;
+    }
+
+    /**
      * @return array<string,string>|null
      */
     public static function transitionalSourceModule( string $slug ): ?array {
@@ -249,7 +274,7 @@ final class ModulePathRegistry {
     }
 
     /**
-     * @return array{module_root:string,core_service_root:string,store_modules:array<int,string>,core_services:array<int,string>,source_module_inventory:array<string,array<string,string>>,transitional_source_modules:array<string,array<string,string>>}
+     * @return array{module_root:string,core_service_root:string,store_modules:array<int,string>,core_services:array<int,string>,source_module_inventory:array<string,array<string,string>>,legacy_store_managed_runtime_bridges:array<string,array<int,string>>,transitional_source_modules:array<string,array<string,string>>}
      */
     public static function migrationSnapshot(): array {
         return [
@@ -258,6 +283,7 @@ final class ModulePathRegistry {
             'store_modules' => self::storeManagedModuleSlugs(),
             'core_services' => self::coreServiceSlugs(),
             'source_module_inventory' => self::sourceModuleInventory(),
+            'legacy_store_managed_runtime_bridges' => self::legacyStoreManagedRuntimeBridges(),
             'transitional_source_modules' => self::transitionalSourceModules(),
         ];
     }

@@ -83,6 +83,19 @@ Metis also tracks the current set of core-to-store-module namespace dependencies
 - Existing references may be removed as runtime bundles become self-contained.
 - New references from core, Hermes, or built-in services into legacy store-module namespaces should fail tests until the migration plan is updated deliberately.
 
+## Current Runtime Bridge Surface
+
+The remaining core-side coupling to legacy store-managed source namespaces is now centralized into a small runtime bridge surface declared in `ModulePathRegistry::legacyStoreManagedRuntimeBridges()`:
+
+- `src/Metis/Core/Runtime/ModuleSchemaRuntimeBridge.php`
+  - Current scope: `board`, `calendar`, `contacts`, `finance`, `forms`, `import`, `newsletter`, `website`
+- `src/Metis/Core/Runtime/WebsiteModuleRuntimeBridge.php`
+  - Current scope: `website`
+- `src/Metis/Core/Runtime/NewsletterModuleRuntimeBridge.php`
+  - Current scope: `newsletter`
+
+This is the current migration frontier. Removing source-side implementations from `system/src/Metis/Modules/` should now proceed by shrinking or deleting these bridges instead of patching broad core surfaces.
+
 ## Bundle Contract
 
 Each published module bundle should unpack to:
