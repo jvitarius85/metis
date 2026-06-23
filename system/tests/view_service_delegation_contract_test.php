@@ -128,7 +128,7 @@ $viewExpectations = [
         '\Metis\Modules\People\PersonProfileService::getById(',
         '\Metis\Modules\People\MfaService::activePasskeys(',
     ],
-    'modules/settings/views/_settings_bootstrap.php' => [
+    'src/Metis/Core/BuiltInServices/settings/views/_settings_bootstrap.php' => [
         '\Metis\Modules\Settings\SettingsTelemetryService::stripeWebhookSnapshot(',
         '\Metis\Modules\Settings\SettingsTelemetryService::codeLookupStatus(',
         '\Metis\Modules\Settings\SettingsTelemetryService::securityPressureSummary(',

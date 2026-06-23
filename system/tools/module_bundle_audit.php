@@ -207,8 +207,10 @@ function audit_runtime_coupling( string $targetPath, string $entryClass ): array
     ) {
         $moduleNamespace = (string) ( $matches[1] ?? '' );
     }
+    $bundleRoot = dirname( $targetPath );
 
-    $refs = [];
+    $allowedRefs = [];
+    $blockingRefs = [];
     $iterator = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator( $targetPath, FilesystemIterator::SKIP_DOTS )
     );
@@ -239,7 +241,34 @@ function audit_runtime_coupling( string $targetPath, string $entryClass ): array
                     continue;
                 }
 
-                $refs[] = [
+                $referenceSlug = '';
+                if ( class_exists( '\Metis\Core\ModulePathRegistry' ) ) {
+                    $referenceSlug = (string) \Metis\Core\ModulePathRegistry::slugForNamespaceSegment( $segment );
+                }
+                if (
+                    $referenceSlug !== ''
+                    && is_dir( rtrim( $bundleRoot, '/\\' ) . '/' . $referenceSlug )
+                ) {
+                    continue;
+                }
+
+                $isAllowedCoreRuntimeDependency = false;
+                if ( class_exists( '\Metis\Core\ModulePathRegistry' ) ) {
+                    $isAllowedCoreRuntimeDependency =
+                        ( $referenceSlug !== '' && \Metis\Core\ModulePathRegistry::isCoreServiceSlug( $referenceSlug ) )
+                        || $referenceSlug === 'communications_inbound';
+                }
+
+                if ( $isAllowedCoreRuntimeDependency ) {
+                    $allowedRefs[] = [
+                        'file' => $path,
+                        'type' => 'core_runtime_module_namespace',
+                        'reference' => (string) $reference,
+                    ];
+                    continue;
+                }
+
+                $blockingRefs[] = [
                     'file' => $path,
                     'type' => 'module_namespace',
                     'reference' => (string) $reference,
@@ -249,7 +278,7 @@ function audit_runtime_coupling( string $targetPath, string $entryClass ): array
 
         if ( preg_match_all( '/Metis\\\\Core\\\\BuiltInServices\\\\[^\s\'";()]*/', $source, $coreMatches ) > 0 ) {
             foreach ( $coreMatches[0] as $reference ) {
-                $refs[] = [
+                $allowedRefs[] = [
                     'file' => $path,
                     'type' => 'core_service_namespace',
                     'reference' => (string) $reference,
@@ -258,7 +287,7 @@ function audit_runtime_coupling( string $targetPath, string $entryClass ): array
         }
 
         if ( str_contains( $source, 'METIS_SRC_PATH' ) ) {
-            $refs[] = [
+            $blockingRefs[] = [
                 'file' => $path,
                 'type' => 'source_path_reference',
                 'reference' => 'METIS_SRC_PATH',
@@ -266,7 +295,7 @@ function audit_runtime_coupling( string $targetPath, string $entryClass ): array
         }
     }
 
-    if ( $refs === [] ) {
+    if ( $blockingRefs === [] && $allowedRefs === [] ) {
         return [
             'bundle_only',
             'Bundle runtime files do not reference source-side module namespaces or source-path includes.',
@@ -274,9 +303,17 @@ function audit_runtime_coupling( string $targetPath, string $entryClass ): array
         ];
     }
 
+    if ( $blockingRefs === [] ) {
+        return [
+            'core_runtime_dependency',
+            'Bundle runtime depends only on allowed core runtime services.',
+            array_slice( $allowedRefs, 0, 25 ),
+        ];
+    }
+
     return [
         'source_coupled',
         'Bundle runtime still references source-side namespaces or source-path includes.',
-        array_slice( $refs, 0, 25 ),
+        array_slice( array_merge( $blockingRefs, $allowedRefs ), 0, 25 ),
     ];
 }

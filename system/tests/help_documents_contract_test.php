@@ -71,7 +71,7 @@ $requiredFiles = [
     $core_service_path( 'modules/help/module.json' ),
     $core_service_path( 'modules/help/admin/articles.php' ),
     $core_service_path( 'modules/help/admin/issue-resolution.php' ),
-    $root . '/src/Metis/Modules/Help/HelpModule.php',
+    $root . '/src/Metis/Core/BuiltInServices/help/HelpModule.php',
     $root . '/enclave/help/article/save.php',
     $root . '/enclave/help/article/publish.php',
     $root . '/enclave/help/article/unpublish.php',

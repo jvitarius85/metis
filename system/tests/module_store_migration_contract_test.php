@@ -70,6 +70,7 @@ $expectedLegacyStoreModules = [
     'drive',
     'finance',
     'forms',
+    'grandystash',
     'import',
     'media',
     'newsletter',
@@ -103,12 +104,12 @@ $filesystemSourceSlugs = array_values(
 );
 sort( $filesystemSourceSlugs );
 
-$inventorySlugs = array_keys( $sourceInventory );
+$inventorySlugs = array_keys( $legacyStoreSourceModules );
 sort( $inventorySlugs );
 
 $assert(
     $filesystemSourceSlugs === $inventorySlugs,
-    'Every source-side module directory under system/src/Metis/Modules must be declared in ModulePathRegistry::sourceModuleInventory().'
+    'Every remaining source-side module directory under system/src/Metis/Modules must be declared as a legacy store-backed module in ModulePathRegistry.'
 );
 
 $overlap = array_intersect( $storeModules, $coreServices );

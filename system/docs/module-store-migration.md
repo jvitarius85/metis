@@ -42,9 +42,6 @@ Metis is migrating toward a module-store model where installable feature modules
     - Target: `forms`
     - Direction: fold import behavior into the Forms runtime module.
     - Status: standalone installer/runtime schema registration removed; compatibility shim remains only to delegate to Forms.
-  - `grandystash`
-    - Target: `grandys_stash`
-    - Direction: normalize the legacy source directory name to the runtime/store slug.
 
 ## Current Source Inventory
 
@@ -58,6 +55,7 @@ Metis is migrating toward a module-store model where installable feature modules
   - `drive`
   - `finance`
   - `forms`
+  - `grandystash`
   - `import`
   - `media`
   - `newsletter`
@@ -67,15 +65,8 @@ Metis is migrating toward a module-store model where installable feature modules
 - Transitional source-only exceptions:
   - `communicationsinbound`
   - `formsimport`
-  - `grandystash`
-- Built-in core service source directories that remain valid:
-  - `help`
-  - `hermes`
-  - `modules`
-  - `people`
-  - `portal`
-  - `profile`
-  - `settings`
+- Built-in core services have been relocated out of `system/src/Metis/Modules/` and now live under `system/src/Metis/Core/BuiltInServices/`.
+- Transitional core runtime code has been relocated out of `system/src/Metis/Modules/` and now lives under `system/src/Metis/Core/TransitionModules/`.
 
 The canonical inventory lives in `ModulePathRegistry::sourceModuleInventory()`. Any new directory added under `system/src/Metis/Modules/` should fail contract tests until the migration inventory and runtime plan are updated intentionally.
 
@@ -90,12 +81,8 @@ The remaining bridge frontier for retiring legacy store-managed source implement
 
 - `src/Metis/Core/Runtime/ModuleSchemaRuntimeBridge.php`
   - Current scope: `board`, `calendar`, `contacts`, `finance`, `forms`, `import`, `newsletter`, `website`
-- `src/Metis/Core/Runtime/WebsiteModuleRuntimeBridge.php`
-  - Current scope: `website`
-- `src/Metis/Core/Runtime/NewsletterModuleRuntimeBridge.php`
-  - Current scope: `newsletter`
 
-This is the current migration frontier. Removing source-side implementations from `system/src/Metis/Modules/` should now proceed by shrinking or deleting these bridges instead of patching broad core surfaces.
+This is the remaining schema/bootstrap migration frontier. Entry-resolver-only runtime bridges such as the website and newsletter bridges are no longer treated as source-retirement blockers by themselves.
 
 The stricter subset of bridges that still directly reference legacy store-managed source namespaces is declared separately in `ModulePathRegistry::legacyStoreManagedDirectRuntimeBridges()`. That smaller set is what `system/tests/module_store_dependency_boundary_test.php` enforces.
 
@@ -150,8 +137,10 @@ The audit also reports `runtime_coupling_status` for each bundle:
 
 - `bundle_only`
   - Runtime PHP files do not reference source-side module namespaces or `METIS_SRC_PATH`.
+- `core_runtime_dependency`
+  - Runtime PHP depends only on approved built-in core services or transitional core runtime surfaces such as `communications_inbound`.
 - `source_coupled`
-  - Runtime PHP still reaches into source-side module namespaces, core service namespaces, or source-path includes.
+  - Runtime PHP still reaches into unsupported source-side namespaces or source-path includes.
 
 This means a bundle can be entry-contract compliant while still needing a later runtime-isolation pass.
 
@@ -174,13 +163,15 @@ Current bundle-audit baseline:
 - Entry contract readiness:
   - `14/14` runtime bundles define their own module entry class.
 - Runtime isolation readiness:
-  - `14/14` currently audit as `bundle_only`
+  - `11/14` currently audit as `bundle_only`
+  - `3/14` currently audit as `core_runtime_dependency`
   - `0/14` currently audit as `source_coupled`
 
 Current delete-readiness interpretation:
 
 - Bundle coverage can be complete while delete readiness is still false.
-- The source tree is only safe to remove after runtime class loading no longer depends on `system/src/Metis/Modules/`.
+- Runtime class loading no longer depends on the built-in or transitional directories that were previously under `system/src/Metis/Modules/`.
+- The remaining tree is now the legacy store-backed source mirror set tracked by `module_source_retirement_audit.php`.
 
 ## Migration Rules
 

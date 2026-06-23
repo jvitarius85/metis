@@ -28,15 +28,15 @@ $request = $read( 'src/Metis/Core/Runtime/RequestRuntime.php' );
 $kernel = $read( 'src/Metis/Core/Kernel/Bootstrap.php' );
 $processRunner = $read( 'src/Metis/Core/Services/ProcessRunner.php' );
 $releaseManager = $read( 'src/Metis/Release/ReleaseManager.php' );
-$communicationsAttachments = $read( 'src/Metis/Modules/CommunicationsInbound/AttachmentStorageService.php' );
+$communicationsAttachments = $read( 'src/Metis/Core/TransitionModules/communications_inbound/AttachmentStorageService.php' );
 $finance = $read( 'src/Metis/Modules/Finance/FinanceV2Service.php' );
 $scanner = $read( 'tools/security_scan.php' );
-$settingsBootstrap = $read( 'modules/settings/views/_settings_bootstrap.php' );
-$settingsRuntime = $read( 'modules/settings/views/runtime.php' );
-$settingsJobsTasks = $read( 'modules/settings/views/jobs_tasks.php' );
-$settingsAjax = $read( 'modules/settings/assets/settings.ajax.php' );
-$settingsCss = $read( 'modules/settings/assets/settings.css' );
-$settingsJs = $read( 'modules/settings/assets/settings.js' );
+$settingsBootstrap = $read( 'src/Metis/Core/BuiltInServices/settings/views/_settings_bootstrap.php' );
+$settingsRuntime = $read( 'src/Metis/Core/BuiltInServices/settings/views/runtime.php' );
+$settingsJobsTasks = $read( 'src/Metis/Core/BuiltInServices/settings/views/jobs_tasks.php' );
+$settingsAjax = $read( 'src/Metis/Core/BuiltInServices/settings/assets/settings.ajax.php' );
+$settingsCss = $read( 'src/Metis/Core/BuiltInServices/settings/assets/settings.css' );
+$settingsJs = $read( 'src/Metis/Core/BuiltInServices/settings/assets/settings.js' );
 $helpersRuntime = $read( 'src/Metis/Core/Runtime/HelpersRuntime.php' );
 $coreBootstrap = $read( 'src/Metis/Core/CoreBootstrap.php' );
 $assetsRuntime = $read( 'src/Metis/Core/AssetsRuntime.php' );
@@ -225,7 +225,7 @@ $assert( str_contains( $settingsJs, 'schedulerCsrfAction' ) && str_contains( $se
 $assert( str_contains( $settingsJs, 'schedulerAuthRejected' ) && str_contains( $settingsJs, 'stopSchedulerPolling' ), 'Scheduler live polling must stop retrying after session integrity/auth rejects.' );
 $assert( str_contains( $settingsAjax, 'metis_update_service()->refreshUpdateState( true, \'settings_ajax\' )' ), 'Settings release refresh must refresh core and module update state together.' );
 $assert( str_contains( $settingsBootstrap, 'metis_release_status_snapshot' ), 'Settings bootstrap must continue to expose cached release status snapshots.' );
-$assert( str_contains( $read( 'modules/settings/views/about.php' ), 'Updates Available' ) && str_contains( $read( 'modules/settings/views/about.php' ), 'metis_module_update_status_snapshot' ), 'Settings About view must surface module update notifications from the cached module update service.' );
+$assert( str_contains( $read( 'src/Metis/Core/BuiltInServices/settings/views/about.php' ), 'Module Updates' ) && str_contains( $read( 'src/Metis/Core/BuiltInServices/settings/views/about.php' ), 'metis_module_update_status_snapshot' ), 'Settings About view must surface module update notifications from the cached module update service.' );
 
 if ( preg_match( '/function metis_settings_health_security_offense_clause\\(\\): string \\{(?P<body>.*?)\\n\\}/s', $settingsBootstrap, $match ) === 1 ) {
     $offenseClause = strtolower( (string) ( $match['body'] ?? '' ) );

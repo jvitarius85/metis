@@ -51,7 +51,7 @@ return [
     ],
     'sensitive_media_writes' => [
         [
-            'path' => 'system/src/Metis/Modules/CommunicationsInbound/AttachmentStorageService.php',
+            'path' => 'system/src/Metis/Core/TransitionModules/communications_inbound/AttachmentStorageService.php',
             'required_storage_class' => 'protected',
         ],
         [

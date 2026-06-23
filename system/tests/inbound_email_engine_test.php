@@ -92,24 +92,24 @@ if ( ! class_exists( 'Metis_Webhook_Exception' ) ) {
     }
 }
 
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/ValueObjects/ParseResult.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/ValueObjects/NormalizedInboundMessage.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/Contracts/MessageParserInterface.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ValueObjects/ParseResult.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ValueObjects/NormalizedInboundMessage.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/Contracts/MessageParserInterface.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/Services/EmailService.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Modules/GrandyStash/ConversationSupport.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Modules/Newsletter/Support.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/ParserRegistry.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/ParserEngine.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/WorkspaceGoogleService.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/InboundMessageNormalizer.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/PubSubPushVerifier.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/GmailClient.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/InboundMessageRepository.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/InboundAttachmentRepository.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/Settings.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/Parsers/BounceParser.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/Parsers/UnsubscribeParser.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/CommunicationsInbound/Parsers/GrandyStashParser.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ParserRegistry.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ParserEngine.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/WorkspaceGoogleService.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/InboundMessageNormalizer.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/PubSubPushVerifier.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/GmailClient.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/InboundMessageRepository.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/InboundAttachmentRepository.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/Settings.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/Parsers/BounceParser.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/Parsers/UnsubscribeParser.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/Parsers/GrandyStashParser.php';
 
 use Metis\Modules\CommunicationsInbound\GmailClient;
 use Metis\Modules\CommunicationsInbound\InboundMessageNormalizer;

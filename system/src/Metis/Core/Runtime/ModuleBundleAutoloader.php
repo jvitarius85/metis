@@ -65,7 +65,12 @@ final class ModuleBundleAutoloader {
     private static function roots(): array {
         $roots = [];
 
-        foreach ( [ ModulePathRegistry::moduleRootPath(), ModulePathRegistry::developmentBundleSourceRootPath() ] as $root ) {
+        foreach ( [
+            ModulePathRegistry::moduleRootPath(),
+            ModulePathRegistry::developmentBundleSourceRootPath(),
+            ModulePathRegistry::coreServiceRootPath(),
+            ModulePathRegistry::transitionModuleRootPath(),
+        ] as $root ) {
             $normalized = rtrim( $root, '/\\' );
             if ( $normalized !== '' && is_dir( $normalized ) && ! in_array( $normalized, $roots, true ) ) {
                 $roots[] = $normalized;

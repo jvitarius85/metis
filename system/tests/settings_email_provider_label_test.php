@@ -23,7 +23,7 @@ $core_service_path = static function ( string $relative ) use ( $root ): string 
 
 define( 'METIS_ROOT', dirname( $root ) . '/' );
 
-require_once $core_service_path( 'modules/settings/views/_settings_bootstrap.php' );
+require_once $root . '/src/Metis/Core/BuiltInServices/settings/views/_settings_bootstrap.php';
 
 $failures = [];
 $assertSame = static function ( string $expected, string $actual, string $message ) use ( &$failures ): void {

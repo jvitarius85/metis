@@ -203,7 +203,7 @@ function metis_key_clean( string $value ): string {
     return strtolower( preg_replace( '/[^a-z0-9_]/', '', $value ) ?? '' );
 }
 
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/People/ReadService.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/BuiltInServices/people/ReadService.php';
 
 $failures = [];
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {

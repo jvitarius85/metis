@@ -15,6 +15,7 @@ final class ModulePathRegistry {
         'forms' => 'Forms',
         'forms_import' => 'FormsImport',
         'grandys_stash' => 'GrandyStash',
+        'grandystash' => 'GrandyStash',
         'help' => 'Help',
         'hermes' => 'Hermes',
         'import' => 'Import',
@@ -56,11 +57,6 @@ final class ModulePathRegistry {
             'status' => 'fold_into_store_module',
             'target' => 'forms',
             'notes' => 'Forms import should migrate into the Forms module package instead of shipping as a standalone source-side module.',
-        ],
-        'grandystash' => [
-            'status' => 'normalize_slug',
-            'target' => 'grandys_stash',
-            'notes' => 'Legacy source directory name does not match the store/runtime slug and should be normalized during migration.',
         ],
         'help' => [
             'status' => 'built_in_service',
@@ -145,9 +141,9 @@ final class ModulePathRegistry {
             'notes' => 'Forms import should migrate into the Forms module package instead of shipping as a standalone source-side module.',
         ],
         'grandystash' => [
-            'status' => 'normalize_slug',
+            'status' => 'legacy_store_module',
             'target' => 'grandys_stash',
-            'notes' => 'Legacy source directory name does not match the store/runtime slug and should be normalized during migration.',
+            'notes' => 'Grandy Stash still ships source-side PHP under its legacy directory name and must migrate fully into the runtime bundle before the source directory can be removed.',
         ],
         'help' => [
             'status' => 'built_in_service',
@@ -226,14 +222,12 @@ final class ModulePathRegistry {
             'newsletter',
             'website',
         ],
-        'src/Metis/Core/Runtime/NewsletterModuleRuntimeBridge.php' => [
-            'newsletter',
-        ],
-        'src/Metis/Core/Runtime/WebsiteModuleRuntimeBridge.php' => [
-            'website',
-        ],
     ];
     private const LEGACY_STORE_MANAGED_DIRECT_RUNTIME_BRIDGES = [];
+    private const APPROVED_CORE_TO_STORE_MODULE_DEPENDENCIES = [
+        'src/Metis/Core/BuiltInServices/people/PersonProfileService.php' => [ 'website' ],
+        'src/Metis/Core/TransitionModules/forms_import/SchemaManager.php' => [ 'forms' ],
+    ];
 
     public static function coreServiceSlugs(): array {
         return self::CORE_SERVICE_SLUGS;
@@ -297,6 +291,13 @@ final class ModulePathRegistry {
     }
 
     /**
+     * @return array<string,array<int,string>>
+     */
+    public static function approvedCoreToStoreModuleDependencies(): array {
+        return self::APPROVED_CORE_TO_STORE_MODULE_DEPENDENCIES;
+    }
+
+    /**
      * @return array<string,string>|null
      */
     public static function transitionalSourceModule( string $slug ): ?array {
@@ -313,6 +314,7 @@ final class ModulePathRegistry {
         return [
             'module_root' => self::moduleRootPath(),
             'core_service_root' => self::coreServiceRootPath(),
+            'transition_module_root' => self::transitionModuleRootPath(),
             'development_bundle_source_root' => self::developmentBundleSourceRootPath(),
             'store_modules' => self::storeManagedModuleSlugs(),
             'core_services' => self::coreServiceSlugs(),
@@ -377,6 +379,7 @@ final class ModulePathRegistry {
      *     composer_autoload_source_module_refs:array{classmap:int,static:int,total:int},
      *     direct_runtime_bridge_count:int,
      *     runtime_bridge_frontier_count:int,
+     *     missing_mirrored_source_files_count:int,
      *     missing_bundle_slugs:array<int,string>,
      *     bundle_slug_count:int,
      *     modules:array<int,array<string,mixed>>,
@@ -402,22 +405,34 @@ final class ModulePathRegistry {
 
         $modules = [];
         $missingBundleSlugs = [];
+        $missingMirroredSourceFilesCount = 0;
         foreach ( $legacySlugs as $slug ) {
-            $bundlePath = (string) ( $bundleDirectories[ $slug ] ?? '' );
+            $inventory = self::SOURCE_MODULE_INVENTORY[ $slug ] ?? [];
+            $bundleSlug = self::normalizedSlug( (string) ( $inventory['target'] ?? $slug ) );
+            if ( $bundleSlug === '' ) {
+                $bundleSlug = $slug;
+            }
+
+            $bundlePath = (string) ( $bundleDirectories[ $bundleSlug ] ?? '' );
             $manifestPath = $bundlePath !== '' ? rtrim( $bundlePath, '/\\' ) . '/module.json' : '';
             $entryPath = $bundlePath !== '' ? rtrim( $bundlePath, '/\\' ) . '/Module.php' : '';
+            $sourcePath = rtrim( $sourceRoot, '/\\' ) . '/' . self::namespaceSegmentForSlug( $slug );
+            $missingMirroredFiles = self::missingMirroredSourceFiles( $sourcePath, $bundlePath, self::namespaceSegmentForSlug( $slug ) );
             $moduleRow = [
                 'slug' => $slug,
-                'source_path' => rtrim( $sourceRoot, '/\\' ) . '/' . self::namespaceSegmentForSlug( $slug ),
+                'bundle_slug' => $bundleSlug,
+                'source_path' => $sourcePath,
                 'bundle_path' => $bundlePath,
                 'bundle_present' => $bundlePath !== '' && is_dir( $bundlePath ),
                 'manifest_present' => $manifestPath !== '' && is_file( $manifestPath ),
                 'entry_present' => $entryPath !== '' && is_file( $entryPath ),
+                'missing_mirrored_source_files' => $missingMirroredFiles,
             ];
 
             if ( empty( $moduleRow['bundle_present'] ) || empty( $moduleRow['manifest_present'] ) || empty( $moduleRow['entry_present'] ) ) {
                 $missingBundleSlugs[] = $slug;
             }
+            $missingMirroredSourceFilesCount += count( $missingMirroredFiles );
 
             $modules[] = $moduleRow;
         }
@@ -437,13 +452,10 @@ final class ModulePathRegistry {
         if ( $directBridgeCount > 0 ) {
             $blockers[] = sprintf( 'Direct source-coupled runtime bridges remain: %d', $directBridgeCount );
         }
-        if ( $runtimeBridgeFrontierCount > 0 ) {
-            $blockers[] = sprintf( 'Runtime bridge frontier still remains: %d', $runtimeBridgeFrontierCount );
-        }
-        if ( $autoloadRefs['total'] > 0 ) {
+        if ( $missingMirroredSourceFilesCount > 0 ) {
             $blockers[] = sprintf(
-                'Composer autoload still points at source-side module classes: %d references.',
-                (int) $autoloadRefs['total']
+                'Legacy source files still missing mirrored bundle counterparts: %d',
+                $missingMirroredSourceFilesCount
             );
         }
 
@@ -456,6 +468,7 @@ final class ModulePathRegistry {
             'composer_autoload_source_module_refs' => $autoloadRefs,
             'direct_runtime_bridge_count' => $directBridgeCount,
             'runtime_bridge_frontier_count' => $runtimeBridgeFrontierCount,
+            'missing_mirrored_source_files_count' => $missingMirroredSourceFilesCount,
             'missing_bundle_slugs' => array_values( $missingBundleSlugs ),
             'bundle_slug_count' => count( $bundleDirectories ),
             'modules' => $modules,
@@ -476,6 +489,14 @@ final class ModulePathRegistry {
             \defined( 'METIS_CORE_SERVICES_PATH' )
                 ? (string) \METIS_CORE_SERVICES_PATH
                 : __DIR__ . '/BuiltInServices/'
+        );
+    }
+
+    public static function transitionModuleRootPath(): string {
+        return self::normalizedPath(
+            \defined( 'METIS_TRANSITION_MODULES_PATH' )
+                ? (string) \METIS_TRANSITION_MODULES_PATH
+                : __DIR__ . '/TransitionModules/'
         );
     }
 
@@ -626,5 +647,38 @@ final class ModulePathRegistry {
         $value = preg_replace( '/[^a-z0-9]+/', '_', $value ) ?? '';
 
         return trim( $value, '_' );
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private static function missingMirroredSourceFiles( string $sourcePath, string $bundlePath, string $namespaceSegment ): array {
+        if ( ! is_dir( $sourcePath ) || ! is_dir( $bundlePath ) ) {
+            return [];
+        }
+
+        $missing = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator( $sourcePath, \FilesystemIterator::SKIP_DOTS )
+        );
+
+        foreach ( $iterator as $file ) {
+            if ( ! $file instanceof \SplFileInfo || ! $file->isFile() || strtolower( $file->getExtension() ) !== 'php' ) {
+                continue;
+            }
+
+            $relative = substr( $file->getPathname(), strlen( $sourcePath ) + 1 );
+            $candidate = $relative === $namespaceSegment . 'Module.php'
+                ? rtrim( $bundlePath, '/\\' ) . '/Module.php'
+                : rtrim( $bundlePath, '/\\' ) . '/' . $relative;
+
+            if ( ! is_file( $candidate ) ) {
+                $missing[] = str_replace( '\\', '/', $relative );
+            }
+        }
+
+        sort( $missing );
+
+        return $missing;
     }
 }

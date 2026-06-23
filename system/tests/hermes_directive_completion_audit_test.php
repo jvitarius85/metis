@@ -66,7 +66,7 @@ foreach ( $requiredFiles as $relativePath ) {
     $assert( is_file( $root . '/' . $relativePath ), sprintf( 'Directive audit requires file [%s].', $relativePath ) );
 }
 
-$moduleSource = $read( 'src/Metis/Modules/Hermes/HermesModule.php' );
+$moduleSource = $read( 'src/Metis/Core/BuiltInServices/hermes/HermesModule.php' );
 $gatewaySource = $read( 'src/Metis/Hermes/HermesGateway.php' );
 $conversationStateSource = $read( 'src/Metis/Hermes/HermesConversationStateEngine.php' );
 $commandRegistrySource = $read( 'src/Metis/Hermes/HermesCommandRegistry.php' );
