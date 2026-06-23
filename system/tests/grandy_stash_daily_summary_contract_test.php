@@ -11,7 +11,7 @@ $resolve_relative = static fn ( string $relative ): string => metis_test_resolve
 
 
 $root = dirname( __DIR__ );
-$source = file_get_contents( $resolve_relative( 'src/Metis/Modules/GrandyStash/GrandyStashDailySummary.php' ) );
+$source = file_get_contents( $resolve_relative( 'modules/GrandyStash/GrandyStashDailySummary.php' ) );
 if ( ! is_string( $source ) || $source === '' ) {
     fwrite( STDERR, "Unable to read Grandy's Stash daily summary source.\n" );
     exit( 1 );

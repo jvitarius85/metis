@@ -195,7 +195,7 @@ namespace {
     function metis_json_encode( mixed $value ): string|false { return json_encode( $value ); }
 
     require_once $resolve_relative( 'modules/import/parsers/WordPressNewsletterArchiveParser.php' );
-    require_once $resolve_relative( 'src/Metis/Modules/Newsletter/CampaignService.php' );
+    require_once $resolve_relative( 'modules/Newsletter/CampaignService.php' );
     require_once $resolve_relative( 'modules/newsletter/services/import.php' );
 
     $failures = [];

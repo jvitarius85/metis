@@ -166,7 +166,7 @@ Public search only returns published articles. Admin article management can list
 - `/modules/help/views/search_page.php`
 - `/modules/help/views/article.php`
 - `/modules/help/views/category.php`
-- `/src/Metis/Modules/Help/HelpModule.php`
+- `/src/Metis/Core/BuiltInServices/help/HelpModule.php`
 - `/src/Metis/Core/HelpSearchStore.php`
 - `/src/Metis/Core/Help/Seeds/HelpDocumentsSeed.php`
 - `/system/enclave/help/article/save.php`

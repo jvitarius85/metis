@@ -141,10 +141,10 @@ namespace {
         return number_format( $value, $decimals, '.', ',' );
     }
 
-    require_once $resolve_relative( 'src/Metis/Modules/Newsletter/CampaignService.php' );
-    require_once $resolve_relative( 'src/Metis/Modules/Newsletter/WebsiteService.php' );
-    require_once $resolve_relative( 'src/Metis/Modules/Website/BlockRegistry.php' );
-    require_once $resolve_relative( 'src/Metis/Modules/Website/Services/BlockRenderer.php' );
+    require_once $resolve_relative( 'modules/Newsletter/CampaignService.php' );
+    require_once $resolve_relative( 'modules/Newsletter/WebsiteService.php' );
+    require_once $resolve_relative( 'modules/Website/BlockRegistry.php' );
+    require_once $resolve_relative( 'modules/Website/Services/BlockRenderer.php' );
 
     $failures = [];
     $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {

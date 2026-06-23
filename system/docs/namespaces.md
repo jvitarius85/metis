@@ -15,24 +15,24 @@
 
 # Suggested Module Structure
 
-- `src/Metis/Modules/Donations/DonationsModule.php`
-- `src/Metis/Modules/Donations/Services/StripeSyncService.php`
-- `src/Metis/Modules/Donations/Http/DonationWebhookController.php`
+- `modules/donations/Module.php`
+- `modules/donations/StripeDepositService.php`
+- `modules/donations/StripeReconciliationService.php`
 
 # Reference Migration
 
 - `Donations` remains the reference migration for store-managed module packaging.
 - The long-term runtime entrypoint is the module bundle under `system/modules/donations/` after installation.
 - During development, the canonical bundle source lives in the sibling private workspace under `../metis-private/modules/donations/`.
-- `src/Metis/Modules/Donations/DonationsModule.php` is now migration residue and must not be treated as the permanent runtime owner.
-- The same rule applies to the other store-managed modules still present under `src/Metis/Modules/`.
+- `modules/donations/Module.php` is the runtime entrypoint for the Donations bundle.
+- The same rule applies to the other store-managed bundles under `system/modules/`.
 
 # Current Module Pattern
 
 - Store-managed modules must be self-contained bundles with `module.json`, `Module.php`, and `bootstrap.php` in the runtime module root.
 - Built-in services remain under `src/Metis/Core/BuiltInServices/`.
-- `src/Metis/Modules/<Module>` is no longer a valid target for new store-managed feature work.
-- If a store module still exists under `src/Metis/Modules/`, it should be treated as migration debt waiting to be retired behind the module-store contract.
+- `modules/<slug>` is the valid target for store-managed feature work and runtime entry classes.
+- The retired source-module mirror must not be reintroduced.
 
 # Scaffold
 

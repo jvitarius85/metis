@@ -27,8 +27,8 @@ $moduleSchemaBridge = $read( 'src/Metis/Core/Runtime/ModuleSchemaRuntimeBridge.p
 $entryResolver = $read( 'src/Metis/Core/Runtime/RuntimeModuleEntryResolver.php' );
 $websiteBridge = $read( 'src/Metis/Core/Runtime/WebsiteModuleRuntimeBridge.php' );
 $newsletterBridge = $read( 'src/Metis/Core/Runtime/NewsletterModuleRuntimeBridge.php' );
-$websiteModule = $read( 'src/Metis/Modules/Website/WebsiteModule.php' );
-$newsletterModule = $read( 'src/Metis/Modules/Newsletter/NewsletterModule.php' );
+$websiteModule = $read( 'modules/website/Module.php' );
+$newsletterModule = $read( 'modules/newsletter/Module.php' );
 
 $assert(
     str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'contacts', 'ensureRuntimeSchema'" )

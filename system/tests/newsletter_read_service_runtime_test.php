@@ -146,9 +146,9 @@ function metis_newsletter_resolved_timezone(): DateTimeZone {
     return new DateTimeZone( 'UTC' );
 }
 
-require_once $resolve_relative( 'src/Metis/Modules/Newsletter/TemplateService.php' );
-require_once $resolve_relative( 'src/Metis/Modules/Newsletter/CampaignService.php' );
-require_once $resolve_relative( 'src/Metis/Modules/Newsletter/ReadService.php' );
+require_once $resolve_relative( 'modules/Newsletter/TemplateService.php' );
+require_once $resolve_relative( 'modules/Newsletter/CampaignService.php' );
+require_once $resolve_relative( 'modules/Newsletter/ReadService.php' );
 
 $failures = [];
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {

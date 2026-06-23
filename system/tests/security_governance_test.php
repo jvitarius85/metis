@@ -32,7 +32,7 @@ $processRunner = $read( 'src/Metis/Core/Services/ProcessRunner.php' );
 $releaseManager = $read( 'src/Metis/Release/ReleaseManager.php' );
 $integrityRuntime = $read( 'src/Metis/Core/IntegrityRuntime.php' );
 $recoveryService = $read( 'src/Metis/Core/Recovery/GitRecoveryService.php' );
-$financeService = $read( 'src/Metis/Modules/Finance/FinanceV2Service.php' );
+$financeService = $read( 'modules/Finance/FinanceV2Service.php' );
 $scanner = $read( 'tools/security_scan.php' );
 $blockedCatalog = $read( 'src/Metis/Hermes/HermesBlockedOperationCatalog.php' );
 $hermesRegistry = $read( 'src/Metis/Hermes/HermesToolRegistry.php' );
@@ -97,7 +97,7 @@ $broadApprovalPrefixes = [
     'system/modules/',
     'system/src/Metis/Core/',
     'system/src/Metis/Hermes/',
-    'system/src/Metis/Modules/',
+    'system/modules/',
     'system/tools/',
 ];
 foreach ( (array) ( $governance['approved_layers'] ?? [] ) as $bucket => $entries ) {

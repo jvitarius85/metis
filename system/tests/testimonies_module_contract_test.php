@@ -42,7 +42,7 @@ $ajaxSource = (string) @file_get_contents( $resolve_relative( 'modules/testimoni
 $jsSource = (string) @file_get_contents( $resolve_relative( 'modules/testimonies/assets/testimonies.js' ) );
 $editorJsSource = (string) @file_get_contents( $root . '/assets/js/editor/simple-editor.js' );
 $viewSource = (string) @file_get_contents( $resolve_relative( 'modules/testimonies/views/dashboard.php' ) );
-$websiteRendererSource = (string) @file_get_contents( $resolve_relative( 'src/Metis/Modules/Website/Services/WebsiteRenderer.php' ) );
+$websiteRendererSource = (string) @file_get_contents( $resolve_relative( 'modules/Website/Services/WebsiteRenderer.php' ) );
 
 $assert( is_array( $manifest ), 'Testimonies module.json must decode as valid JSON.' );
 $assert( (string) ( $manifest['slug'] ?? '' ) === 'testimonies', 'Testimonies manifest slug must be testimonies.' );

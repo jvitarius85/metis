@@ -6,7 +6,7 @@ Metis is migrating toward a module-store model where installable feature modules
 
 - `system/modules/` is the runtime source of truth for store-managed modules.
 - `system/src/Metis/Core/BuiltInServices/` is the source of truth for built-in core services.
-- `system/src/Metis/Modules/` still contains legacy source-side implementations that must be migrated deliberately before they can be removed.
+- The retired source-module tree has already been removed. Store-managed behavior now resolves from runtime bundles, while built-in and transitional runtime code stays under core-owned paths.
 - In development, the canonical bundle source currently lives in the sibling private workspace at `../metis-private/modules/` unless `METIS_PRIVATE_MODULES_ROOT` overrides it.
 
 ## Current Ownership Model
@@ -45,7 +45,7 @@ Metis is migrating toward a module-store model where installable feature modules
 
 ## Current Source Inventory
 
-`system/src/Metis/Modules/` is no longer a runtime discovery root, but it still contains legacy implementation code that must be migrated deliberately.
+The old source-module tree is retired and is no longer part of runtime discovery or packaging.
 
 - Legacy source-backed store modules still present:
   - `board`
@@ -65,10 +65,10 @@ Metis is migrating toward a module-store model where installable feature modules
 - Transitional source-only exceptions:
   - `communicationsinbound`
   - `formsimport`
-- Built-in core services have been relocated out of `system/src/Metis/Modules/` and now live under `system/src/Metis/Core/BuiltInServices/`.
-- Transitional core runtime code has been relocated out of `system/src/Metis/Modules/` and now lives under `system/src/Metis/Core/TransitionModules/`.
+- Built-in core services now live under `system/src/Metis/Core/BuiltInServices/`.
+- Transitional core runtime code now lives under `system/src/Metis/Core/TransitionModules/`.
 
-The canonical inventory lives in `ModulePathRegistry::sourceModuleInventory()`. Any new directory added under `system/src/Metis/Modules/` should fail contract tests until the migration inventory and runtime plan are updated intentionally.
+The canonical inventory lives in `ModulePathRegistry::sourceModuleInventory()`. New store-managed feature work should ship as bundle content, not as a source-side mirror.
 
 Metis also tracks the current set of core-to-store-module namespace dependencies in `system/tests/module_store_dependency_boundary_test.php`. That boundary is intentionally one-way:
 
@@ -110,7 +110,7 @@ module-slug/
   entities/
 ```
 
-The bundle must be self-contained for runtime behavior. It should not require feature implementation classes to already exist under `system/src/Metis/Modules/`.
+The bundle must be self-contained for runtime behavior. It should not require feature implementation classes outside the bundle or approved core-owned runtime surfaces.
 
 Metis now primes the declared module `entry` file before module-class resolution. This means a bundle can carry a real `Module.php` implementation instead of relying on a placeholder plus pre-bundled source classes.
 
@@ -154,7 +154,7 @@ The retirement audit currently treats these as hard blockers:
 
 - any legacy source-backed store module missing a bundle replacement in the development bundle source root
 - any remaining direct source-coupled runtime bridges
-- any unresolved runtime class loading path that still requires `system/src/Metis/Modules/`
+- any unresolved runtime class loading path that still depends on a removed source-side module mirror
 
 ## Current Audit Snapshot
 
@@ -170,12 +170,12 @@ Current bundle-audit baseline:
 Current delete-readiness interpretation:
 
 - Bundle coverage can be complete while delete readiness is still false.
-- Runtime class loading no longer depends on the built-in or transitional directories that were previously under `system/src/Metis/Modules/`.
+- Runtime class loading no longer depends on the retired source-module mirror.
 - The remaining tree is now the legacy store-backed source mirror set tracked by `module_source_retirement_audit.php`.
 
 ## Migration Rules
 
-- Do not add new store-managed feature logic under `system/src/Metis/Modules/`.
+- Do not reintroduce a source-side module mirror for store-managed feature logic.
 - New store-managed module work should ship inside the runtime bundle under `system/modules/<slug>/`.
 - Treat `system/modules/` as the only runtime location for store-delivered modules. Do not split feature behavior between runtime bundles and source-side module stubs.
 - Runtime discovery, compliance, recovery, and asset resolution should read the installed runtime module root, not source-side stubs.

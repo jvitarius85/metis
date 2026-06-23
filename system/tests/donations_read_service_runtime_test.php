@@ -165,7 +165,7 @@ function metis_get_deposits(): array {
     ];
 }
 
-require_once $resolve_relative( 'src/Metis/Modules/Donations/ReadService.php' );
+require_once $resolve_relative( 'modules/Donations/ReadService.php' );
 
 $failures = [];
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {

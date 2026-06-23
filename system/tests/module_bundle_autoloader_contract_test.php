@@ -42,7 +42,7 @@ foreach ( $bundleClasses as $class => $expectedPathFragment ) {
     $fileName = str_replace( '\\', '/', (string) $reflection->getFileName() );
     $assert(
         str_contains( $fileName, $expectedPathFragment ) && str_contains( $fileName, '/metis-private/' ),
-        sprintf( 'Bundle class [%s] must resolve from the bundle source root instead of src/Metis/Modules.', $class )
+        sprintf( 'Bundle class [%s] must resolve from the bundle source root instead of a retired source-module mirror.', $class )
     );
 }
 

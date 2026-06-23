@@ -335,10 +335,6 @@ final class ModulePathRegistry {
         return self::normalizedPath( dirname( $projectRoot ) . '/metis-private/modules/' );
     }
 
-    public static function sourceModuleRootPath(): string {
-        return self::normalizedPath( dirname( __DIR__, 3 ) . '/src/Metis/Modules/' );
-    }
-
     public static function resolveLogicalPath( string $path ): string {
         $normalized = ltrim( str_replace( '\\', '/', $path ), '/' );
         if ( str_starts_with( $normalized, 'system/' ) ) {
@@ -347,13 +343,6 @@ final class ModulePathRegistry {
 
         if ( $normalized === '' ) {
             return self::normalizedFilesystemPath( dirname( __DIR__, 3 ) );
-        }
-
-        if ( str_starts_with( $normalized, 'src/Metis/Modules/' ) ) {
-            $resolved = self::resolveLegacySourceModulePath( $normalized );
-            if ( $resolved !== null ) {
-                return $resolved;
-            }
         }
 
         if ( str_starts_with( $normalized, 'modules/' ) ) {
@@ -621,21 +610,17 @@ final class ModulePathRegistry {
         return trim( $value, '_' );
     }
 
-    private static function resolveLegacySourceModulePath( string $relative ): ?string {
-        $remainder = substr( $relative, strlen( 'src/Metis/Modules/' ) );
+    private static function resolveModuleAssetPath( string $relative ): ?string {
+        $remainder = substr( $relative, strlen( 'modules/' ) );
         $parts = array_values( array_filter( explode( '/', $remainder ), static fn ( string $part ): bool => $part !== '' ) );
-        $namespaceSegment = (string) array_shift( $parts );
-        if ( $namespaceSegment === '' ) {
+        $segment = (string) array_shift( $parts );
+        if ( $segment === '' ) {
             return null;
         }
 
-        $slug = self::slugForNamespaceSegment( $namespaceSegment );
+        $slug = self::slugForNamespaceSegment( $segment );
         if ( $slug === '' ) {
-            return null;
-        }
-
-        if ( isset( $parts[0] ) && $parts[0] === $namespaceSegment . 'Module.php' ) {
-            $parts[0] = 'Module.php';
+            $slug = self::normalizedSlug( $segment );
         }
 
         if ( self::isCoreServiceSlug( $slug ) ) {
@@ -650,28 +635,13 @@ final class ModulePathRegistry {
         $bundleSlug = is_array( $inventory )
             ? self::normalizedSlug( (string) ( $inventory['target'] ?? $slug ) )
             : $slug;
+
+        $namespaceSegment = self::namespaceSegmentForSlug( $slug );
+        if ( $namespaceSegment !== '' && isset( $parts[0] ) && $parts[0] === $namespaceSegment . 'Module.php' ) {
+            $parts[0] = 'Module.php';
+        }
+
         $moduleRoot = self::preferredStoreBundleRootPath( $bundleSlug );
-
-        return $moduleRoot === null ? null : self::buildResolvedPath( $moduleRoot, '', $parts );
-    }
-
-    private static function resolveModuleAssetPath( string $relative ): ?string {
-        $remainder = substr( $relative, strlen( 'modules/' ) );
-        $parts = array_values( array_filter( explode( '/', $remainder ), static fn ( string $part ): bool => $part !== '' ) );
-        $slug = self::normalizedSlug( (string) array_shift( $parts ) );
-        if ( $slug === '' ) {
-            return null;
-        }
-
-        if ( self::isCoreServiceSlug( $slug ) ) {
-            return self::buildResolvedPath( self::coreServiceRootPath(), $slug, $parts );
-        }
-
-        if ( isset( self::TRANSITIONAL_SOURCE_MODULES[ $slug ] ) ) {
-            return self::buildResolvedPath( self::transitionModuleRootPath(), $slug, $parts );
-        }
-
-        $moduleRoot = self::preferredStoreBundleRootPath( $slug );
 
         return $moduleRoot === null ? null : self::buildResolvedPath( $moduleRoot, '', $parts );
     }
@@ -686,40 +656,13 @@ final class ModulePathRegistry {
      * }
      */
     public static function retireLegacySourceModuleTree(): array {
-        $sourceRoot = rtrim( self::sourceModuleRootPath(), '/\\' );
         $result = [
             'status' => 'absent',
-            'source_root' => $sourceRoot,
+            'source_root' => '',
             'removed_directories' => [],
             'removed_files' => [],
             'failures' => [],
         ];
-
-        if ( ! is_dir( $sourceRoot ) ) {
-            return $result;
-        }
-
-        $children = array_values(
-            array_filter(
-                scandir( $sourceRoot ) ?: [],
-                static fn ( string $name ): bool => $name !== '.' && $name !== '..'
-            )
-        );
-
-        foreach ( $children as $child ) {
-            self::removeLegacySourceEntry(
-                $sourceRoot . '/' . $child,
-                $result['removed_directories'],
-                $result['removed_files'],
-                $result['failures']
-            );
-        }
-
-        if ( $result['failures'] === [] && is_dir( $sourceRoot ) && self::directoryIsEmpty( $sourceRoot ) && ! @rmdir( $sourceRoot ) ) {
-            $result['failures'][] = sprintf( 'Unable to remove retired source root [%s].', $sourceRoot );
-        }
-
-        $result['status'] = $result['failures'] === [] ? 'retired' : 'failed';
 
         return $result;
     }

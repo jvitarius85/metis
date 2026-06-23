@@ -48,7 +48,7 @@ identity, profile, and settings behavior.
 ## Website CMS
 
 Website is the official CMS surface for Metis. CMS behavior lives in
-`system/modules/website` and `system/src/Metis/Modules/Website`; a separate CMS
+`system/modules/website`; a separate CMS
 module is not required.
 
 The Website CMS supports pages, posts, templates, menus, media-backed content,

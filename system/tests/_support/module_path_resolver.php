@@ -13,22 +13,8 @@ function metis_test_private_modules_root( string $system_root ): string {
     return rtrim( str_replace( '\\', '/', dirname( $project_root ) . '/metis-private/modules' ), '/' );
 }
 
-function metis_test_resolve_module_relative( string $system_root, string $relative ): ?string {
-    $normalized = ltrim( str_replace( '\\', '/', $relative ), '/' );
-    if ( ! str_starts_with( $normalized, 'src/Metis/Modules/' ) ) {
-        return null;
-    }
-
-    return \Metis\Core\ModulePathRegistry::resolveLogicalPath( $normalized );
-}
-
 function metis_test_resolve_relative( string $system_root, string $relative ): string {
     $normalized = ltrim( str_replace( '\\', '/', $relative ), '/' );
-
-    $module_relative = metis_test_resolve_module_relative( $system_root, $normalized );
-    if ( is_string( $module_relative ) && $module_relative !== '' ) {
-        return $module_relative;
-    }
 
     return \Metis\Core\ModulePathRegistry::resolveLogicalPath( $normalized );
 }

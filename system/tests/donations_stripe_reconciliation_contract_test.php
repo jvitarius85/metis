@@ -19,7 +19,7 @@ $assert = static function ( bool $condition, string $message ) use ( &$failures 
     }
 };
 
-$source = file_get_contents( $resolve_relative( 'src/Metis/Modules/Donations/StripeReconciliationService.php' ) );
+$source = file_get_contents( $resolve_relative( 'modules/Donations/StripeReconciliationService.php' ) );
 $source = $source === false ? '' : $source;
 
 $run_nightly_start = strpos( $source, 'public static function runNightly' );

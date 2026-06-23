@@ -16,12 +16,12 @@ Last updated: 2026-03-21 (NAS SSH pass)
 | Test coverage | Newsletter document compile parity smoke test | PASS | Added PHP smoke test for structured newsletter blocks (`tests/modules/newsletter_document_compile_test.php`) validating compile output for `header/footer/social/unsubscribe/hero/video/columns` in `modules/newsletter/services/document.php` |
 | Website/Newsletter editor compliance | Control persistence (autosave + explicit save path) | PASS | `modules/newsletter/assets/newsletter.js` |
 | Import/reporting reconciliation | Preview include/exclude enforcement for pages/posts | PASS | `modules/import/assets/import.js`, `modules/import/assets/import.ajax.php` |
-| Import/reporting reconciliation | `import_jobs` preview/completed lifecycle persistence | PASS | `modules/import/assets/import.ajax.php`, `src/Metis/Modules/Import/SchemaManager.php` |
+| Import/reporting reconciliation | `import_jobs` preview/completed lifecycle persistence | PASS | `modules/import/assets/import.ajax.php`, `modules/import/SchemaManager.php` |
 | Import/reporting reconciliation | Directive-aligned conversion report keys present | PASS | `modules/import/assets/import.ajax.php` |
-| Popup/banner/form-host validation | Popup trigger/frequency normalization + runtime trigger support (`click`, `delay`, `load`, `scroll`, `exit`) | PASS | `src/Metis/Modules/Website/Services/PopupService.php`, `src/Metis/Modules/Website/Services/WebsiteRenderer.php` |
-| Popup/banner/form-host validation | Banner scheduling + targeting evaluation | PASS | `src/Metis/Modules/Website/Services/BannerService.php`, `src/Metis/Modules/Website/Services/WebsiteRenderer.php` |
-| Popup/banner/form-host validation | Forms embed host bridge for website/popup blocks | PASS | `modules/forms/bootstrap.php`, `src/Metis/Modules/Website/Services/BlockRenderer.php` |
-| Donation embed validation | Donation form block delegates to live donations embed bridge | PASS | `src/Metis/Modules/Website/Services/BlockRenderer.php`, `modules/donations/bootstrap.php` |
+| Popup/banner/form-host validation | Popup trigger/frequency normalization + runtime trigger support (`click`, `delay`, `load`, `scroll`, `exit`) | PASS | `modules/website/Services/PopupService.php`, `modules/website/Services/WebsiteRenderer.php` |
+| Popup/banner/form-host validation | Banner scheduling + targeting evaluation | PASS | `modules/website/Services/BannerService.php`, `modules/website/Services/WebsiteRenderer.php` |
+| Popup/banner/form-host validation | Forms embed host bridge for website/popup blocks | PASS | `modules/forms/bootstrap.php`, `modules/website/Services/BlockRenderer.php` |
+| Donation embed validation | Donation form block delegates to live donations embed bridge | PASS | `modules/website/Services/BlockRenderer.php`, `modules/donations/bootstrap.php` |
 | Donation embed validation | Public/active campaign guard + per-request lookup cache | PASS | `modules/donations/bootstrap.php` |
 
 ## Consolidated Result

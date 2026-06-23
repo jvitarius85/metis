@@ -30,7 +30,6 @@ block, menu, media, banner, popup, redirect, and theme behavior belongs under:
 
 ```
 system/modules/website
-system/src/Metis/Modules/Website
 ```
 
 Do not add a parallel CMS module or `metis_cms_*` AJAX actions. Editor/admin

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname( __DIR__ ) . '/src/Metis/Core/Runtime/CliToolGuard.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/ModulePathRegistry.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/Services/FileService.php';
 metis_require_cli_tool();
 
@@ -9,7 +10,7 @@ $root = dirname( __DIR__ );
 $metis_docs_files = new \Metis\Core\Services\FileService();
 $docsRoot = $root . '/docs';
 $modulesRoot = $root . '/modules';
-$srcModulesRoot = $root . '/src/Metis/Modules';
+$bundleSourceRoot = rtrim( \Metis\Core\ModulePathRegistry::developmentBundleSourceRootPath(), '/\\' );
 
 function metis_docs_mkdir( string $path ): void {
     global $metis_docs_files;
@@ -146,19 +147,8 @@ function metis_docs_schema_from_file( string $path, array $tableMap ): array {
     return $tables;
 }
 
-function metis_docs_find_module_source( string $srcModulesRoot, string $slug ): array {
-    $title = str_replace( ' ', '', metis_docs_slug_title( $slug ) );
-    $paths = glob( $srcModulesRoot . '/' . $title . '/*.php' ) ?: [];
-    if ( $paths === [] && is_file( $srcModulesRoot . '/' . $title . 'Module.php' ) ) {
-        $paths[] = $srcModulesRoot . '/' . $title . 'Module.php';
-    }
-    if ( $paths === [] ) {
-        foreach ( glob( $srcModulesRoot . '/*.php' ) ?: [] as $path ) {
-            if ( stripos( basename( $path ), str_replace( ' ', '', metis_docs_slug_title( $slug ) ) ) !== false ) {
-                $paths[] = $path;
-            }
-        }
-    }
+function metis_docs_find_module_source( string $bundleSourceRoot, string $slug ): array {
+    $paths = glob( $bundleSourceRoot . '/' . $slug . '/*.php' ) ?: [];
     sort( $paths );
     return $paths;
 }
@@ -280,15 +270,13 @@ foreach ( [
     $root . '/src/Metis/Core/Services/EmailService.php',
     $root . '/src/Metis/Core/Webhooks/WebhookRuntime.php',
     $root . '/src/Metis/Backup/BackupService.php',
-    $srcModulesRoot . '/Board/SchemaManager.php',
-    $srcModulesRoot . '/Calendar/SyncStore.php',
-    $srcModulesRoot . '/Finance/SchemaManager.php',
-    $srcModulesRoot . '/Forms/SchemaManager.php',
-    $srcModulesRoot . '/GrandyStash/GrandyStashSchemaManager.php',
-    $srcModulesRoot . '/Hermes/SchemaManager.php',
-    $srcModulesRoot . '/Newsletter/SchemaManager.php',
-    $srcModulesRoot . '/People/SchemaManager.php',
-    $srcModulesRoot . '/Website/SchemaManager.php',
+    $bundleSourceRoot . '/board/SchemaManager.php',
+    $bundleSourceRoot . '/calendar/SyncStore.php',
+    $bundleSourceRoot . '/finance/SchemaManager.php',
+    $bundleSourceRoot . '/forms/SchemaManager.php',
+    $bundleSourceRoot . '/grandys_stash/GrandyStashSchemaManager.php',
+    $bundleSourceRoot . '/newsletter/SchemaManager.php',
+    $bundleSourceRoot . '/website/SchemaManager.php',
     $root . '/modules/drive/includes/schema.php',
 ] as $schemaPath ) {
     $schema = array_replace( $schema, metis_docs_schema_from_file( $schemaPath, $tableMap ) );
@@ -381,7 +369,7 @@ foreach ( $manifests as $slug => $manifest ) {
     $views = (array) ( $manifest['views'] ?? [] );
     $ajaxFile = (string) ( $manifest['assets']['ajax'] ?? '' );
     $ajaxPath = $ajaxFile !== '' ? $moduleDir . '/assets/' . $ajaxFile : '';
-    $srcPaths = metis_docs_find_module_source( $srcModulesRoot, $slug );
+    $srcPaths = metis_docs_find_module_source( $bundleSourceRoot, $slug );
     $sourcePaths = array_merge( $srcPaths, [ $ajaxPath ] );
     foreach ( $views as $template ) {
         $sourcePaths[] = $moduleDir . '/templates/' . $template;

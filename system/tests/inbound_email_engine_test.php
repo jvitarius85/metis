@@ -101,8 +101,8 @@ require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communicati
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ValueObjects/NormalizedInboundMessage.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/Contracts/MessageParserInterface.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/Services/EmailService.php';
-require_once $resolve_relative( 'src/Metis/Modules/GrandyStash/ConversationSupport.php' );
-require_once $resolve_relative( 'src/Metis/Modules/Newsletter/Support.php' );
+require_once $resolve_relative( 'modules/GrandyStash/ConversationSupport.php' );
+require_once $resolve_relative( 'modules/Newsletter/Support.php' );
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ParserRegistry.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ParserEngine.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/WorkspaceGoogleService.php';

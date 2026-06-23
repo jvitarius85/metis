@@ -12,7 +12,7 @@ $resolve_relative = static fn ( string $relative ): string => metis_test_resolve
 
 $root = dirname( __DIR__ );
 require_once $root . '/src/Metis/Core/Runtime/SanitizationRuntime.php' );
-require_once $resolve_relative( 'src/Metis/Modules/Website/Services/StructuredWebsiteBuilderService.php' );
+require_once $resolve_relative( 'modules/Website/Services/StructuredWebsiteBuilderService.php' );
 
 $failures = [];
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {

@@ -149,8 +149,8 @@ namespace {
         return trim( $value, '-' );
     }
 
-    require_once $resolve_relative( 'src/Metis/Modules/Testimonies/SchemaManager.php' );
-    require_once $resolve_relative( 'src/Metis/Modules/Testimonies/Repository.php' );
+    require_once $resolve_relative( 'modules/Testimonies/SchemaManager.php' );
+    require_once $resolve_relative( 'modules/Testimonies/Repository.php' );
 
     $failures = [];
     $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {

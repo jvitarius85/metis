@@ -82,7 +82,7 @@ Watches are renewed by the `communications_inbound_watch_renewal` cron task ever
 
 ## Adding A New Parser
 
-1. Create a class under `src/Metis/Modules/CommunicationsInbound/Parsers/`.
+1. Create a class under `src/Metis/Core/TransitionModules/communications_inbound/Parsers/`.
 2. Implement `MessageParserInterface`.
 3. Return `ParseResult::matched(...)` with a stable classification and handler key.
 4. Register the parser in `CommunicationsInboundModule::registerParsersAndHandlers()`.
@@ -92,7 +92,7 @@ Parser rules must only inspect `NormalizedInboundMessage`. They should not mutat
 
 ## Adding A New Handler
 
-1. Create a class under `src/Metis/Modules/CommunicationsInbound/Handlers/`.
+1. Create a class under `src/Metis/Core/TransitionModules/communications_inbound/Handlers/`.
 2. Implement `MessageHandlerInterface`.
 3. Keep business updates inside the handler.
 4. Return a structured result with `handled`, `status`, `metadata`, and optional `links`.

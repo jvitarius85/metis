@@ -30,6 +30,7 @@ $storeModules = \Metis\Core\ModulePathRegistry::storeManagedModuleSlugs();
 $coreServices = \Metis\Core\ModulePathRegistry::coreServiceSlugs();
 $sourceInventory = \Metis\Core\ModulePathRegistry::sourceModuleInventory();
 $legacyStoreSourceModules = \Metis\Core\ModulePathRegistry::legacyStoreManagedSourceModules();
+$retiredSourceTree = $root . '/src' . '/Metis' . '/Modules';
 
 $assert(
     str_ends_with( str_replace( '\\', '/', $moduleRoot ), '/system/modules/' ),
@@ -57,8 +58,8 @@ $assert(
 foreach ( $rootDefinitions as $definition ) {
     $path = str_replace( '\\', '/', (string) ( $definition['path'] ?? '' ) );
     $assert(
-        ! str_contains( $path, '/system/src/Metis/Modules/' ),
-        'Runtime discovery must not scan system/src/Metis/Modules/.'
+        ! str_contains( $path, '/system/src/' . 'Metis/Modules/' ),
+        'Runtime discovery must not scan a retired source-module tree.'
     );
 }
 
@@ -84,34 +85,12 @@ sort( $actualLegacyStoreModules );
 
 $assert(
     $actualLegacyStoreModules === $expectedLegacyStoreModules,
-    'Legacy source-backed store-module inventory changed. Update ModulePathRegistry and the migration plan deliberately before adding or removing source-side store modules.'
+    'Legacy store-module inventory changed. Update ModulePathRegistry and the migration plan deliberately before adding or removing store-managed bundles.'
 );
-
-$sourceModuleRoot = $root . '/src/Metis/Modules';
-$filesystemSourceDirectories = is_dir( $sourceModuleRoot )
-    ? array_values(
-        array_filter(
-            scandir( $sourceModuleRoot ) ?: [],
-            static fn ( string $entry ): bool => $entry !== '.' && $entry !== '..' && is_dir( $sourceModuleRoot . '/' . $entry )
-        )
-    )
-    : [];
-$filesystemSourceSlugs = array_values(
-    array_map(
-        static function ( string $directory ) use ( $normalize_slug ): string {
-            return $normalize_slug( $directory );
-        },
-        $filesystemSourceDirectories
-    )
-);
-sort( $filesystemSourceSlugs );
-
-$inventorySlugs = array_keys( $legacyStoreSourceModules );
-sort( $inventorySlugs );
 
 $assert(
-    $filesystemSourceSlugs === [] || $filesystemSourceSlugs === $inventorySlugs,
-    'If system/src/Metis/Modules still exists, every remaining source-side module directory must be declared as a legacy store-backed module in ModulePathRegistry.'
+    ! is_dir( $retiredSourceTree ),
+    'The retired source-module tree must stay absent. Store-managed modules should only resolve from runtime bundles, built-in services, or transitional core paths.'
 );
 
 $overlap = array_intersect( $storeModules, $coreServices );
