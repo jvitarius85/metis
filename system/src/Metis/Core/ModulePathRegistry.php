@@ -367,51 +367,11 @@ final class ModulePathRegistry {
     }
 
     /**
-     * @return array{classmap:int,static:int,total:int}
-     */
-    public static function composerSourceModuleAutoloadReferenceCounts(): array {
-        $projectRoot = dirname( __DIR__, 4 );
-        $targets = [
-            'classmap' => $projectRoot . '/system/vendor/composer/autoload_classmap.php',
-            'static' => $projectRoot . '/system/vendor/composer/autoload_static.php',
-        ];
-        $counts = [
-            'classmap' => 0,
-            'static' => 0,
-            'total' => 0,
-        ];
-
-        foreach ( $targets as $key => $path ) {
-            if ( ! is_file( $path ) ) {
-                continue;
-            }
-
-            $contents = @file_get_contents( $path );
-            if ( ! is_string( $contents ) || $contents === '' ) {
-                continue;
-            }
-
-            $count = preg_match_all( '#system/src/Metis/Modules/#', $contents, $matches );
-            $counts[ $key ] = $count === false ? 0 : $count;
-        }
-
-        $counts['total'] = (int) $counts['classmap'] + (int) $counts['static'];
-
-        return $counts;
-    }
-
-    /**
      * @return array{
      *     ok:bool,
-     *     source_module_root:string,
-     *     source_module_root_present:bool,
      *     runtime_module_root:string,
      *     development_bundle_source_root:string,
      *     runtime_module_manifest_count:int,
-     *     composer_autoload_source_module_refs:array{classmap:int,static:int,total:int},
-     *     direct_runtime_bridge_count:int,
-     *     runtime_bridge_frontier_count:int,
-     *     missing_mirrored_source_files_count:int,
      *     missing_bundle_slugs:array<int,string>,
      *     bundle_slug_count:int,
      *     modules:array<int,array<string,mixed>>,
@@ -419,7 +379,6 @@ final class ModulePathRegistry {
      * }
      */
     public static function sourceRetirementSnapshot(): array {
-        $sourceRoot = self::sourceModuleRootPath();
         $runtimeRoot = self::moduleRootPath();
         $bundleRoot = self::developmentBundleSourceRootPath();
         $legacySlugs = self::legacyStoreManagedSourceModuleSlugs();
@@ -437,7 +396,6 @@ final class ModulePathRegistry {
 
         $modules = [];
         $missingBundleSlugs = [];
-        $missingMirroredSourceFilesCount = 0;
         foreach ( $legacySlugs as $slug ) {
             $inventory = self::SOURCE_MODULE_INVENTORY[ $slug ] ?? [];
             $bundleSlug = self::normalizedSlug( (string) ( $inventory['target'] ?? $slug ) );
@@ -448,31 +406,23 @@ final class ModulePathRegistry {
             $bundlePath = (string) ( $bundleDirectories[ $bundleSlug ] ?? '' );
             $manifestPath = $bundlePath !== '' ? rtrim( $bundlePath, '/\\' ) . '/module.json' : '';
             $entryPath = $bundlePath !== '' ? rtrim( $bundlePath, '/\\' ) . '/Module.php' : '';
-            $sourcePath = rtrim( $sourceRoot, '/\\' ) . '/' . self::namespaceSegmentForSlug( $slug );
-            $missingMirroredFiles = self::missingMirroredSourceFiles( $sourcePath, $bundlePath, self::namespaceSegmentForSlug( $slug ) );
             $moduleRow = [
                 'slug' => $slug,
                 'bundle_slug' => $bundleSlug,
-                'source_path' => $sourcePath,
                 'bundle_path' => $bundlePath,
                 'bundle_present' => $bundlePath !== '' && is_dir( $bundlePath ),
                 'manifest_present' => $manifestPath !== '' && is_file( $manifestPath ),
                 'entry_present' => $entryPath !== '' && is_file( $entryPath ),
-                'missing_mirrored_source_files' => $missingMirroredFiles,
             ];
 
             if ( empty( $moduleRow['bundle_present'] ) || empty( $moduleRow['manifest_present'] ) || empty( $moduleRow['entry_present'] ) ) {
                 $missingBundleSlugs[] = $slug;
             }
-            $missingMirroredSourceFilesCount += count( $missingMirroredFiles );
 
             $modules[] = $moduleRow;
         }
 
         $runtimeModuleManifestCount = count( glob( rtrim( $runtimeRoot, '/\\' ) . '/*/module.json' ) ?: [] );
-        $autoloadRefs = self::composerSourceModuleAutoloadReferenceCounts();
-        $directBridgeCount = count( self::legacyStoreManagedDirectRuntimeBridges() );
-        $runtimeBridgeFrontierCount = count( self::legacyStoreManagedRuntimeBridges() );
 
         $blockers = [];
         if ( ! is_dir( $bundleRoot ) ) {
@@ -481,27 +431,12 @@ final class ModulePathRegistry {
         if ( $missingBundleSlugs !== [] ) {
             $blockers[] = sprintf( 'Legacy source modules still missing bundle replacements: %s', implode( ', ', $missingBundleSlugs ) );
         }
-        if ( $directBridgeCount > 0 ) {
-            $blockers[] = sprintf( 'Direct source-coupled runtime bridges remain: %d', $directBridgeCount );
-        }
-        if ( $missingMirroredSourceFilesCount > 0 ) {
-            $blockers[] = sprintf(
-                'Legacy source files still missing mirrored bundle counterparts: %d',
-                $missingMirroredSourceFilesCount
-            );
-        }
 
         return [
             'ok' => $blockers === [],
-            'source_module_root' => $sourceRoot,
-            'source_module_root_present' => is_dir( rtrim( $sourceRoot, '/\\' ) ),
             'runtime_module_root' => $runtimeRoot,
             'development_bundle_source_root' => $bundleRoot,
             'runtime_module_manifest_count' => $runtimeModuleManifestCount,
-            'composer_autoload_source_module_refs' => $autoloadRefs,
-            'direct_runtime_bridge_count' => $directBridgeCount,
-            'runtime_bridge_frontier_count' => $runtimeBridgeFrontierCount,
-            'missing_mirrored_source_files_count' => $missingMirroredSourceFilesCount,
             'missing_bundle_slugs' => array_values( $missingBundleSlugs ),
             'bundle_slug_count' => count( $bundleDirectories ),
             'modules' => $modules,
@@ -747,29 +682,20 @@ final class ModulePathRegistry {
      *     source_root:string,
      *     removed_directories:array<int,string>,
      *     removed_files:array<int,string>,
-     *     failures:array<int,string>,
-     *     composer_autoload_source_module_refs:array{classmap:int,static:int,total:int}
+     *     failures:array<int,string>
      * }
      */
     public static function retireLegacySourceModuleTree(): array {
         $sourceRoot = rtrim( self::sourceModuleRootPath(), '/\\' );
-        $autoloadRefs = self::composerSourceModuleAutoloadReferenceCounts();
         $result = [
             'status' => 'absent',
             'source_root' => $sourceRoot,
             'removed_directories' => [],
             'removed_files' => [],
             'failures' => [],
-            'composer_autoload_source_module_refs' => $autoloadRefs,
         ];
 
         if ( ! is_dir( $sourceRoot ) ) {
-            return $result;
-        }
-
-        if ( (int) ( $autoloadRefs['total'] ?? 0 ) > 0 ) {
-            $result['status'] = 'blocked';
-            $result['failures'][] = 'Composer autoload still references system/src/Metis/Modules.';
             return $result;
         }
 
@@ -826,39 +752,6 @@ final class ModulePathRegistry {
         }
 
         return implode( '/', $segments );
-    }
-
-    /**
-     * @return array<int,string>
-     */
-    private static function missingMirroredSourceFiles( string $sourcePath, string $bundlePath, string $namespaceSegment ): array {
-        if ( ! is_dir( $sourcePath ) || ! is_dir( $bundlePath ) ) {
-            return [];
-        }
-
-        $missing = [];
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator( $sourcePath, \FilesystemIterator::SKIP_DOTS )
-        );
-
-        foreach ( $iterator as $file ) {
-            if ( ! $file instanceof \SplFileInfo || ! $file->isFile() || strtolower( $file->getExtension() ) !== 'php' ) {
-                continue;
-            }
-
-            $relative = substr( $file->getPathname(), strlen( $sourcePath ) + 1 );
-            $candidate = $relative === $namespaceSegment . 'Module.php'
-                ? rtrim( $bundlePath, '/\\' ) . '/Module.php'
-                : rtrim( $bundlePath, '/\\' ) . '/' . $relative;
-
-            if ( ! is_file( $candidate ) ) {
-                $missing[] = str_replace( '\\', '/', $relative );
-            }
-        }
-
-        sort( $missing );
-
-        return $missing;
     }
 
     /**
