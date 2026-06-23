@@ -84,6 +84,14 @@ final class RecoveryPolicyService {
         return (bool) $this->get('maintenance_mode_on_failure', true);
     }
 
+    public function automaticReleaseRollbackEnabled(): bool {
+        return $this->settingEnabled('recovery_release_rollback_enabled', (bool) $this->get('recovery_release_rollback_enabled', true));
+    }
+
+    public function releaseBootVerificationPasses(): int {
+        return max(1, (int) $this->get('release_boot_verification_passes', 2));
+    }
+
     /** @return array<int,string> */
     public function criticalFiles(): array {
         return array_values(array_filter(array_map('strval', (array) $this->get('critical_files', []))));
@@ -109,6 +117,8 @@ final class RecoveryPolicyService {
             'recovery_preboot_enabled' => false,
             'recovery_runtime_enabled' => false,
             'recovery_file_mutation_enabled' => false,
+            'recovery_release_rollback_enabled' => true,
+            'release_boot_verification_passes' => 2,
             'allowed_git_remotes' => [],
             'allowed_fallback_branch' => 'stable',
             'allow_latest_fallback' => false,

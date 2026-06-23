@@ -5,6 +5,7 @@ namespace Metis\Release;
 
 use Metis\Core\Application;
 use Metis\Core\Cache\CacheService;
+use Metis\Core\ModulePathRegistry;
 use Metis\Core\Services\ProcessRunner;
 use Metis\Core\Version;
 
@@ -248,6 +249,18 @@ final class ReleaseManager {
             ];
         }
 
+        $targetVersion = (string) ( $release['version'] ?? $this->versionFromTag( $tag ) );
+        $modulePlan = $this->planModuleCompatibility( $targetVersion );
+        if ( ! empty( $modulePlan['blocked'] ) ) {
+            $this->progress( 'failed', 'Installed modules are not ready for this core update.', 100 );
+            return [
+                'ok' => false,
+                'status' => 'module_compatibility_blocked',
+                'message' => (string) ( $modulePlan['message'] ?? 'Installed modules are not ready for this core update.' ),
+                'module_plan' => $modulePlan,
+            ];
+        }
+
         $this->progress( 'integrity', 'Running integrity preflight.', 15 );
         $integrity = $this->preflightIntegrityCheck( 'pre_update' );
         if ( ! empty( $integrity['blocked'] ) ) {
@@ -257,18 +270,6 @@ final class ReleaseManager {
                 'status' => 'integrity_blocked',
                 'message' => 'Integrity verification must pass before an update can be applied.',
                 'integrity' => $integrity,
-            ];
-        }
-
-        $this->progress( 'modules', 'Running module compliance preflight.', 25 );
-        $compliance = $this->preflightModuleComplianceCheck();
-        if ( ! empty( $compliance['blocked'] ) ) {
-            $this->progress( 'failed', 'Module compliance blocked the update.', 100 );
-            return [
-                'ok' => false,
-                'status' => 'module_compliance_blocked',
-                'message' => 'Module compliance verification must pass before an update can be applied.',
-                'module_compliance' => $compliance,
             ];
         }
 
@@ -290,8 +291,92 @@ final class ReleaseManager {
             'version' => Version::current(),
         ];
 
+        $this->persistPendingReleaseTransaction( [
+            'status' => 'in_progress',
+            'mode' => 'git',
+            'trigger' => $trigger,
+            'target_tag' => $tag,
+            'target_version' => $targetVersion,
+            'previous' => $previous,
+            'backup' => [
+                'archive_path' => (string) ( $backup['archive_path'] ?? '' ),
+                'sha256' => (string) ( $backup['sha256'] ?? '' ),
+            ],
+            'module_plan' => $this->transactionPlanSnapshot( $modulePlan ),
+            'verification_boots_remaining' => $this->releaseBootVerificationPasses(),
+            'rollback_requested' => false,
+            'started_at' => gmdate( 'c' ),
+        ] );
+
+        if ( ! empty( $modulePlan['required_update_candidates'] ) ) {
+            $this->progress( 'modules', 'Installing required module updates before core update.', 45 );
+            $moduleUpdateResult = $this->applyRequiredModuleUpdates( $modulePlan, $trigger );
+            if ( empty( $moduleUpdateResult['ok'] ) ) {
+                $this->clearPendingReleaseTransaction( [
+                    'status' => 'module_update_failed',
+                    'target_tag' => $tag,
+                    'target_version' => $targetVersion,
+                    'message' => (string) ( $moduleUpdateResult['message'] ?? 'Module updates failed before the core update could continue.' ),
+                ] );
+                $this->progress( 'failed', 'Required module updates failed.', 100 );
+                return $moduleUpdateResult + [
+                    'release' => $release,
+                    'module_plan' => $modulePlan,
+                ];
+            }
+
+            $modulePlan = (array) ( $moduleUpdateResult['module_plan'] ?? $this->planModuleCompatibility( $targetVersion ) );
+            if ( ! empty( $modulePlan['blocked'] ) ) {
+                $this->clearPendingReleaseTransaction( [
+                    'status' => 'module_compatibility_blocked',
+                    'target_tag' => $tag,
+                    'target_version' => $targetVersion,
+                    'message' => (string) ( $modulePlan['message'] ?? 'Installed modules are not ready for this core update.' ),
+                ] );
+                $this->progress( 'failed', 'Installed modules are still not ready after updates.', 100 );
+                return [
+                    'ok' => false,
+                    'status' => 'module_compatibility_blocked',
+                    'message' => (string) ( $modulePlan['message'] ?? 'Installed modules are not ready for this core update.' ),
+                    'module_plan' => $modulePlan,
+                    'module_updates' => $moduleUpdateResult,
+                ];
+            }
+
+            $this->mergePendingReleaseTransaction( [
+                'status' => 'in_progress',
+                'module_plan' => $this->transactionPlanSnapshot( $modulePlan ),
+                'module_updates' => (array) ( $moduleUpdateResult['updates'] ?? [] ),
+            ] );
+        }
+
+        $this->progress( 'modules', 'Running module compliance preflight.', 52 );
+        $compliance = $this->preflightModuleComplianceCheck();
+        if ( ! empty( $compliance['blocked'] ) ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'module_compliance_blocked',
+                'target_tag' => $tag,
+                'target_version' => $targetVersion,
+                'message' => 'Module compliance verification must pass before an update can be applied.',
+            ] );
+            $this->progress( 'failed', 'Module compliance blocked the update.', 100 );
+            return [
+                'ok' => false,
+                'status' => 'module_compliance_blocked',
+                'message' => 'Module compliance verification must pass before an update can be applied.',
+                'module_compliance' => $compliance,
+                'module_plan' => $modulePlan,
+            ];
+        }
+
         $this->progress( 'fetch', 'Verifying release tag locally.', 55 );
         if ( ! $this->ensureLocalTagAvailable( $tag, $repository ) ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'tag_unavailable',
+                'target_tag' => $tag,
+                'target_version' => $targetVersion,
+                'message' => 'The requested release tag is not available in the local repository and could not be fetched.',
+            ] );
             $this->progress( 'failed', 'Release tag could not be fetched.', 100 );
             return [
                 'ok' => false,
@@ -312,6 +397,12 @@ final class ReleaseManager {
         ] );
 
         if ( (int) ( $checkout['exit_code'] ?? 1 ) !== 0 ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'checkout_failed',
+                'target_tag' => $tag,
+                'target_version' => $targetVersion,
+                'message' => 'Git could not check out the requested release tag.',
+            ] );
             $this->progress( 'failed', 'Git checkout failed.', 100 );
             return [
                 'ok' => false,
@@ -756,6 +847,18 @@ final class ReleaseManager {
             ];
         }
 
+        $targetVersion = (string) ( $release['version'] ?? $this->versionFromTag( $tag ) );
+        $modulePlan = $this->planModuleCompatibility( $targetVersion );
+        if ( ! empty( $modulePlan['blocked'] ) ) {
+            $this->progress( 'failed', 'Installed modules are not ready for this core update.', 100 );
+            return [
+                'ok' => false,
+                'status' => 'module_compatibility_blocked',
+                'message' => (string) ( $modulePlan['message'] ?? 'Installed modules are not ready for this core update.' ),
+                'module_plan' => $modulePlan,
+            ];
+        }
+
         $this->progress( 'integrity', 'Running integrity preflight.', 15 );
         $integrity = $this->preflightIntegrityCheck( 'pre_update_archive' );
         if ( ! empty( $integrity['blocked'] ) ) {
@@ -765,18 +868,6 @@ final class ReleaseManager {
                 'status' => 'integrity_blocked',
                 'message' => 'Integrity verification must pass before an archive update can be applied.',
                 'integrity' => $integrity,
-            ];
-        }
-
-        $this->progress( 'modules', 'Running module compliance preflight.', 25 );
-        $compliance = $this->preflightModuleComplianceCheck();
-        if ( ! empty( $compliance['blocked'] ) ) {
-            $this->progress( 'failed', 'Module compliance blocked the update.', 100 );
-            return [
-                'ok' => false,
-                'status' => 'module_compliance_blocked',
-                'message' => 'Module compliance verification must pass before an archive update can be applied.',
-                'module_compliance' => $compliance,
             ];
         }
 
@@ -792,9 +883,99 @@ final class ReleaseManager {
             ];
         }
 
+        $previous = [
+            'tag' => (string) ( $this->readState()['installed_tag'] ?? '' ),
+            'commit' => (string) ( $this->readState()['installed_commit'] ?? '' ),
+            'version' => Version::current(),
+        ];
+
+        $this->persistPendingReleaseTransaction( [
+            'status' => 'in_progress',
+            'mode' => 'archive',
+            'trigger' => $trigger,
+            'target_tag' => $tag,
+            'target_version' => $targetVersion,
+            'previous' => $previous,
+            'backup' => [
+                'archive_path' => (string) ( $backup['archive_path'] ?? '' ),
+                'sha256' => (string) ( $backup['sha256'] ?? '' ),
+            ],
+            'module_plan' => $this->transactionPlanSnapshot( $modulePlan ),
+            'verification_boots_remaining' => $this->releaseBootVerificationPasses(),
+            'rollback_requested' => false,
+            'started_at' => gmdate( 'c' ),
+        ] );
+
+        if ( ! empty( $modulePlan['required_update_candidates'] ) ) {
+            $this->progress( 'modules', 'Installing required module updates before core update.', 45 );
+            $moduleUpdateResult = $this->applyRequiredModuleUpdates( $modulePlan, $trigger );
+            if ( empty( $moduleUpdateResult['ok'] ) ) {
+                $this->clearPendingReleaseTransaction( [
+                    'status' => 'module_update_failed',
+                    'target_tag' => $tag,
+                    'target_version' => $targetVersion,
+                    'message' => (string) ( $moduleUpdateResult['message'] ?? 'Module updates failed before the core update could continue.' ),
+                ] );
+                $this->progress( 'failed', 'Required module updates failed.', 100 );
+                return $moduleUpdateResult + [
+                    'release' => $release,
+                    'module_plan' => $modulePlan,
+                ];
+            }
+
+            $modulePlan = (array) ( $moduleUpdateResult['module_plan'] ?? $this->planModuleCompatibility( $targetVersion ) );
+            if ( ! empty( $modulePlan['blocked'] ) ) {
+                $this->clearPendingReleaseTransaction( [
+                    'status' => 'module_compatibility_blocked',
+                    'target_tag' => $tag,
+                    'target_version' => $targetVersion,
+                    'message' => (string) ( $modulePlan['message'] ?? 'Installed modules are not ready for this core update.' ),
+                ] );
+                $this->progress( 'failed', 'Installed modules are still not ready after updates.', 100 );
+                return [
+                    'ok' => false,
+                    'status' => 'module_compatibility_blocked',
+                    'message' => (string) ( $modulePlan['message'] ?? 'Installed modules are not ready for this core update.' ),
+                    'module_plan' => $modulePlan,
+                    'module_updates' => $moduleUpdateResult,
+                ];
+            }
+
+            $this->mergePendingReleaseTransaction( [
+                'status' => 'in_progress',
+                'module_plan' => $this->transactionPlanSnapshot( $modulePlan ),
+                'module_updates' => (array) ( $moduleUpdateResult['updates'] ?? [] ),
+            ] );
+        }
+
+        $this->progress( 'modules', 'Running module compliance preflight.', 52 );
+        $compliance = $this->preflightModuleComplianceCheck();
+        if ( ! empty( $compliance['blocked'] ) ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'module_compliance_blocked',
+                'target_tag' => $tag,
+                'target_version' => $targetVersion,
+                'message' => 'Module compliance verification must pass before an archive update can be applied.',
+            ] );
+            $this->progress( 'failed', 'Module compliance blocked the update.', 100 );
+            return [
+                'ok' => false,
+                'status' => 'module_compliance_blocked',
+                'message' => 'Module compliance verification must pass before an archive update can be applied.',
+                'module_compliance' => $compliance,
+                'module_plan' => $modulePlan,
+            ];
+        }
+
         $this->progress( 'download', 'Downloading trusted release archive.', 52 );
         $archive = $this->downloadReleaseArchive( $tag );
         if ( empty( $archive['ok'] ) ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'archive_download_failed',
+                'target_tag' => $tag,
+                'target_version' => $targetVersion,
+                'message' => 'Release archive could not be downloaded.',
+            ] );
             $this->progress( 'failed', 'Release archive download failed.', 100 );
             return $archive + [
                 'ok' => false,
@@ -805,6 +986,12 @@ final class ReleaseManager {
         $expected_hash = strtolower( trim( (string) ( $release['sha256'] ?? '' ) ) );
         $actual_hash = strtolower( trim( (string) ( $archive['sha256'] ?? '' ) ) );
         if ( $expected_hash !== '' && ( $actual_hash === '' || ! hash_equals( $expected_hash, $actual_hash ) ) ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'archive_checksum_failed',
+                'target_tag' => $tag,
+                'target_version' => $targetVersion,
+                'message' => 'Release archive checksum did not match the trusted release manifest.',
+            ] );
             $this->progress( 'failed', 'Release archive checksum did not match.', 100 );
             return [
                 'ok' => false,
@@ -818,6 +1005,12 @@ final class ReleaseManager {
         $this->progress( 'extract', 'Validating and extracting release archive.', 64 );
         $extracted = $this->extractReleaseArchive( (string) $archive['path'], $tag );
         if ( empty( $extracted['ok'] ) ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'archive_extract_failed',
+                'target_tag' => $tag,
+                'target_version' => $targetVersion,
+                'message' => 'Release archive could not be extracted.',
+            ] );
             $this->progress( 'failed', 'Release archive extraction failed.', 100 );
             return $extracted + [
                 'ok' => false,
@@ -829,6 +1022,12 @@ final class ReleaseManager {
         $this->progress( 'apply', 'Applying release files.', 76 );
         $applied = $this->copyArchivePayload( (string) $extracted['source_root'] );
         if ( empty( $applied['ok'] ) ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'archive_apply_failed',
+                'target_tag' => $tag,
+                'target_version' => $targetVersion,
+                'message' => 'Release archive files could not be copied into place.',
+            ] );
             $this->progress( 'failed', 'Release files could not be applied.', 100 );
             return $applied + [
                 'ok' => false,
@@ -843,11 +1042,7 @@ final class ReleaseManager {
             $release,
             $trigger,
             $backup,
-            [
-                'tag' => (string) ( $this->readState()['installed_tag'] ?? '' ),
-                'commit' => (string) ( $this->readState()['installed_commit'] ?? '' ),
-                'version' => Version::current(),
-            ],
+            $previous,
             [
                 'archive' => $archive,
                 'extracted' => $extracted,
@@ -1077,6 +1272,12 @@ final class ReleaseManager {
         }
 
         if ( ! $baseline_built || ! $baseline_signed ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'baseline_failed',
+                'target_tag' => $tag,
+                'target_version' => (string) ( $release['version'] ?? '' ),
+                'message' => 'Release archive was applied, but the new integrity baseline could not be established.',
+            ] );
             $this->progress( 'failed', 'Integrity baseline could not be established.', 100 );
             return [
                 'ok' => false,
@@ -1127,6 +1328,13 @@ final class ReleaseManager {
                 'copied' => (int) ( $archive_result['applied']['copied'] ?? 0 ),
             ] );
         }
+
+        $this->markPendingReleaseAwaitingBootVerification( [
+            'mode' => 'archive',
+            'target_tag' => $tag,
+            'target_version' => (string) ( $release['version'] ?? '' ),
+            'trigger' => $trigger,
+        ] );
 
         $cleanup = $this->cleanupReleaseArtifacts( $trigger . '_post_release' );
         $this->progress( 'complete', 'Release update completed.', 100 );
@@ -1195,6 +1403,12 @@ final class ReleaseManager {
         }
 
         if ( ! $baseline_built || ! $baseline_signed ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'baseline_failed',
+                'target_tag' => $tag,
+                'target_version' => (string) ( $release['version'] ?? '' ),
+                'message' => 'Release checkout completed, but the new integrity baseline could not be established.',
+            ] );
             return [
                 'ok' => false,
                 'status' => 'baseline_failed',
@@ -1245,6 +1459,13 @@ final class ReleaseManager {
             ] );
         }
 
+        $this->markPendingReleaseAwaitingBootVerification( [
+            'mode' => 'git',
+            'target_tag' => $tag,
+            'target_version' => (string) ( $release['version'] ?? '' ),
+            'trigger' => $trigger,
+        ] );
+
         $cleanup = $this->cleanupReleaseArtifacts( $trigger . '_post_release' );
 
         return [
@@ -1262,6 +1483,12 @@ final class ReleaseManager {
 
     private function finalizeRollbackState( array $previous, array $backup, string $reason ): void {
         if ( ! \class_exists( 'Metis_Integrity_Manager' ) ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'rolled_back',
+                'target_tag' => (string) ( $previous['tag'] ?? '' ),
+                'target_version' => (string) ( $previous['version'] ?? '' ),
+                'message' => 'Release rollback completed.',
+            ] );
             return;
         }
 
@@ -1279,6 +1506,410 @@ final class ReleaseManager {
             'last_action_at' => \metis_current_time( 'mysql' ),
             'last_backup_run_uuid' => (string) ( $backup['run_uuid'] ?? '' ),
         ] + $this->readState() );
+        $this->clearPendingReleaseTransaction( [
+            'status' => 'rolled_back',
+            'target_tag' => (string) ( $previous['tag'] ?? '' ),
+            'target_version' => (string) ( $previous['version'] ?? '' ),
+            'message' => 'Release rollback completed.',
+        ] );
+    }
+
+    public function releaseRecoveryState(): array {
+        $this->ensureStorageDirectories();
+        return $this->readState();
+    }
+
+    public function flagPendingReleaseFailure( array $context = [] ): void {
+        $state = $this->readState();
+        $transaction = is_array( $state['pending_release_transaction'] ?? null )
+            ? (array) $state['pending_release_transaction']
+            : [];
+        if ( $transaction === [] ) {
+            return;
+        }
+
+        $status = trim( (string) ( $transaction['status'] ?? '' ) );
+        if ( ! in_array( $status, [ 'in_progress', 'awaiting_boot_verification' ], true ) ) {
+            return;
+        }
+
+        $transaction['rollback_requested'] = true;
+        $transaction['last_failure'] = [
+            'recorded_at' => gmdate( 'c' ),
+            'classification' => (string) ( $context['classification'] ?? '' ),
+            'status_code' => (int) ( $context['status_code'] ?? 500 ),
+            'trace_id' => (string) ( $context['trace_id'] ?? '' ),
+            'message' => (string) ( $context['message'] ?? '' ),
+            'request_uri' => (string) ( $context['request_uri'] ?? '' ),
+            'fatal' => ! empty( $context['fatal'] ),
+        ];
+
+        $this->persistPendingReleaseTransaction( $transaction );
+    }
+
+    public function confirmHealthyBootForPendingRelease( string $trigger = 'preboot' ): array {
+        $state = $this->readState();
+        $transaction = is_array( $state['pending_release_transaction'] ?? null )
+            ? (array) $state['pending_release_transaction']
+            : [];
+        if ( $transaction === [] ) {
+            return [ 'status' => 'none' ];
+        }
+
+        if ( trim( (string) ( $transaction['status'] ?? '' ) ) !== 'awaiting_boot_verification' ) {
+            return [ 'status' => (string) ( $transaction['status'] ?? 'pending' ), 'transaction' => $transaction ];
+        }
+
+        $remaining = max( 0, (int) ( $transaction['verification_boots_remaining'] ?? $this->releaseBootVerificationPasses() ) - 1 );
+        if ( $remaining < 1 ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'verified',
+                'target_tag' => (string) ( $transaction['target_tag'] ?? '' ),
+                'target_version' => (string) ( $transaction['target_version'] ?? '' ),
+                'message' => 'Release boot verification completed successfully.',
+                'trigger' => $trigger,
+            ] );
+            return [ 'status' => 'verified' ];
+        }
+
+        $transaction['verification_boots_remaining'] = $remaining;
+        $transaction['last_verified_boot_at'] = gmdate( 'c' );
+        $this->persistPendingReleaseTransaction( $transaction );
+
+        return [ 'status' => 'awaiting_boot_verification', 'remaining' => $remaining ];
+    }
+
+    public function recoverPendingReleaseTransaction( string $trigger = 'preboot_auto_recovery' ): array {
+        $state = $this->readState();
+        $transaction = is_array( $state['pending_release_transaction'] ?? null )
+            ? (array) $state['pending_release_transaction']
+            : [];
+        if ( $transaction === [] ) {
+            return [ 'status' => 'none' ];
+        }
+
+        $previous = is_array( $transaction['previous'] ?? null ) ? (array) $transaction['previous'] : [];
+        $backup = is_array( $transaction['backup'] ?? null ) ? (array) $transaction['backup'] : [];
+        $rollbackTarget = trim( (string) ( $previous['tag'] ?? '' ) );
+        if ( $rollbackTarget === '' ) {
+            $rollbackTarget = trim( (string) ( $previous['commit'] ?? '' ) );
+        } elseif ( ! str_starts_with( $rollbackTarget, 'refs/' ) ) {
+            $rollbackTarget = 'refs/tags/' . $rollbackTarget;
+        }
+
+        if ( $rollbackTarget !== '' ) {
+            $checkout = $this->runCommand( [
+                $this->gitBinary(),
+                '-C',
+                \METIS_PATH,
+                'checkout',
+                '--detach',
+                $rollbackTarget,
+            ] );
+            if ( (int) ( $checkout['exit_code'] ?? 1 ) === 0 ) {
+                $this->invalidateConfigCache();
+                ModulePathRegistry::retireLegacySourceModuleTree();
+                $this->finalizeRollbackState( $previous, $backup, 'preboot_release_recovery' );
+                return [
+                    'status' => 'recovered',
+                    'method' => 'git_checkout',
+                    'target' => $rollbackTarget,
+                ];
+            }
+        }
+
+        $archivePath = trim( (string) ( $backup['archive_path'] ?? '' ) );
+        if ( $archivePath !== '' && is_file( $archivePath ) ) {
+            $restored = $this->restoreLocalReleaseArchive( $archivePath );
+            if ( ! empty( $restored['ok'] ) ) {
+                $this->invalidateConfigCache();
+                ModulePathRegistry::retireLegacySourceModuleTree();
+                $this->finalizeRollbackState( $previous, $backup, 'preboot_archive_recovery' );
+                return [
+                    'status' => 'recovered',
+                    'method' => 'local_archive',
+                    'archive_path' => $archivePath,
+                ];
+            }
+        }
+
+        return [
+            'status' => 'maintenance',
+            'reason' => 'Automatic release rollback could not restore the previous version.',
+            'transaction' => $transaction,
+        ];
+    }
+
+    private function planModuleCompatibility( string $targetVersion ): array {
+        $currentVersion = Version::current();
+        $installedModules = $this->moduleUpdateService()->discoverInstalledModules();
+        $registry = $this->githubUpdateService()->moduleRegistry( true );
+        $registryModules = is_array( $registry['modules'] ?? null ) ? (array) $registry['modules'] : [];
+        $rows = [];
+        $required = [];
+        $blocked = [];
+
+        foreach ( $installedModules as $module ) {
+            $moduleId = metis_key_clean( (string) ( $module['id'] ?? '' ) );
+            if ( $moduleId === '' || ModulePathRegistry::isCoreServiceSlug( $moduleId ) ) {
+                continue;
+            }
+
+            $registryEntry = is_array( $registryModules[ $moduleId ] ?? null ) ? (array) $registryModules[ $moduleId ] : [];
+            $installedCompatibleTarget = $this->moduleSupportsCoreVersion( $module, $targetVersion );
+            $latestCompatibleCurrent = $registryEntry !== [] && $this->moduleSupportsCoreVersion( $registryEntry, $currentVersion );
+            $latestCompatibleTarget = $registryEntry !== [] && $this->moduleSupportsCoreVersion( $registryEntry, $targetVersion );
+            $updateAvailable = $registryEntry !== []
+                && version_compare(
+                    trim( (string) ( $registryEntry['latest'] ?? '0.0.0' ) ),
+                    trim( (string) ( $module['version'] ?? '0.0.0' ) ),
+                    '>'
+                );
+
+            $row = [
+                'module' => $moduleId,
+                'name' => (string) ( $module['name'] ?? $moduleId ),
+                'installed_version' => trim( (string) ( $module['version'] ?? '' ) ),
+                'latest_version' => trim( (string) ( $registryEntry['latest'] ?? '' ) ),
+                'installed_compatible_with_target' => $installedCompatibleTarget,
+                'latest_compatible_with_current' => $latestCompatibleCurrent,
+                'latest_compatible_with_target' => $latestCompatibleTarget,
+                'update_available' => $updateAvailable,
+                'auto_update_safe_now' => $updateAvailable && $latestCompatibleCurrent && $latestCompatibleTarget,
+                'download_url' => trim( (string) ( $registryEntry['download_url'] ?? '' ) ),
+                'sha256' => trim( (string) ( $registryEntry['sha256'] ?? '' ) ),
+                'status' => 'compatible',
+                'reason' => '',
+            ];
+
+            if ( ! $installedCompatibleTarget ) {
+                if ( ! empty( $row['auto_update_safe_now'] ) ) {
+                    $row['status'] = 'update_required';
+                    $row['reason'] = sprintf(
+                        '%s must be updated before Metis %s can be installed.',
+                        (string) $row['name'],
+                        $targetVersion
+                    );
+                    $required[] = $row;
+                } else {
+                    $row['status'] = 'blocked';
+                    $row['reason'] = $registryEntry === []
+                        ? sprintf( '%s does not publish compatibility data for Metis %s.', (string) $row['name'], $targetVersion )
+                        : sprintf( '%s is not confirmed to work with Metis %s and cannot be auto-updated safely first.', (string) $row['name'], $targetVersion );
+                    $blocked[] = $row;
+                }
+            } elseif ( ! empty( $row['auto_update_safe_now'] ) ) {
+                $row['status'] = 'update_recommended';
+                $row['reason'] = sprintf( '%s has a newer module release that is safe on both the current and target Metis versions.', (string) $row['name'] );
+            }
+
+            $rows[] = $row;
+        }
+
+        return [
+            'target_version' => $targetVersion,
+            'current_version' => $currentVersion,
+            'blocked' => $blocked !== [],
+            'can_continue' => $blocked === [],
+            'required_update_candidates' => array_values( $required ),
+            'blocked_modules' => array_values( $blocked ),
+            'modules' => $rows,
+            'message' => $blocked !== []
+                ? $this->moduleCompatibilityBlockedMessage( $blocked, $targetVersion )
+                : ( $required !== []
+                    ? 'Metis will install required module updates first, then continue with the core update.'
+                    : 'Installed modules are ready for this core update.' ),
+        ];
+    }
+
+    private function applyRequiredModuleUpdates( array $modulePlan, string $trigger ): array {
+        $updates = [];
+        foreach ( (array) ( $modulePlan['required_update_candidates'] ?? [] ) as $row ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+
+            $moduleId = metis_key_clean( (string) ( $row['module'] ?? '' ) );
+            if ( $moduleId === '' ) {
+                continue;
+            }
+
+            $result = $this->moduleInstallService()->installLatest( $moduleId, true );
+            $updates[] = $result;
+            if ( empty( $result['ok'] ) ) {
+                return [
+                    'ok' => false,
+                    'status' => 'module_update_failed',
+                    'message' => sprintf( 'Metis stopped before the core update because %s could not be updated safely.', (string) ( $row['name'] ?? $moduleId ) ),
+                    'updates' => $updates,
+                ];
+            }
+        }
+
+        $targetVersion = (string) ( $modulePlan['target_version'] ?? Version::current() );
+        return [
+            'ok' => true,
+            'status' => 'modules_updated',
+            'message' => 'Required module updates completed.',
+            'updates' => $updates,
+            'module_plan' => $this->planModuleCompatibility( $targetVersion ),
+            'trigger' => $trigger,
+        ];
+    }
+
+    private function moduleSupportsCoreVersion( array $manifest, string $coreVersion ): bool {
+        $minimum = trim( (string) ( $manifest['minimum_metis'] ?? ( $manifest['compatible_core']['minimum'] ?? '' ) ) );
+        $maximum = trim( (string) ( $manifest['maximum_metis'] ?? ( $manifest['compatible_core']['maximum'] ?? '' ) ) );
+
+        if ( $minimum !== '' && version_compare( $coreVersion, $minimum, '<' ) ) {
+            return false;
+        }
+
+        if ( $maximum !== '' && version_compare( $coreVersion, $maximum, '>' ) ) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function moduleCompatibilityBlockedMessage( array $blocked, string $targetVersion ): string {
+        $names = array_map(
+            static fn ( array $row ): string => (string) ( $row['name'] ?? $row['module'] ?? 'module' ),
+            $blocked
+        );
+
+        return sprintf(
+            'Metis stopped before updating because %s %s not confirmed to work with Metis %s. Install module updates first, then try again.',
+            implode( ', ', $names ),
+            count( $names ) === 1 ? 'is' : 'are',
+            $targetVersion
+        );
+    }
+
+    private function persistPendingReleaseTransaction( array $transaction ): void {
+        $state = $this->readState();
+        $state['pending_release_transaction'] = $transaction;
+        $this->persistState( $state );
+    }
+
+    private function mergePendingReleaseTransaction( array $updates ): void {
+        $state = $this->readState();
+        $transaction = is_array( $state['pending_release_transaction'] ?? null )
+            ? (array) $state['pending_release_transaction']
+            : [];
+        if ( $transaction === [] ) {
+            return;
+        }
+
+        $state['pending_release_transaction'] = array_merge( $transaction, $updates );
+        $this->persistState( $state );
+    }
+
+    private function clearPendingReleaseTransaction( array $summary = [] ): void {
+        $state = $this->readState();
+        $pending = is_array( $state['pending_release_transaction'] ?? null )
+            ? (array) $state['pending_release_transaction']
+            : [];
+        unset( $state['pending_release_transaction'] );
+        if ( $pending !== [] || $summary !== [] ) {
+            $state['last_release_transaction'] = array_merge( $pending, $summary, [
+                'completed_at' => gmdate( 'c' ),
+            ] );
+        }
+
+        $this->persistState( $state );
+    }
+
+    private function markPendingReleaseAwaitingBootVerification( array $updates ): void {
+        $state = $this->readState();
+        $transaction = is_array( $state['pending_release_transaction'] ?? null )
+            ? (array) $state['pending_release_transaction']
+            : [];
+        if ( $transaction === [] ) {
+            return;
+        }
+
+        $transaction = array_merge( $transaction, $updates, [
+            'status' => 'awaiting_boot_verification',
+            'rollback_requested' => false,
+            'awaiting_boot_verification_at' => gmdate( 'c' ),
+            'verification_boots_remaining' => max( 1, (int) ( $transaction['verification_boots_remaining'] ?? $this->releaseBootVerificationPasses() ) ),
+        ] );
+
+        $this->persistPendingReleaseTransaction( $transaction );
+    }
+
+    private function transactionPlanSnapshot( array $modulePlan ): array {
+        return [
+            'target_version' => (string) ( $modulePlan['target_version'] ?? '' ),
+            'required_update_candidates' => array_values( array_map(
+                static fn ( array $row ): array => [
+                    'module' => (string) ( $row['module'] ?? '' ),
+                    'installed_version' => (string) ( $row['installed_version'] ?? '' ),
+                    'latest_version' => (string) ( $row['latest_version'] ?? '' ),
+                ],
+                array_values( array_filter( (array) ( $modulePlan['required_update_candidates'] ?? [] ), 'is_array' ) )
+            ) ),
+        ];
+    }
+
+    private function releaseBootVerificationPasses(): int {
+        if ( class_exists( '\Metis\Core\Recovery\RecoveryPolicyService' ) ) {
+            return ( new \Metis\Core\Recovery\RecoveryPolicyService() )->releaseBootVerificationPasses();
+        }
+
+        return 2;
+    }
+
+    private function restoreLocalReleaseArchive( string $archivePath ): array {
+        if ( ! class_exists( '\ZipArchive' ) || ! is_file( $archivePath ) ) {
+            return [ 'ok' => false, 'status' => 'archive_unavailable' ];
+        }
+
+        $extractDir = $this->cacheDir() . '/restore-' . gmdate( 'YmdHis' ) . '-' . bin2hex( random_bytes( 3 ) );
+        if ( ! is_dir( $extractDir ) && ! \metis_runtime_make_dir( $extractDir ) ) {
+            return [ 'ok' => false, 'status' => 'restore_prepare_failed' ];
+        }
+
+        $zip = new \ZipArchive();
+        if ( $zip->open( $archivePath ) !== true ) {
+            return [ 'ok' => false, 'status' => 'restore_open_failed' ];
+        }
+
+        for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+            $entry = (string) $zip->getNameIndex( $i );
+            $normalized = str_replace( '\\', '/', $entry );
+            if (
+                $normalized === ''
+                || str_starts_with( $normalized, '/' )
+                || str_contains( $normalized, '/../' )
+                || str_starts_with( $normalized, '../' )
+            ) {
+                $zip->close();
+                return [ 'ok' => false, 'status' => 'restore_invalid' ];
+            }
+        }
+
+        $ok = $zip->extractTo( $extractDir );
+        $zip->close();
+        if ( ! $ok ) {
+            return [ 'ok' => false, 'status' => 'restore_extract_failed' ];
+        }
+
+        $applied = $this->copyArchivePayload( $extractDir );
+        return $applied + [ 'ok' => ! empty( $applied['ok'] ) ];
+    }
+
+    private function moduleUpdateService(): \Metis\Core\Services\ModuleUpdateService {
+        return Application::service( 'module_updates' );
+    }
+
+    private function moduleInstallService(): \Metis\Core\Services\ModuleInstallService {
+        return Application::service( 'module_installer' );
+    }
+
+    private function githubUpdateService(): \Metis\Core\Services\GitHubUpdateService {
+        return Application::service( 'github_update' );
     }
 
     private function ensureLocalTagAvailable( string $tag, array $repository ): bool {

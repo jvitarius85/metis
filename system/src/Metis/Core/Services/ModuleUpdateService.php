@@ -189,6 +189,8 @@ final class ModuleUpdateService {
                 'description' => trim( (string) ( $payload['description'] ?? '' ) ),
                 'version' => trim( (string) ( $payload['version'] ?? '' ) ),
                 'minimum_metis' => trim( (string) ( $payload['minimum_metis'] ?? '' ) ),
+                'maximum_metis' => trim( (string) ( $payload['maximum_metis'] ?? '' ) ),
+                'compatible_core' => is_array( $payload['compatible_core'] ?? null ) ? (array) $payload['compatible_core'] : [],
                 'release_channel' => trim( (string) ( $payload['release_channel'] ?? 'stable' ) ),
                 'manifest_path' => $manifestPath,
                 'entry_path' => (string) ( $runtimeContract['entry_path'] ?? '' ),

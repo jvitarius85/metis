@@ -25,6 +25,8 @@ $settingsAjax = $read( 'src/Metis/Core/BuiltInServices/settings/assets/settings.
 $settingsBootstrap = $read( 'src/Metis/Core/BuiltInServices/settings/views/_settings_bootstrap.php' );
 $moduleInstall = $read( 'src/Metis/Core/Services/ModuleInstallService.php' );
 $releaseManager = $read( 'src/Metis/Release/ReleaseManager.php' );
+$prebootRecovery = $read( 'src/Metis/Core/Recovery/PrebootIntegrityService.php' );
+$errorKernel = $read( 'src/Metis/Core/Error/ErrorKernel.php' );
 
 $assert(
     str_contains( $settingsJs, "latestRunStatus === 'failed' || latestRunStatus === 'error'" ),
@@ -65,6 +67,19 @@ $assert(
 );
 
 $assert(
+    str_contains( $releaseManager, 'planModuleCompatibility(' )
+    && str_contains( $releaseManager, 'applyRequiredModuleUpdates(' ),
+    'Release updates must plan module compatibility and apply safe required module updates before core mutation continues.'
+);
+
+$assert(
+    str_contains( $releaseManager, 'persistPendingReleaseTransaction(' )
+    && str_contains( $releaseManager, 'markPendingReleaseAwaitingBootVerification(' )
+    && str_contains( $releaseManager, 'recoverPendingReleaseTransaction(' ),
+    'Release updates must persist a pending transaction so failed boots can trigger automatic rollback.'
+);
+
+$assert(
     str_contains( $releaseManager, "CacheService::clearGroup( 'modules' );" )
     && str_contains( $releaseManager, "CacheService::forget( 'updates.modules' );" )
     && str_contains( $releaseManager, "Application::has_service( 'modules' )" ),
@@ -74,6 +89,12 @@ $assert(
 $assert(
     str_contains( $moduleInstall, 'ModulePathRegistry::retireLegacySourceModuleTree();' ),
     'Module install protection refresh must retire stale legacy source modules before rebuilding integrity and compliance state.'
+);
+
+$assert(
+    str_contains( $prebootRecovery, 'recoverPendingReleaseIfNeeded' )
+    && str_contains( $errorKernel, 'recordFatalBootFailure' ),
+    'Preboot recovery and the fatal error boundary must coordinate pending release rollback after a broken update.'
 );
 
 if ( $failures !== [] ) {

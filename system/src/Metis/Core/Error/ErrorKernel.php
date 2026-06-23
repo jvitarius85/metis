@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Metis\Core\Error;
 
 use Metis\Core\Cache\CacheService;
+use Metis\Core\Recovery\ReleaseRecoveryService;
 use Metis\Http\Request;
 use Metis\Http\Response;
 
@@ -106,6 +107,14 @@ final class ErrorKernel {
             }
 
             $this->logger->log( $error );
+            ( new ReleaseRecoveryService() )->recordFatalBootFailure( [
+                'classification' => $error->classification(),
+                'status_code' => $error->statusCode(),
+                'trace_id' => $error->traceId(),
+                'message' => $error->message(),
+                'request_uri' => $error->requestUri(),
+                'fatal' => $error->isFatal(),
+            ] );
             $this->recordHealthSignals( $error );
             $response = $this->responder->respond( $error );
             if ( $response instanceof Response ) {
@@ -148,6 +157,14 @@ final class ErrorKernel {
         ) );
 
         $this->logger->log( $context );
+        ( new ReleaseRecoveryService() )->recordFatalBootFailure( [
+            'classification' => $context->classification(),
+            'status_code' => $context->statusCode(),
+            'trace_id' => $context->traceId(),
+            'message' => $context->message(),
+            'request_uri' => $context->requestUri(),
+            'fatal' => true,
+        ] );
         $this->recordHealthSignals( $context );
 
         if ( headers_sent() ) {

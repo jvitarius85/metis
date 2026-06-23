@@ -10,6 +10,7 @@ final class PrebootIntegrityService {
         private readonly RecoveryAuditLogger $logger = new RecoveryAuditLogger(),
         private readonly RecoveryLockService $locks = new RecoveryLockService(),
         private readonly RecoveryVerifier $verifier = new RecoveryVerifier(),
+        private readonly ReleaseRecoveryService $releaseRecovery = new ReleaseRecoveryService(),
         private readonly BackupRecoveryService $backupRecovery = new BackupRecoveryService(),
         private readonly GitRecoveryService $gitRecovery = new GitRecoveryService()
     ) {}
@@ -17,14 +18,19 @@ final class PrebootIntegrityService {
     /** @return array<string,mixed> */
     public function checkAndRecover(string $trigger = 'preboot'): array {
         RecoverySchema::ensureSchema();
+        $releaseRecovery = $this->releaseRecovery->recoverPendingReleaseIfNeeded($trigger);
+        if ((string) ($releaseRecovery['status'] ?? '') === 'maintenance') {
+            return $releaseRecovery;
+        }
+
         $scan = $this->verifier->scan($trigger, true);
         if (!$this->policy->prebootRecoveryEnabled() || !$this->policy->automaticFileRecoveryEnabled()) {
-            return ['status' => 'disabled', 'scan' => $scan, 'mutation_enabled' => false];
+            return ['status' => 'disabled', 'scan' => $scan, 'mutation_enabled' => false, 'release_recovery' => $releaseRecovery];
         }
 
         $critical = array_values(array_filter((array) ($scan['issues'] ?? []), static fn(array $issue): bool => (string) ($issue['severity'] ?? '') === 'critical'));
         if ($critical === []) {
-            return ['status' => 'pass', 'scan' => $scan];
+            return ['status' => 'pass', 'scan' => $scan, 'release_recovery' => $releaseRecovery];
         }
 
         $firstIssue = (array) ($critical[0] ?? []);

@@ -637,6 +637,8 @@ final class GitHubUpdateService {
                 $sha256 = '';
             }
 
+            $compatibleCore = is_array( $row['compatible_core'] ?? null ) ? (array) $row['compatible_core'] : [];
+
             $previousVersions = [];
             foreach ( (array) ( $row['previous_versions'] ?? [] ) as $previousVersion ) {
                 if ( ! is_array( $previousVersion ) ) {
@@ -657,6 +659,9 @@ final class GitHubUpdateService {
                     'version' => $previousVersionNumber,
                     'download_url' => trim( (string) ( $previousVersion['download_url'] ?? '' ) ),
                     'sha256' => $previousSha,
+                    'minimum_metis' => trim( (string) ( $previousVersion['minimum_metis'] ?? '' ) ),
+                    'maximum_metis' => trim( (string) ( $previousVersion['maximum_metis'] ?? '' ) ),
+                    'compatible_core' => is_array( $previousVersion['compatible_core'] ?? null ) ? (array) $previousVersion['compatible_core'] : [],
                 ];
             }
 
@@ -665,6 +670,8 @@ final class GitHubUpdateService {
                 'description' => trim((string) ($row['description'] ?? '')),
                 'latest' => $latest,
                 'minimum_metis' => trim((string) ($row['minimum_metis'] ?? '')),
+                'maximum_metis' => trim((string) ($row['maximum_metis'] ?? '')),
+                'compatible_core' => $compatibleCore,
                 'release_channel' => trim((string) ($row['release_channel'] ?? 'stable')) ?: 'stable',
                 'download_url' => trim((string) ($row['download_url'] ?? '')),
                 'sha256' => $sha256,
