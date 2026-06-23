@@ -85,7 +85,7 @@ Metis also tracks the current set of core-to-store-module namespace dependencies
 
 ## Current Runtime Bridge Surface
 
-The remaining core-side coupling to legacy store-managed source namespaces is now centralized into a small runtime bridge surface declared in `ModulePathRegistry::legacyStoreManagedRuntimeBridges()`:
+The remaining bridge frontier for retiring legacy store-managed source implementations is declared in `ModulePathRegistry::legacyStoreManagedRuntimeBridges()`:
 
 - `src/Metis/Core/Runtime/ModuleSchemaRuntimeBridge.php`
   - Current scope: `board`, `calendar`, `contacts`, `finance`, `forms`, `import`, `newsletter`, `website`
@@ -95,6 +95,8 @@ The remaining core-side coupling to legacy store-managed source namespaces is no
   - Current scope: `newsletter`
 
 This is the current migration frontier. Removing source-side implementations from `system/src/Metis/Modules/` should now proceed by shrinking or deleting these bridges instead of patching broad core surfaces.
+
+The stricter subset of bridges that still directly reference legacy store-managed source namespaces is declared separately in `ModulePathRegistry::legacyStoreManagedDirectRuntimeBridges()`. That smaller set is what `system/tests/module_store_dependency_boundary_test.php` enforces.
 
 Bridge implementation rule:
 

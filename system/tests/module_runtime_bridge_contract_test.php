@@ -21,20 +21,21 @@ $read = static function ( string $relative ) use ( $root ): string {
 };
 
 $moduleSchemaBridge = $read( 'src/Metis/Core/Runtime/ModuleSchemaRuntimeBridge.php' );
+$entryResolver = $read( 'src/Metis/Core/Runtime/RuntimeModuleEntryResolver.php' );
 $websiteBridge = $read( 'src/Metis/Core/Runtime/WebsiteModuleRuntimeBridge.php' );
 $newsletterBridge = $read( 'src/Metis/Core/Runtime/NewsletterModuleRuntimeBridge.php' );
 $websiteModule = $read( 'src/Metis/Modules/Website/WebsiteModule.php' );
 $newsletterModule = $read( 'src/Metis/Modules/Newsletter/NewsletterModule.php' );
 
 $assert(
-    str_contains( $moduleSchemaBridge, 'ContactsModule::ensureRuntimeSchema' )
-    && str_contains( $moduleSchemaBridge, 'FormsModule::ensureRuntimeSchema' )
-    && str_contains( $moduleSchemaBridge, 'NewsletterModule::ensureRuntimeSchema' )
-    && str_contains( $moduleSchemaBridge, 'BoardModule::ensureRuntimeSchema' )
-    && str_contains( $moduleSchemaBridge, 'FinanceModule::ensureRuntimeSchema' )
-    && str_contains( $moduleSchemaBridge, 'WebsiteModule::ensureRuntimeSchema' )
-    && str_contains( $moduleSchemaBridge, 'ImportModule::ensureRuntimeSchema' ),
-    'Module schema bridge must prefer module entry classes for store-managed schema bootstrapping.'
+    str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'contacts', 'ensureRuntimeSchema'" )
+    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'forms', 'ensureRuntimeSchema'" )
+    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'newsletter', 'ensureRuntimeSchema'" )
+    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'board', 'ensureRuntimeSchema'" )
+    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'finance', 'ensureRuntimeSchema'" )
+    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'website', 'ensureRuntimeSchema'" )
+    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'import', 'ensureRuntimeSchema'" ),
+    'Module schema bridge must prefer dynamically resolved module entry classes for store-managed schema bootstrapping.'
 );
 
 $assert(
@@ -50,14 +51,14 @@ $assert(
 );
 
 $assert(
-    str_contains( $websiteBridge, 'WebsiteModule::createPost' )
-    && str_contains( $websiteBridge, 'WebsiteModule::publishPost' )
-    && str_contains( $websiteBridge, 'WebsiteModule::saveDraft' )
-    && str_contains( $websiteBridge, 'WebsiteModule::renderEditorPreview' )
-    && str_contains( $websiteBridge, 'WebsiteModule::checkpoint' )
-    && str_contains( $websiteBridge, 'WebsiteModule::saveHomepageSelection' )
-    && str_contains( $websiteBridge, 'WebsiteModule::publishedHomepagePages' ),
-    'Website runtime bridge must delegate through WebsiteModule entry methods.'
+    str_contains( $websiteBridge, "RuntimeModuleEntryResolver::callStatic( 'website', 'createPost'" )
+    && str_contains( $websiteBridge, "RuntimeModuleEntryResolver::callStatic( 'website', 'publishPost'" )
+    && str_contains( $websiteBridge, "RuntimeModuleEntryResolver::callStatic( 'website', 'saveDraft'" )
+    && str_contains( $websiteBridge, "RuntimeModuleEntryResolver::callStatic( 'website', 'renderEditorPreview'" )
+    && str_contains( $websiteBridge, "RuntimeModuleEntryResolver::callStatic( 'website', 'checkpoint'" )
+    && str_contains( $websiteBridge, "RuntimeModuleEntryResolver::callStatic( 'website', 'saveHomepageSelection'" )
+    && str_contains( $websiteBridge, "RuntimeModuleEntryResolver::callStatic( 'website', 'publishedHomepagePages'" ),
+    'Website runtime bridge must delegate through dynamically resolved website module entry methods.'
 );
 
 $assert(
@@ -67,6 +68,13 @@ $assert(
     && ! str_contains( $websiteBridge, 'Services\\RevisionTimelineService' )
     && ! str_contains( $websiteBridge, 'Services\\WebsiteRenderer' ),
     'Website runtime bridge must not reach directly into website service internals.'
+);
+
+$assert(
+    str_contains( $entryResolver, "Application::service( 'modules' )->get( \$slug )" )
+    && str_contains( $entryResolver, "['config']['_module_class']" )
+    && str_contains( $entryResolver, 'fallbackClass' ),
+    'Runtime module entry resolver must prefer the loaded module registry class and only fall back to a conventional class name when necessary.'
 );
 
 $assert(

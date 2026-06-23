@@ -84,7 +84,7 @@ foreach ( $scanRoots as $scanRoot ) {
 
 ksort( $actual );
 
-$allowed = \Metis\Core\ModulePathRegistry::legacyStoreManagedRuntimeBridges();
+$allowed = \Metis\Core\ModulePathRegistry::legacyStoreManagedDirectRuntimeBridges();
 ksort( $allowed );
 
 $unexpectedFiles = array_diff_key( $actual, $allowed );
@@ -114,12 +114,12 @@ foreach ( $allowed as $path => $allowedSlugs ) {
     }
 }
 
-$missingFiles = array_diff_key( $allowed, $actual );
-foreach ( array_keys( $missingFiles ) as $path ) {
+$frontier = \Metis\Core\ModulePathRegistry::legacyStoreManagedRuntimeBridges();
+foreach ( array_keys( $frontier ) as $path ) {
     $assert(
-        false,
+        is_file( $root . '/' . $path ),
         sprintf(
-            'Declared legacy runtime bridge [%s] no longer references a store-managed source module. Remove it from ModulePathRegistry when the bridge is fully retired.',
+            'Declared runtime bridge frontier file [%s] is missing. Update ModulePathRegistry when the bridge is retired or moved.',
             $path
         )
     );

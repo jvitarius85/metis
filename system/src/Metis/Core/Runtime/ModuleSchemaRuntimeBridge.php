@@ -3,31 +3,22 @@ declare(strict_types=1);
 
 namespace Metis\Core\Runtime;
 
-use Metis\Modules\Board\BoardModule;
-use Metis\Modules\Calendar\CalendarModule;
-use Metis\Modules\Contacts\ContactsModule;
-use Metis\Modules\Finance\FinanceModule;
-use Metis\Modules\Forms\FormsModule;
-use Metis\Modules\Import\ImportModule;
-use Metis\Modules\Newsletter\NewsletterModule;
-use Metis\Modules\Website\WebsiteModule;
-
 final class ModuleSchemaRuntimeBridge {
     /**
      * @return array<string,callable():void>
      */
     public static function installers(): array {
         return [
-            'contacts' => static function (): void { ContactsModule::ensureRuntimeSchema(); },
+            'contacts' => static function (): void { RuntimeModuleEntryResolver::callStatic( 'contacts', 'ensureRuntimeSchema' ); },
             'people' => static function (): void { \Metis\Modules\People\SchemaManager::ensureSchema(); },
-            'forms' => static function (): void { FormsModule::ensureRuntimeSchema(); },
-            'newsletter' => static function (): void { NewsletterModule::ensureRuntimeSchema(); },
-            'board' => static function (): void { BoardModule::ensureRuntimeSchema(); },
-            'calendar' => static function (): void { CalendarModule::ensureSchema(); },
-            'finance' => static function (): void { FinanceModule::ensureRuntimeSchema(); },
+            'forms' => static function (): void { RuntimeModuleEntryResolver::callStatic( 'forms', 'ensureRuntimeSchema' ); },
+            'newsletter' => static function (): void { RuntimeModuleEntryResolver::callStatic( 'newsletter', 'ensureRuntimeSchema' ); },
+            'board' => static function (): void { RuntimeModuleEntryResolver::callStatic( 'board', 'ensureRuntimeSchema' ); },
+            'calendar' => static function (): void { RuntimeModuleEntryResolver::callStatic( 'calendar', 'ensureSchema' ); },
+            'finance' => static function (): void { RuntimeModuleEntryResolver::callStatic( 'finance', 'ensureRuntimeSchema' ); },
             'hermes' => static function (): void { \Metis\Modules\Hermes\SchemaManager::ensureSchema(); },
-            'website' => static function (): void { WebsiteModule::ensureRuntimeSchema(); },
-            'import' => static function (): void { ImportModule::ensureRuntimeSchema(); },
+            'website' => static function (): void { RuntimeModuleEntryResolver::callStatic( 'website', 'ensureRuntimeSchema' ); },
+            'import' => static function (): void { RuntimeModuleEntryResolver::callStatic( 'import', 'ensureRuntimeSchema' ); },
             'communications_inbound' => static function (): void { \Metis\Modules\CommunicationsInbound\SchemaManager::ensureSchema(); },
             'grandy_stash' => static function (): void { \Metis\Modules\GrandyStash\GrandyStashSchemaManager::ensureSchema(); },
             'drive' => static function (): void {

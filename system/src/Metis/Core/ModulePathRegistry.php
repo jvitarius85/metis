@@ -208,6 +208,11 @@ final class ModulePathRegistry {
             'website',
         ],
     ];
+    private const LEGACY_STORE_MANAGED_DIRECT_RUNTIME_BRIDGES = [
+        'src/Metis/Core/Runtime/NewsletterModuleRuntimeBridge.php' => [
+            'newsletter',
+        ],
+    ];
 
     public static function coreServiceSlugs(): array {
         return self::CORE_SERVICE_SLUGS;
@@ -264,6 +269,13 @@ final class ModulePathRegistry {
     }
 
     /**
+     * @return array<string,array<int,string>>
+     */
+    public static function legacyStoreManagedDirectRuntimeBridges(): array {
+        return self::LEGACY_STORE_MANAGED_DIRECT_RUNTIME_BRIDGES;
+    }
+
+    /**
      * @return array<string,string>|null
      */
     public static function transitionalSourceModule( string $slug ): ?array {
@@ -274,7 +286,7 @@ final class ModulePathRegistry {
     }
 
     /**
-     * @return array{module_root:string,core_service_root:string,store_modules:array<int,string>,core_services:array<int,string>,source_module_inventory:array<string,array<string,string>>,legacy_store_managed_runtime_bridges:array<string,array<int,string>>,transitional_source_modules:array<string,array<string,string>>}
+     * @return array{module_root:string,core_service_root:string,store_modules:array<int,string>,core_services:array<int,string>,source_module_inventory:array<string,array<string,string>>,legacy_store_managed_runtime_bridges:array<string,array<int,string>>,legacy_store_managed_direct_runtime_bridges:array<string,array<int,string>>,transitional_source_modules:array<string,array<string,string>>}
      */
     public static function migrationSnapshot(): array {
         return [
@@ -284,6 +296,7 @@ final class ModulePathRegistry {
             'core_services' => self::coreServiceSlugs(),
             'source_module_inventory' => self::sourceModuleInventory(),
             'legacy_store_managed_runtime_bridges' => self::legacyStoreManagedRuntimeBridges(),
+            'legacy_store_managed_direct_runtime_bridges' => self::legacyStoreManagedDirectRuntimeBridges(),
             'transitional_source_modules' => self::transitionalSourceModules(),
         ];
     }
