@@ -234,7 +234,7 @@ final class ModulePathRegistry {
     }
 
     public static function isCoreServiceSlug( string $slug ): bool {
-        return in_array( \metis_key_clean( $slug ), self::CORE_SERVICE_SLUGS, true );
+        return in_array( self::normalizedSlug( $slug ), self::CORE_SERVICE_SLUGS, true );
     }
 
     public static function storeManagedModuleSlugs(): array {
@@ -242,7 +242,7 @@ final class ModulePathRegistry {
     }
 
     public static function isStoreManagedModuleSlug( string $slug ): bool {
-        return in_array( \metis_key_clean( $slug ), self::STORE_MANAGED_MODULE_SLUGS, true );
+        return in_array( self::normalizedSlug( $slug ), self::STORE_MANAGED_MODULE_SLUGS, true );
     }
 
     /**
@@ -301,7 +301,7 @@ final class ModulePathRegistry {
      * @return array<string,string>|null
      */
     public static function transitionalSourceModule( string $slug ): ?array {
-        $slug = \metis_key_clean( $slug );
+        $slug = self::normalizedSlug( $slug );
         return is_array( self::TRANSITIONAL_SOURCE_MODULES[ $slug ] ?? null )
             ? self::TRANSITIONAL_SOURCE_MODULES[ $slug ]
             : null;
@@ -333,6 +333,37 @@ final class ModulePathRegistry {
 
         $projectRoot = dirname( __DIR__, 4 );
         return self::normalizedPath( dirname( $projectRoot ) . '/metis-private/modules/' );
+    }
+
+    public static function sourceModuleRootPath(): string {
+        return self::normalizedPath( dirname( __DIR__, 3 ) . '/src/Metis/Modules/' );
+    }
+
+    public static function resolveLogicalPath( string $path ): string {
+        $normalized = ltrim( str_replace( '\\', '/', $path ), '/' );
+        if ( str_starts_with( $normalized, 'system/' ) ) {
+            $normalized = substr( $normalized, strlen( 'system/' ) );
+        }
+
+        if ( $normalized === '' ) {
+            return self::normalizedFilesystemPath( dirname( __DIR__, 3 ) );
+        }
+
+        if ( str_starts_with( $normalized, 'src/Metis/Modules/' ) ) {
+            $resolved = self::resolveLegacySourceModulePath( $normalized );
+            if ( $resolved !== null ) {
+                return $resolved;
+            }
+        }
+
+        if ( str_starts_with( $normalized, 'modules/' ) ) {
+            $resolved = self::resolveModuleAssetPath( $normalized );
+            if ( $resolved !== null ) {
+                return $resolved;
+            }
+        }
+
+        return self::normalizedFilesystemPath( dirname( __DIR__, 3 ) . '/' . $normalized );
     }
 
     /**
@@ -373,6 +404,7 @@ final class ModulePathRegistry {
      * @return array{
      *     ok:bool,
      *     source_module_root:string,
+     *     source_module_root_present:bool,
      *     runtime_module_root:string,
      *     development_bundle_source_root:string,
      *     runtime_module_manifest_count:int,
@@ -387,7 +419,7 @@ final class ModulePathRegistry {
      * }
      */
     public static function sourceRetirementSnapshot(): array {
-        $sourceRoot = self::normalizedPath( dirname( __DIR__, 3 ) . '/src/Metis/Modules/' );
+        $sourceRoot = self::sourceModuleRootPath();
         $runtimeRoot = self::moduleRootPath();
         $bundleRoot = self::developmentBundleSourceRootPath();
         $legacySlugs = self::legacyStoreManagedSourceModuleSlugs();
@@ -462,6 +494,7 @@ final class ModulePathRegistry {
         return [
             'ok' => $blockers === [],
             'source_module_root' => $sourceRoot,
+            'source_module_root_present' => is_dir( rtrim( $sourceRoot, '/\\' ) ),
             'runtime_module_root' => $runtimeRoot,
             'development_bundle_source_root' => $bundleRoot,
             'runtime_module_manifest_count' => $runtimeModuleManifestCount,
@@ -582,7 +615,7 @@ final class ModulePathRegistry {
     }
 
     public static function modulePath( string $slug ): ?string {
-        $slug = \metis_key_clean( $slug );
+        $slug = self::normalizedSlug( $slug );
         if ( $slug === '' ) {
             return null;
         }
@@ -625,6 +658,10 @@ final class ModulePathRegistry {
         return rtrim( str_replace( '\\', '/', $path ), '/' ) . '/';
     }
 
+    private static function normalizedFilesystemPath( string $path ): string {
+        return str_replace( '\\', '/', $path );
+    }
+
     private static function studlyModuleDirectory( string $slug ): string {
         $parts = preg_split( '/[^a-z0-9]+/i', strtolower( $slug ) ) ?: [];
 
@@ -647,6 +684,91 @@ final class ModulePathRegistry {
         $value = preg_replace( '/[^a-z0-9]+/', '_', $value ) ?? '';
 
         return trim( $value, '_' );
+    }
+
+    private static function resolveLegacySourceModulePath( string $relative ): ?string {
+        $remainder = substr( $relative, strlen( 'src/Metis/Modules/' ) );
+        $parts = array_values( array_filter( explode( '/', $remainder ), static fn ( string $part ): bool => $part !== '' ) );
+        $namespaceSegment = (string) array_shift( $parts );
+        if ( $namespaceSegment === '' ) {
+            return null;
+        }
+
+        $slug = self::slugForNamespaceSegment( $namespaceSegment );
+        if ( $slug === '' ) {
+            return null;
+        }
+
+        if ( isset( $parts[0] ) && $parts[0] === $namespaceSegment . 'Module.php' ) {
+            $parts[0] = 'Module.php';
+        }
+
+        if ( self::isCoreServiceSlug( $slug ) ) {
+            return self::buildResolvedPath( self::coreServiceRootPath(), $slug, $parts );
+        }
+
+        if ( isset( self::TRANSITIONAL_SOURCE_MODULES[ $slug ] ) ) {
+            return self::buildResolvedPath( self::transitionModuleRootPath(), $slug, $parts );
+        }
+
+        $inventory = self::SOURCE_MODULE_INVENTORY[ $slug ] ?? null;
+        $bundleSlug = is_array( $inventory )
+            ? self::normalizedSlug( (string) ( $inventory['target'] ?? $slug ) )
+            : $slug;
+        $moduleRoot = self::preferredStoreBundleRootPath( $bundleSlug );
+
+        return $moduleRoot === null ? null : self::buildResolvedPath( $moduleRoot, '', $parts );
+    }
+
+    private static function resolveModuleAssetPath( string $relative ): ?string {
+        $remainder = substr( $relative, strlen( 'modules/' ) );
+        $parts = array_values( array_filter( explode( '/', $remainder ), static fn ( string $part ): bool => $part !== '' ) );
+        $slug = self::normalizedSlug( (string) array_shift( $parts ) );
+        if ( $slug === '' ) {
+            return null;
+        }
+
+        if ( self::isCoreServiceSlug( $slug ) ) {
+            return self::buildResolvedPath( self::coreServiceRootPath(), $slug, $parts );
+        }
+
+        if ( isset( self::TRANSITIONAL_SOURCE_MODULES[ $slug ] ) ) {
+            return self::buildResolvedPath( self::transitionModuleRootPath(), $slug, $parts );
+        }
+
+        $moduleRoot = self::preferredStoreBundleRootPath( $slug );
+
+        return $moduleRoot === null ? null : self::buildResolvedPath( $moduleRoot, '', $parts );
+    }
+
+    private static function preferredStoreBundleRootPath( string $slug ): ?string {
+        $developmentPath = rtrim( self::developmentBundleSourceRootPath(), '/\\' ) . '/' . $slug;
+        if ( is_dir( $developmentPath ) ) {
+            return self::normalizedFilesystemPath( $developmentPath );
+        }
+
+        $runtimePath = rtrim( self::moduleRootPath(), '/\\' ) . '/' . $slug;
+        if ( is_dir( $runtimePath ) ) {
+            return self::normalizedFilesystemPath( $runtimePath );
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int,string> $parts
+     */
+    private static function buildResolvedPath( string $root, string $slug, array $parts ): string {
+        $segments = [ rtrim( self::normalizedFilesystemPath( $root ), '/\\' ) ];
+        if ( $slug !== '' ) {
+            $segments[] = $slug;
+        }
+
+        foreach ( $parts as $part ) {
+            $segments[] = $part;
+        }
+
+        return implode( '/', $segments );
     }
 
     /**

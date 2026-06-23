@@ -19,6 +19,10 @@ namespace {
         }
     }
 
+    $root = dirname( __DIR__ );
+    require_once __DIR__ . '/_support/module_path_resolver.php';
+    $resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
+
     final class MetisFakeNewsletterImportDb {
         /** @var array<int,array<string,mixed>> */
         public array $lists = [];
@@ -190,9 +194,9 @@ namespace {
     function metis_generate_code( string $prefix, string $table, string $column ): string { return $prefix . '_TEST'; }
     function metis_json_encode( mixed $value ): string|false { return json_encode( $value ); }
 
-    require_once dirname( __DIR__ ) . '/modules/import/parsers/WordPressNewsletterArchiveParser.php';
-    require_once dirname( __DIR__ ) . '/src/Metis/Modules/Newsletter/CampaignService.php';
-    require_once dirname( __DIR__ ) . '/modules/newsletter/services/import.php';
+    require_once $resolve_relative( 'modules/import/parsers/WordPressNewsletterArchiveParser.php' );
+    require_once $resolve_relative( 'src/Metis/Modules/Newsletter/CampaignService.php' );
+    require_once $resolve_relative( 'modules/newsletter/services/import.php' );
 
     $failures = [];
     $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {

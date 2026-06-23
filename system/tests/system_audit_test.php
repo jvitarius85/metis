@@ -31,6 +31,21 @@ use Metis\Http\Request as Metis_Http_Request;
 $failures = [];
 
 $resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
+$bundle_root = metis_test_private_modules_root( $root );
+$normalize_audit_path = static function ( string $path ) use ( $root, $resolve_relative ): string {
+    $normalized = str_replace( '\\', '/', $path );
+    $root_prefix = rtrim( str_replace( '\\', '/', $root ), '/' ) . '/';
+    if ( ! str_starts_with( $normalized, $root_prefix ) ) {
+        return $normalized;
+    }
+
+    $relative = substr( $normalized, strlen( $root_prefix ) );
+    if ( str_starts_with( $relative, 'src/Metis/Modules/' ) || str_starts_with( $relative, 'modules/' ) ) {
+        return $resolve_relative( $relative );
+    }
+
+    return $normalized;
+};
 
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {
     if ( ! $condition ) {
@@ -128,7 +143,9 @@ foreach ( $controllers as $action => $controller ) {
 $client_action_refs = $scan_for_matches(
     [
         $root . '/assets',
-        $root . '/modules',
+        $bundle_root,
+        $root . '/src/Metis/Core/BuiltInServices',
+        $root . '/src/Metis/Core/TransitionModules',
     ],
     [
         '/formData\.set\(\s*[\'"]action[\'"]\s*,\s*[\'"](metis_[a-z0-9_]+)[\'"]/i',
@@ -202,7 +219,7 @@ foreach ( $static_endpoint_statuses as $path => $status ) {
 $forbidden_wp_tokens = $scan_for_matches(
     [
         $root . '/src',
-        $root . '/modules',
+        $bundle_root,
         $root . '/tools',
     ],
     [
@@ -521,21 +538,22 @@ $modernized_shared_paths = [
 ];
 
 foreach ( $modernized_shared_paths as $path ) {
-    $contents = @file_get_contents( $path );
+    $resolved_path = $normalize_audit_path( $path );
+    $contents = @file_get_contents( $resolved_path );
     if ( ! is_string( $contents ) || $contents === '' ) {
-        $assert( false, sprintf( 'Modernized shared path is unreadable: %s', $path ) );
+        $assert( false, sprintf( 'Modernized shared path is unreadable: %s', $resolved_path ) );
         continue;
     }
 
     if ( preg_match( '/\b(esc_html|esc_attr|esc_url|esc_url_raw|sanitize_key|sanitize_text_field|sanitize_email|is_email|selected|checked|status_header)\s*\(/', $contents, $matches ) === 1 ) {
-        $assert( false, sprintf( 'Legacy helper [%s] still present in modernized shared path: %s', (string) ( $matches[1] ?? 'unknown' ), $path ) );
+        $assert( false, sprintf( 'Legacy helper [%s] still present in modernized shared path: %s', (string) ( $matches[1] ?? 'unknown' ), $resolved_path ) );
     }
 }
 
 $raw_mail_hits = $scan_for_matches(
     [
         $root . '/src',
-        $root . '/modules',
+        $bundle_root,
         $root . '/tools',
     ],
     [
@@ -560,7 +578,7 @@ foreach ( $raw_mail_hits as $token => $paths ) {
 $provider_bypass_hits = $scan_for_matches(
     [
         $root . '/src',
-        $root . '/modules',
+        $bundle_root,
         $root . '/tools',
     ],
     [

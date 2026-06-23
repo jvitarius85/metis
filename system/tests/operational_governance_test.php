@@ -8,6 +8,9 @@ if ( PHP_SAPI !== 'cli' ) {
 
 $system = dirname( __DIR__ );
 $root = dirname( $system );
+require_once __DIR__ . '/_support/module_path_resolver.php';
+
+$resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $system, $relative );
 
 if ( ! defined( 'METIS_PATH' ) ) {
     define( 'METIS_PATH', rtrim( $root, '/\\' ) . '/' );
@@ -47,7 +50,7 @@ $assert( $files->read( $testPath ) === 'governed-write', 'FileService must read 
 $files->remove( $testDir );
 $assert( ! file_exists( $testDir ), 'FileService must remove managed directories recursively.' );
 
-$websiteBootstrap = (string) file_get_contents( $system . '/modules/website/bootstrap.php' );
+$websiteBootstrap = (string) file_get_contents( $resolve_relative( 'modules/website/bootstrap.php' ) );
 $routerRuntime = (string) file_get_contents( $system . '/src/Metis/Core/Routing/RouterRuntime.php' );
 $securityBridge = (string) file_get_contents( $system . '/src/Metis/Core/Security/SecurityRuntimeBridge.php' );
 foreach ( [ 'website.theme_css', 'website.homepage', 'website.page' ] as $routeName ) {

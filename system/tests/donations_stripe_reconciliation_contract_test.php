@@ -5,6 +5,10 @@ if ( PHP_SAPI !== 'cli' ) {
     fwrite( STDERR, "This test must be run from the command line.\n" );
     exit( 1 );
 }
+$root = dirname( __DIR__ );
+require_once __DIR__ . '/_support/module_path_resolver.php';
+$resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
+
 
 $root = dirname( __DIR__ );
 $failures = [];
@@ -15,7 +19,7 @@ $assert = static function ( bool $condition, string $message ) use ( &$failures 
     }
 };
 
-$source = file_get_contents( $root . '/src/Metis/Modules/Donations/StripeReconciliationService.php' );
+$source = file_get_contents( $resolve_relative( 'src/Metis/Modules/Donations/StripeReconciliationService.php' ) );
 $source = $source === false ? '' : $source;
 
 $run_nightly_start = strpos( $source, 'public static function runNightly' );

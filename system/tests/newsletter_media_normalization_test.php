@@ -8,6 +8,9 @@ namespace {
     }
 
     define('METIS_ROOT', dirname(__DIR__, 2) . '/');
+    $root = dirname(__DIR__);
+    require_once __DIR__ . '/_support/module_path_resolver.php';
+    $resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
 
     final class Core_Settings_Service {
         public static function get(string $key, $default = null) {
@@ -49,7 +52,15 @@ namespace Metis\Modules\Media {
 }
 
 namespace {
-    require_once dirname(__DIR__) . '/modules/newsletter/services/document.php';
+    function metis_media_find_by_token(string $token): ?array {
+        return \Metis\Modules\Media\MediaLibraryService::findByToken($token);
+    }
+
+    function metis_media_find_by_filename(string $filename): ?array {
+        return \Metis\Modules\Media\MediaLibraryService::findByFilename($filename);
+    }
+
+    require_once $resolve_relative( 'modules/newsletter/services/document.php' );
 
     $failures = [];
     $assertSame = static function (string $expected, string $actual, string $message) use (&$failures): void {

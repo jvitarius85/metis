@@ -5,8 +5,9 @@ if ( PHP_SAPI !== 'cli' ) {
     fwrite( STDERR, "This test must be run from the command line.\n" );
     exit( 1 );
 }
-
 $root = dirname( __DIR__ );
+require_once __DIR__ . '/_support/module_path_resolver.php';
+$resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
 
 define( 'METIS_STANDALONE', true );
 define( 'METIS_PREFIX', 'metis' );
@@ -19,6 +20,7 @@ $_SERVER['SCRIPT_NAME'] = '/index.php';
 $_SERVER['REQUEST_METHOD'] = 'GET';
 $_SERVER['REQUEST_URI'] = '/';
 
+ob_start();
 require_once $root . '/src/Metis/Core/CoreBootstrap.php';
 metis_define_system_version( dirname( $root ) . '/' );
 metis_core_bootstrap( [ 'standalone_bootstrap', 'service_registry', 'ajax', 'router', 'security_runtime_bridge' ] );
@@ -33,14 +35,14 @@ $assert = static function ( bool $condition, string $message ) use ( &$failures 
     }
 };
 
-$manifestPath = $root . '/modules/testimonies/module.json';
+$manifestPath = $resolve_relative( 'modules/testimonies/module.json' );
 $manifestJson = @file_get_contents( $manifestPath );
 $manifest = is_string( $manifestJson ) ? json_decode( $manifestJson, true ) : null;
-$ajaxSource = (string) @file_get_contents( $root . '/modules/testimonies/assets/testimonies.ajax.php' );
-$jsSource = (string) @file_get_contents( $root . '/modules/testimonies/assets/testimonies.js' );
+$ajaxSource = (string) @file_get_contents( $resolve_relative( 'modules/testimonies/assets/testimonies.ajax.php' ) );
+$jsSource = (string) @file_get_contents( $resolve_relative( 'modules/testimonies/assets/testimonies.js' ) );
 $editorJsSource = (string) @file_get_contents( $root . '/assets/js/editor/simple-editor.js' );
-$viewSource = (string) @file_get_contents( $root . '/modules/testimonies/views/dashboard.php' );
-$websiteRendererSource = (string) @file_get_contents( $root . '/src/Metis/Modules/Website/Services/WebsiteRenderer.php' );
+$viewSource = (string) @file_get_contents( $resolve_relative( 'modules/testimonies/views/dashboard.php' ) );
+$websiteRendererSource = (string) @file_get_contents( $resolve_relative( 'src/Metis/Modules/Website/Services/WebsiteRenderer.php' ) );
 
 $assert( is_array( $manifest ), 'Testimonies module.json must decode as valid JSON.' );
 $assert( (string) ( $manifest['slug'] ?? '' ) === 'testimonies', 'Testimonies manifest slug must be testimonies.' );
@@ -69,6 +71,7 @@ $assert( ! str_contains( $viewSource, 'metis-testimonies-alert' ), 'Testimonies 
 
 $loader = new \Metis\Core\ModuleLoader();
 $report = (array) $loader->complianceReport( true );
+ob_end_clean();
 $results = is_array( $report['results'] ?? null ) ? $report['results'] : [];
 $testimoniesRow = null;
 foreach ( $results as $row ) {

@@ -92,12 +92,17 @@ if ( ! class_exists( 'Metis_Webhook_Exception' ) ) {
     }
 }
 
+require_once __DIR__ . '/_support/module_path_resolver.php';
+
+$root = dirname( __DIR__ );
+$resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
+
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ValueObjects/ParseResult.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ValueObjects/NormalizedInboundMessage.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/Contracts/MessageParserInterface.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/Services/EmailService.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/GrandyStash/ConversationSupport.php';
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/Newsletter/Support.php';
+require_once $resolve_relative( 'src/Metis/Modules/GrandyStash/ConversationSupport.php' );
+require_once $resolve_relative( 'src/Metis/Modules/Newsletter/Support.php' );
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ParserRegistry.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/ParserEngine.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/TransitionModules/communications_inbound/WorkspaceGoogleService.php';

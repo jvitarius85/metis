@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname( __DIR__ ) . '/src/Metis/Core/Runtime/CliToolGuard.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/Runtime/CliProcessContext.php';
+require_once dirname( __DIR__ ) . '/src/Metis/Core/ModulePathRegistry.php';
 require_once dirname( __DIR__ ) . '/src/Metis/Core/Services/ProcessRunner.php';
 metis_require_cli_tool();
 
@@ -31,6 +32,7 @@ foreach ( $iter as $file ) {
 sort( $php_files );
 
 $rel = static fn ( string $path ): string => ltrim( str_replace( '\\', '/', substr( $path, strlen( $root ) ) ), '/' );
+$resolve_logical_path = static fn ( string $path ): string => \Metis\Core\ModulePathRegistry::resolveLogicalPath( $path );
 $is_approved = static function ( string $relative, string $bucket ) use ( $approved ): bool {
     foreach ( $approved[ $bucket ] ?? [] as $prefix ) {
         if ( str_starts_with( $relative, $prefix ) ) {
@@ -132,11 +134,12 @@ foreach ( (array) ( $governance['sensitive_media_writes'] ?? [] ) as $rule ) {
     }
     $relative = trim( (string) ( $rule['path'] ?? '' ) );
     $required_class = trim( (string) ( $rule['required_storage_class'] ?? '' ) );
-    if ( $relative === '' || $required_class === '' || ! is_file( $root . '/' . $relative ) ) {
+    $resolved_path = $relative !== '' ? $resolve_logical_path( $relative ) : '';
+    if ( $relative === '' || $required_class === '' || $resolved_path === '' || ! is_file( $resolved_path ) ) {
         continue;
     }
 
-    $contents = (string) file_get_contents( $root . '/' . $relative );
+    $contents = (string) file_get_contents( $resolved_path );
     $canonical_helpers = (array) ( $governance['canonical_media_helpers'] ?? [] );
     $expected_helper = (string) ( $canonical_helpers[ $required_class ] ?? '' );
     $has_helper = $expected_helper !== '' && str_contains( $contents, $expected_helper . '(' );

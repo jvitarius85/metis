@@ -5,6 +5,10 @@ if ( PHP_SAPI !== 'cli' ) {
     fwrite( STDERR, "This test must be run from the command line.\n" );
     exit( 1 );
 }
+$root = dirname( __DIR__ );
+require_once __DIR__ . '/_support/module_path_resolver.php';
+$resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
+
 
 final class Metis_Tables {
     public static function get( string $table ): string {
@@ -161,7 +165,7 @@ function metis_get_deposits(): array {
     ];
 }
 
-require_once dirname( __DIR__ ) . '/src/Metis/Modules/Donations/ReadService.php';
+require_once $resolve_relative( 'src/Metis/Modules/Donations/ReadService.php' );
 
 $failures = [];
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {

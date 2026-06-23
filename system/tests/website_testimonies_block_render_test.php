@@ -65,9 +65,13 @@ namespace {
         return preg_replace( '/[^a-z0-9_]+/', '_', $value ) ?? '';
     }
 
-    require_once dirname( __DIR__ ) . '/src/Metis/Modules/Website/BlockRegistry.php';
-    require_once dirname( __DIR__ ) . '/src/Metis/Modules/Website/Services/EditorOptionsService.php';
-    require_once dirname( __DIR__ ) . '/src/Metis/Modules/Website/Services/BlockRenderer.php';
+    $root = dirname( __DIR__ );
+    require_once __DIR__ . '/_support/module_path_resolver.php';
+    $resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
+
+    require_once $resolve_relative( 'src/Metis/Modules/Website/BlockRegistry.php' );
+    require_once $resolve_relative( 'src/Metis/Modules/Website/Services/EditorOptionsService.php' );
+    require_once $resolve_relative( 'src/Metis/Modules/Website/Services/BlockRenderer.php' );
 
     $failures = [];
     $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {

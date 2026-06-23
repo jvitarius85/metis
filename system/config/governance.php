@@ -55,7 +55,7 @@ return [
             'required_storage_class' => 'protected',
         ],
         [
-            'path' => 'system/src/Metis/Modules/Finance/FinanceV2Service.php',
+            'path' => 'system/modules/finance/FinanceV2Service.php',
             'required_storage_class' => 'private',
         ],
     ],

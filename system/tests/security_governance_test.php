@@ -8,6 +8,9 @@ if ( PHP_SAPI !== 'cli' ) {
 
 $root = dirname( __DIR__ );
 $failures = [];
+require_once __DIR__ . '/_support/module_path_resolver.php';
+
+$resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
 
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {
     if ( ! $condition ) {
@@ -15,8 +18,8 @@ $assert = static function ( bool $condition, string $message ) use ( &$failures 
     }
 };
 
-$read = static function ( string $relative ) use ( $root ): string {
-    $contents = file_get_contents( $root . '/' . ltrim( $relative, '/\\' ) );
+$read = static function ( string $relative ) use ( $resolve_relative ): string {
+    $contents = file_get_contents( $resolve_relative( $relative ) );
     return $contents === false ? '' : $contents;
 };
 

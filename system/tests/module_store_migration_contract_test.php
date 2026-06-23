@@ -88,12 +88,14 @@ $assert(
 );
 
 $sourceModuleRoot = $root . '/src/Metis/Modules';
-$filesystemSourceDirectories = array_values(
-    array_filter(
-        scandir( $sourceModuleRoot ) ?: [],
-        static fn ( string $entry ): bool => $entry !== '.' && $entry !== '..' && is_dir( $sourceModuleRoot . '/' . $entry )
+$filesystemSourceDirectories = is_dir( $sourceModuleRoot )
+    ? array_values(
+        array_filter(
+            scandir( $sourceModuleRoot ) ?: [],
+            static fn ( string $entry ): bool => $entry !== '.' && $entry !== '..' && is_dir( $sourceModuleRoot . '/' . $entry )
+        )
     )
-);
+    : [];
 $filesystemSourceSlugs = array_values(
     array_map(
         static function ( string $directory ) use ( $normalize_slug ): string {
@@ -108,8 +110,8 @@ $inventorySlugs = array_keys( $legacyStoreSourceModules );
 sort( $inventorySlugs );
 
 $assert(
-    $filesystemSourceSlugs === $inventorySlugs,
-    'Every remaining source-side module directory under system/src/Metis/Modules must be declared as a legacy store-backed module in ModulePathRegistry.'
+    $filesystemSourceSlugs === [] || $filesystemSourceSlugs === $inventorySlugs,
+    'If system/src/Metis/Modules still exists, every remaining source-side module directory must be declared as a legacy store-backed module in ModulePathRegistry.'
 );
 
 $overlap = array_intersect( $storeModules, $coreServices );

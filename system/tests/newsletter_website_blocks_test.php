@@ -42,6 +42,10 @@ namespace {
         exit( 1 );
     }
 
+    $root = dirname( __DIR__ );
+    require_once __DIR__ . '/_support/module_path_resolver.php';
+    $resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
+
     final class Metis_Tables {
         public static function get( string $table ): string {
             return 'metis_' . $table;
@@ -137,10 +141,10 @@ namespace {
         return number_format( $value, $decimals, '.', ',' );
     }
 
-    require_once dirname( __DIR__ ) . '/src/Metis/Modules/Newsletter/CampaignService.php';
-    require_once dirname( __DIR__ ) . '/src/Metis/Modules/Newsletter/WebsiteService.php';
-    require_once dirname( __DIR__ ) . '/src/Metis/Modules/Website/BlockRegistry.php';
-    require_once dirname( __DIR__ ) . '/src/Metis/Modules/Website/Services/BlockRenderer.php';
+    require_once $resolve_relative( 'src/Metis/Modules/Newsletter/CampaignService.php' );
+    require_once $resolve_relative( 'src/Metis/Modules/Newsletter/WebsiteService.php' );
+    require_once $resolve_relative( 'src/Metis/Modules/Website/BlockRegistry.php' );
+    require_once $resolve_relative( 'src/Metis/Modules/Website/Services/BlockRenderer.php' );
 
     $failures = [];
     $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {
@@ -185,7 +189,7 @@ namespace {
     );
 
     $editorSource = (string) file_get_contents( dirname( __DIR__ ) . '/assets/js/editor/simple-editor.js' );
-    $websiteAjaxSource = (string) file_get_contents( dirname( __DIR__ ) . '/modules/website/ajax/website.ajax.php' );
+    $websiteAjaxSource = (string) file_get_contents( $resolve_relative( 'modules/website/ajax/website.ajax.php' ) );
     $db = metis_db();
 
     $assert( count( $listOptions ) === 2, 'Newsletter website service must expose active list options for the website editor.' );
@@ -214,7 +218,10 @@ namespace {
     $assert( str_contains( $editorSource, "newsletter_archive: 'newsletter'" ), 'Simple editor block picker must map the newsletter archive icon.' );
     $assert( str_contains( $editorSource, "return ['text', 'form', 'form_tabs', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'newsletter_signup', 'newsletter_archive', 'button', 'image'];" ), 'Column modules must include newsletter signup and archive block types.' );
     $assert( str_contains( $editorSource, ">Newsletter Signup</option>") && str_contains( $editorSource, ">Newsletter Archive</option>"), 'Column content picker must expose newsletter signup and archive options.' );
-    $assert( str_contains( $websiteAjaxSource, "'newsletter_lists' => NewsletterWebsiteService::listOptions()" ), 'Website editor options must expose newsletter list choices through the shared newsletter website service.' );
+    $assert(
+        str_contains( $websiteAjaxSource, "'newsletter_lists' =>" ) && str_contains( $websiteAjaxSource, 'metis_newsletter_website_list_options' ),
+        'Website editor options must expose newsletter list choices through the shared newsletter website service.'
+    );
 
     $archivePrepareCall = null;
     foreach ( $db->prepareCalls as $call ) {

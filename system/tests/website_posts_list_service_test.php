@@ -29,7 +29,9 @@ namespace {
     }
 
     $root = dirname( __DIR__ );
-    require_once $root . '/src/Metis/Modules/Website/Services/PostsListService.php';
+    require_once __DIR__ . '/_support/module_path_resolver.php';
+    $resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
+    require_once $resolve_relative( 'src/Metis/Modules/Website/Services/PostsListService.php' );
 
     $failures = [];
     $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {
@@ -77,8 +79,8 @@ namespace {
         ]
     );
 
-    $blockRendererSource = (string) file_get_contents( $root . '/src/Metis/Modules/Website/Services/BlockRenderer.php' );
-    $websiteRendererSource = (string) file_get_contents( $root . '/src/Metis/Modules/Website/Services/WebsiteRenderer.php' );
+    $blockRendererSource = (string) file_get_contents( $resolve_relative( 'src/Metis/Modules/Website/Services/BlockRenderer.php' ) );
+    $websiteRendererSource = (string) file_get_contents( $resolve_relative( 'src/Metis/Modules/Website/Services/WebsiteRenderer.php' ) );
     $editorSource = (string) file_get_contents( $root . '/assets/js/editor/simple-editor.js' );
 
     $assert( ( $query['limit'] ?? 0 ) === 12, 'Posts list query should keep the configured limit.' );
