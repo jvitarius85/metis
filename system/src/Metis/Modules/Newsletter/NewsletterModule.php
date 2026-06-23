@@ -78,6 +78,13 @@ final class NewsletterModule {
     public static function gmailSend( string $to_email, string $subject, string $html_body, array $message_opts = [] ): array { return DeliveryService::gmailSend( $to_email, $subject, $html_body, $message_opts ); }
     public static function queueCampaignMessages( int $campaign_id ): array { return QueueService::queueCampaignMessages( $campaign_id ); }
     public static function processQueue( int $limit = 100 ): array { return QueueService::processQueue( $limit ); }
+    public static function createCampaign( array $request ): array { return \Metis\Core\Runtime\NewsletterModuleRuntimeBridge::createCampaign( $request ); }
+    public static function updateCampaign( array $request ): array { return \Metis\Core\Runtime\NewsletterModuleRuntimeBridge::updateCampaign( $request ); }
+    public static function sendCampaign( array $request ): array { return \Metis\Core\Runtime\NewsletterModuleRuntimeBridge::sendCampaign( $request ); }
+    public static function scheduleCampaign( array $request ): array { return \Metis\Core\Runtime\NewsletterModuleRuntimeBridge::scheduleCampaign( $request ); }
+    public static function cancelCampaign( array $request ): array { return \Metis\Core\Runtime\NewsletterModuleRuntimeBridge::cancelCampaign( $request ); }
+    public static function archiveCampaign( array $request ): array { return \Metis\Core\Runtime\NewsletterModuleRuntimeBridge::archiveCampaign( $request ); }
+    public static function deleteCampaign( array $request ): array { return \Metis\Core\Runtime\NewsletterModuleRuntimeBridge::deleteCampaign( $request ); }
     public static function googleUsageDailyLimit(): int { return Support::googleUsageDailyLimit(); }
     public static function googleSyncUsageForDate( string $date_ymd = '' ): array { return DeliveryService::googleSyncUsageForDate( $date_ymd ); }
     public static function handleOpenRoute( \Metis_Http_Request $request ): \Metis_Http_Response { return DeliveryService::handleOpenRoute( $request ); }

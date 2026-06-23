@@ -96,6 +96,13 @@ The remaining core-side coupling to legacy store-managed source namespaces is no
 
 This is the current migration frontier. Removing source-side implementations from `system/src/Metis/Modules/` should now proceed by shrinking or deleting these bridges instead of patching broad core surfaces.
 
+Bridge implementation rule:
+
+- Runtime bridges should prefer module entry classes such as `WebsiteModule`, `NewsletterModule`, `ContactsModule`, and similar facades when those entry points exist.
+- Bridge logic should not drift back to internal source services or schema managers when an equivalent module entry method is available.
+
+This rule is enforced by `system/tests/module_runtime_bridge_contract_test.php`.
+
 ## Bundle Contract
 
 Each published module bundle should unpack to:
