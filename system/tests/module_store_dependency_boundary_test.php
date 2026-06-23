@@ -87,6 +87,11 @@ ksort( $actual );
 $allowed = \Metis\Core\ModulePathRegistry::legacyStoreManagedDirectRuntimeBridges();
 ksort( $allowed );
 
+$assert(
+    $allowed === [],
+    'Direct core-to-store-module namespace dependencies should be fully retired once runtime entry resolvers own the bridge boundary.'
+);
+
 $unexpectedFiles = array_diff_key( $actual, $allowed );
 foreach ( $unexpectedFiles as $path => $slugs ) {
     $assert(

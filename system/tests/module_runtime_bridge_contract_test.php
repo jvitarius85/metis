@@ -71,6 +71,24 @@ $assert(
 );
 
 $assert(
+    str_contains( $newsletterBridge, "RuntimeModuleEntryResolver::callStatic( 'newsletter', 'createCampaign'" )
+    && str_contains( $newsletterBridge, "RuntimeModuleEntryResolver::callStatic( 'newsletter', 'updateCampaign'" )
+    && str_contains( $newsletterBridge, "RuntimeModuleEntryResolver::callStatic( 'newsletter', 'sendCampaign'" )
+    && str_contains( $newsletterBridge, "RuntimeModuleEntryResolver::callStatic( 'newsletter', 'scheduleCampaign'" )
+    && str_contains( $newsletterBridge, "RuntimeModuleEntryResolver::callStatic( 'newsletter', 'cancelCampaign'" )
+    && str_contains( $newsletterBridge, "RuntimeModuleEntryResolver::callStatic( 'newsletter', 'archiveCampaign'" )
+    && str_contains( $newsletterBridge, "RuntimeModuleEntryResolver::callStatic( 'newsletter', 'deleteCampaign'" ),
+    'Newsletter runtime bridge must delegate through dynamically resolved newsletter module entry methods.'
+);
+
+$assert(
+    ! str_contains( $newsletterBridge, 'CampaignService' )
+    && ! str_contains( $newsletterBridge, 'QueueService' )
+    && ! str_contains( $newsletterBridge, 'NewsletterModule::ensureSchema' ),
+    'Newsletter runtime bridge must not reach directly into newsletter source internals.'
+);
+
+$assert(
     str_contains( $entryResolver, "Application::service( 'modules' )->get( \$slug )" )
     && str_contains( $entryResolver, "['config']['_module_class']" )
     && str_contains( $entryResolver, 'fallbackClass' ),
@@ -89,14 +107,11 @@ $assert(
 );
 
 $assert(
-    str_contains( $newsletterModule, 'NewsletterModuleRuntimeBridge::createCampaign' )
-    && str_contains( $newsletterModule, 'NewsletterModuleRuntimeBridge::updateCampaign' )
-    && str_contains( $newsletterModule, 'NewsletterModuleRuntimeBridge::sendCampaign' )
-    && str_contains( $newsletterModule, 'NewsletterModuleRuntimeBridge::scheduleCampaign' )
-    && str_contains( $newsletterModule, 'NewsletterModuleRuntimeBridge::cancelCampaign' )
-    && str_contains( $newsletterModule, 'NewsletterModuleRuntimeBridge::archiveCampaign' )
-    && str_contains( $newsletterModule, 'NewsletterModuleRuntimeBridge::deleteCampaign' ),
-    'NewsletterModule entry operations must currently route through the centralized newsletter runtime bridge.'
+    str_contains( $newsletterModule, 'CampaignService::save(' )
+    && str_contains( $newsletterModule, 'QueueService::queueCampaignMessages(' )
+    && str_contains( $newsletterModule, 'CampaignService::archive(' )
+    && str_contains( $newsletterModule, 'CampaignService::delete(' ),
+    'NewsletterModule entry operations must own the campaign workflow so runtime callers can resolve the module entry directly.'
 );
 
 $assert(

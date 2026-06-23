@@ -208,11 +208,7 @@ final class ModulePathRegistry {
             'website',
         ],
     ];
-    private const LEGACY_STORE_MANAGED_DIRECT_RUNTIME_BRIDGES = [
-        'src/Metis/Core/Runtime/NewsletterModuleRuntimeBridge.php' => [
-            'newsletter',
-        ],
-    ];
+    private const LEGACY_STORE_MANAGED_DIRECT_RUNTIME_BRIDGES = [];
 
     public static function coreServiceSlugs(): array {
         return self::CORE_SERVICE_SLUGS;
