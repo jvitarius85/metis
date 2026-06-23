@@ -333,10 +333,12 @@ final class ModuleValidator {
             return;
         }
 
+        $guardedFunctions = $this->bootstrapGuardedFunctions( $bootstrapFile );
         $reservedFunctions = $this->coreDeclaredFunctions( $bootstrapFile );
 
         foreach ( $this->bootstrapDeclaredFunctions( $bootstrapFile ) as $functionName ) {
-            if ( isset( $reservedFunctions[ strtolower( $functionName ) ] ) ) {
+            $normalized = strtolower( $functionName );
+            if ( isset( $reservedFunctions[ $normalized ] ) && ! isset( $guardedFunctions[ $normalized ] ) ) {
                 throw new \RuntimeException(
                     sprintf(
                         'Module [%s] bootstrap declares helper [%s] that conflicts with an existing runtime function.',
@@ -352,6 +354,28 @@ final class ModuleValidator {
      * @return list<string>
      */
     private function bootstrapDeclaredFunctions( string $bootstrapFile ): array {
+        return array_keys( $this->bootstrapFunctionDeclarations( $bootstrapFile ) );
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private function bootstrapGuardedFunctions( string $bootstrapFile ): array {
+        $functions = [];
+
+        foreach ( $this->bootstrapFunctionDeclarations( $bootstrapFile ) as $functionName => $metadata ) {
+            if ( ! empty( $metadata['guarded'] ) ) {
+                $functions[ strtolower( $functionName ) ] = true;
+            }
+        }
+
+        return $functions;
+    }
+
+    /**
+     * @return array<string, array{guarded: bool}>
+     */
+    private function bootstrapFunctionDeclarations( string $bootstrapFile ): array {
         $source = (string) @file_get_contents( $bootstrapFile );
         if ( $source === '' ) {
             return [];
@@ -360,10 +384,45 @@ final class ModuleValidator {
         $tokens = token_get_all( $source );
         $functions = [];
         $tokenCount = count( $tokens );
+        $offset = 0;
+        $braceDepth = 0;
+        $classBraceDepths = [];
+        $awaitingClassBody = false;
 
         for ( $index = 0; $index < $tokenCount; $index++ ) {
             $token = $tokens[ $index ];
-            if ( ! is_array( $token ) || $token[0] !== T_FUNCTION ) {
+            if ( is_string( $token ) ) {
+                if ( $token === '{' ) {
+                    $braceDepth++;
+                    if ( $awaitingClassBody ) {
+                        $classBraceDepths[] = $braceDepth;
+                        $awaitingClassBody = false;
+                    }
+                } elseif ( $token === '}' ) {
+                    if ( $classBraceDepths !== [] && end( $classBraceDepths ) === $braceDepth ) {
+                        array_pop( $classBraceDepths );
+                    }
+                    $braceDepth = max( 0, $braceDepth - 1 );
+                }
+
+                $offset += strlen( $token );
+                continue;
+            }
+
+            $tokenId = $token[0];
+            $tokenText = (string) $token[1];
+
+            if ( in_array( $tokenId, [ T_CLASS, T_INTERFACE, T_TRAIT ], true ) || ( defined( 'T_ENUM' ) && $tokenId === T_ENUM ) ) {
+                $awaitingClassBody = true;
+            }
+
+            if ( $tokenId !== T_FUNCTION ) {
+                $offset += strlen( $tokenText );
+                continue;
+            }
+
+            if ( $classBraceDepths !== [] ) {
+                $offset += strlen( $tokenText );
                 continue;
             }
 
@@ -394,13 +453,33 @@ final class ModuleValidator {
 
             $functionName = trim( (string) $nameToken[1] );
             if ( $functionName === '' ) {
+                $offset += strlen( $tokenText );
                 continue;
             }
 
-            $functions[] = $functionName;
+            $normalized = strtolower( $functionName );
+            $functions[ $normalized ] = [
+                'guarded' => $this->functionGuardedByExists( $source, $offset, $functionName ),
+            ];
+
+            $offset += strlen( $tokenText );
         }
 
-        return array_values( array_unique( $functions ) );
+        return $functions;
+    }
+
+    private function functionGuardedByExists( string $source, int $functionOffset, string $functionName ): bool {
+        $window = substr( $source, max( 0, $functionOffset - 320 ), min( 320, $functionOffset ) );
+        if ( $window === false || $window === '' ) {
+            return false;
+        }
+
+        $quotedName = preg_quote( $functionName, '/' );
+
+        return (bool) preg_match(
+            '/if\s*\(\s*!\s*function_exists\s*\(\s*[\'"]' . $quotedName . '[\'"]\s*\)\s*\)\s*\{\s*$/i',
+            $window
+        );
     }
 
     /**
@@ -445,6 +524,18 @@ final class ModuleValidator {
         }
 
         $functions = $declared;
+        $resolvedExcludePath = realpath( $excludePath );
+        $resolvedCoreRoot = realpath( $coreRoot );
+        if (
+            ! is_string( $resolvedExcludePath )
+            || $resolvedExcludePath === ''
+            || ! is_string( $resolvedCoreRoot )
+            || $resolvedCoreRoot === ''
+            || strncmp( $resolvedExcludePath, $resolvedCoreRoot . DIRECTORY_SEPARATOR, strlen( $resolvedCoreRoot ) + 1 ) !== 0
+        ) {
+            return $functions;
+        }
+
         foreach ( $this->bootstrapDeclaredFunctions( $excludePath ) as $functionName ) {
             $normalized = strtolower( trim( $functionName ) );
             if ( $normalized !== '' ) {

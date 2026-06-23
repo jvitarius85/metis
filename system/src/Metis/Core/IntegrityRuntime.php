@@ -518,7 +518,12 @@ class Metis_Integrity_Manager {
             }
         }
 
-        return in_array( basename( $relative ), self::ignored_basenames(), true );
+        $basename = basename( $relative );
+        if ( str_starts_with( $basename, '._' ) ) {
+            return true;
+        }
+
+        return in_array( $basename, self::ignored_basenames(), true );
     }
 
     private static function restore_file( string $relative, string $expected_hash = '', array $git = [] ): bool {
