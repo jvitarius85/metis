@@ -585,6 +585,7 @@ final class ReleaseManager {
     }
 
     private function refreshProtectionPreflightState(): void {
+        ModulePathRegistry::retireLegacySourceModuleTree();
         CacheService::clearGroup( 'modules' );
         CacheService::clearGroup( 'fragments' );
         CacheService::forget( 'updates.modules' );
@@ -1062,6 +1063,7 @@ final class ReleaseManager {
 
     private function finalizeArchiveApply( string $tag, array $release, string $trigger, array $backup, array $previous, array $archive_result ): array {
         $this->invalidateConfigCache();
+        ModulePathRegistry::retireLegacySourceModuleTree();
 
         $baseline_built = true;
         $baseline_signed = false;
@@ -1179,6 +1181,7 @@ final class ReleaseManager {
 
     private function finalizeCheckout( string $tag, array $release, string $trigger, array $backup, array $previous, string $reason ): array {
         $this->invalidateConfigCache();
+        ModulePathRegistry::retireLegacySourceModuleTree();
 
         $baseline_built = true;
         $baseline_signed = false;

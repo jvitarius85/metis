@@ -352,6 +352,7 @@ final class ModuleInstallService {
     }
 
     private function refreshProtectionState(string $reason): array {
+        ModulePathRegistry::retireLegacySourceModuleTree();
         $result = [
             'baseline_built' => true,
             'baseline_signed' => true,

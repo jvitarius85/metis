@@ -741,6 +741,63 @@ final class ModulePathRegistry {
         return $moduleRoot === null ? null : self::buildResolvedPath( $moduleRoot, '', $parts );
     }
 
+    /**
+     * @return array{
+     *     status:string,
+     *     source_root:string,
+     *     removed_directories:array<int,string>,
+     *     removed_files:array<int,string>,
+     *     failures:array<int,string>,
+     *     composer_autoload_source_module_refs:array{classmap:int,static:int,total:int}
+     * }
+     */
+    public static function retireLegacySourceModuleTree(): array {
+        $sourceRoot = rtrim( self::sourceModuleRootPath(), '/\\' );
+        $autoloadRefs = self::composerSourceModuleAutoloadReferenceCounts();
+        $result = [
+            'status' => 'absent',
+            'source_root' => $sourceRoot,
+            'removed_directories' => [],
+            'removed_files' => [],
+            'failures' => [],
+            'composer_autoload_source_module_refs' => $autoloadRefs,
+        ];
+
+        if ( ! is_dir( $sourceRoot ) ) {
+            return $result;
+        }
+
+        if ( (int) ( $autoloadRefs['total'] ?? 0 ) > 0 ) {
+            $result['status'] = 'blocked';
+            $result['failures'][] = 'Composer autoload still references system/src/Metis/Modules.';
+            return $result;
+        }
+
+        $children = array_values(
+            array_filter(
+                scandir( $sourceRoot ) ?: [],
+                static fn ( string $name ): bool => $name !== '.' && $name !== '..'
+            )
+        );
+
+        foreach ( $children as $child ) {
+            self::removeLegacySourceEntry(
+                $sourceRoot . '/' . $child,
+                $result['removed_directories'],
+                $result['removed_files'],
+                $result['failures']
+            );
+        }
+
+        if ( $result['failures'] === [] && is_dir( $sourceRoot ) && self::directoryIsEmpty( $sourceRoot ) && ! @rmdir( $sourceRoot ) ) {
+            $result['failures'][] = sprintf( 'Unable to remove retired source root [%s].', $sourceRoot );
+        }
+
+        $result['status'] = $result['failures'] === [] ? 'retired' : 'failed';
+
+        return $result;
+    }
+
     private static function preferredStoreBundleRootPath( string $slug ): ?string {
         $developmentPath = rtrim( self::developmentBundleSourceRootPath(), '/\\' ) . '/' . $slug;
         if ( is_dir( $developmentPath ) ) {
@@ -802,5 +859,71 @@ final class ModulePathRegistry {
         sort( $missing );
 
         return $missing;
+    }
+
+    /**
+     * @param array<int,string> $removedDirectories
+     * @param array<int,string> $removedFiles
+     * @param array<int,string> $failures
+     */
+    private static function removeLegacySourceEntry(
+        string $path,
+        array &$removedDirectories,
+        array &$removedFiles,
+        array &$failures
+    ): void {
+        if ( is_link( $path ) || is_file( $path ) ) {
+            if ( @unlink( $path ) ) {
+                $removedFiles[] = self::normalizedFilesystemPath( $path );
+                return;
+            }
+
+            $failures[] = sprintf( 'Unable to remove retired source file [%s].', self::normalizedFilesystemPath( $path ) );
+            return;
+        }
+
+        if ( ! is_dir( $path ) ) {
+            return;
+        }
+
+        $children = array_values(
+            array_filter(
+                scandir( $path ) ?: [],
+                static fn ( string $name ): bool => $name !== '.' && $name !== '..'
+            )
+        );
+
+        foreach ( $children as $child ) {
+            self::removeLegacySourceEntry(
+                $path . '/' . $child,
+                $removedDirectories,
+                $removedFiles,
+                $failures
+            );
+        }
+
+        if ( self::directoryIsEmpty( $path ) && @rmdir( $path ) ) {
+            $removedDirectories[] = self::normalizedFilesystemPath( $path );
+            return;
+        }
+
+        if ( is_dir( $path ) ) {
+            $failures[] = sprintf( 'Unable to remove retired source directory [%s].', self::normalizedFilesystemPath( $path ) );
+        }
+    }
+
+    private static function directoryIsEmpty( string $path ): bool {
+        $contents = scandir( $path );
+        if ( $contents === false ) {
+            return false;
+        }
+
+        foreach ( $contents as $entry ) {
+            if ( $entry !== '.' && $entry !== '..' ) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

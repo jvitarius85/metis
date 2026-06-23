@@ -60,10 +60,20 @@ $assert(
 );
 
 $assert(
+    str_contains( $releaseManager, 'ModulePathRegistry::retireLegacySourceModuleTree();' ),
+    'Release refresh and finalization paths must retire stale legacy source modules before integrity and module compliance run.'
+);
+
+$assert(
     str_contains( $releaseManager, "CacheService::clearGroup( 'modules' );" )
     && str_contains( $releaseManager, "CacheService::forget( 'updates.modules' );" )
     && str_contains( $releaseManager, "Application::has_service( 'modules' )" ),
     'Release protection preflight refresh must invalidate module caches and reload the module service.'
+);
+
+$assert(
+    str_contains( $moduleInstall, 'ModulePathRegistry::retireLegacySourceModuleTree();' ),
+    'Module install protection refresh must retire stale legacy source modules before rebuilding integrity and compliance state.'
 );
 
 if ( $failures !== [] ) {
