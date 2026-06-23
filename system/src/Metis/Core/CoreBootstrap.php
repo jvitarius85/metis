@@ -27,6 +27,7 @@ if ( is_file( $metis_composer_autoload ) ) {
 }
 
 require_once __DIR__ . '/Runtime/RequestRuntime.php';
+require_once __DIR__ . '/Runtime/ModuleBundleAutoloader.php';
 
 $metis_bootstrap_root = metis_bootstrap_root_path();
 $metis_bootstrap_system = $metis_bootstrap_root . 'system/';
@@ -50,6 +51,8 @@ foreach ( [
     }
 }
 unset( $metis_bootstrap_root, $metis_bootstrap_system, $metis_constant, $metis_value );
+
+\Metis\Core\Runtime\ModuleBundleAutoloader::register();
 
 if ( ! function_exists( 'metis_json_encode' ) ) {
     function metis_json_encode( mixed $value, int $flags = 0 ): string|false {

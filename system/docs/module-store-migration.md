@@ -7,6 +7,7 @@ Metis is migrating toward a module-store model where installable feature modules
 - `system/modules/` is the runtime source of truth for store-managed modules.
 - `system/src/Metis/Core/BuiltInServices/` is the source of truth for built-in core services.
 - `system/src/Metis/Modules/` still contains legacy source-side implementations that must be migrated deliberately before they can be removed.
+- In development, the canonical bundle source currently lives in the sibling private workspace at `../metis-private/modules/` unless `METIS_PRIVATE_MODULES_ROOT` overrides it.
 
 ## Current Ownership Model
 
@@ -154,6 +155,18 @@ The audit also reports `runtime_coupling_status` for each bundle:
 
 This means a bundle can be entry-contract compliant while still needing a later runtime-isolation pass.
 
+To audit whether the remaining source-side module tree can be deleted safely:
+
+```bash
+php system/tools/module_source_retirement_audit.php
+```
+
+The retirement audit currently treats these as hard blockers:
+
+- any legacy source-backed store module missing a bundle replacement in the development bundle source root
+- any remaining direct source-coupled runtime bridges
+- any unresolved runtime class loading path that still requires `system/src/Metis/Modules/`
+
 ## Current Audit Snapshot
 
 Current bundle-audit baseline:
@@ -163,6 +176,11 @@ Current bundle-audit baseline:
 - Runtime isolation readiness:
   - `14/14` currently audit as `bundle_only`
   - `0/14` currently audit as `source_coupled`
+
+Current delete-readiness interpretation:
+
+- Bundle coverage can be complete while delete readiness is still false.
+- The source tree is only safe to remove after runtime class loading no longer depends on `system/src/Metis/Modules/`.
 
 ## Migration Rules
 

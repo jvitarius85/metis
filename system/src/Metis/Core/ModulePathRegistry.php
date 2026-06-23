@@ -4,6 +4,31 @@ declare(strict_types=1);
 namespace Metis\Core;
 
 final class ModulePathRegistry {
+    private const MODULE_NAMESPACE_SEGMENTS = [
+        'board' => 'Board',
+        'calendar' => 'Calendar',
+        'communications_inbound' => 'CommunicationsInbound',
+        'contacts' => 'Contacts',
+        'donations' => 'Donations',
+        'drive' => 'Drive',
+        'finance' => 'Finance',
+        'forms' => 'Forms',
+        'forms_import' => 'FormsImport',
+        'grandys_stash' => 'GrandyStash',
+        'help' => 'Help',
+        'hermes' => 'Hermes',
+        'import' => 'Import',
+        'media' => 'Media',
+        'modules' => 'Modules',
+        'newsletter' => 'Newsletter',
+        'people' => 'People',
+        'portal' => 'Portal',
+        'profile' => 'Profile',
+        'resources' => 'Resources',
+        'settings' => 'Settings',
+        'testimonies' => 'Testimonies',
+        'website' => 'Website',
+    ];
     private const CORE_SERVICE_SLUGS = [ 'help', 'hermes', 'modules', 'people', 'portal', 'profile', 'settings' ];
     private const STORE_MANAGED_MODULE_SLUGS = [
         'board',
@@ -288,12 +313,153 @@ final class ModulePathRegistry {
         return [
             'module_root' => self::moduleRootPath(),
             'core_service_root' => self::coreServiceRootPath(),
+            'development_bundle_source_root' => self::developmentBundleSourceRootPath(),
             'store_modules' => self::storeManagedModuleSlugs(),
             'core_services' => self::coreServiceSlugs(),
             'source_module_inventory' => self::sourceModuleInventory(),
             'legacy_store_managed_runtime_bridges' => self::legacyStoreManagedRuntimeBridges(),
             'legacy_store_managed_direct_runtime_bridges' => self::legacyStoreManagedDirectRuntimeBridges(),
             'transitional_source_modules' => self::transitionalSourceModules(),
+        ];
+    }
+
+    public static function developmentBundleSourceRootPath(): string {
+        $configured = getenv( 'METIS_PRIVATE_MODULES_ROOT' );
+        if ( is_string( $configured ) && trim( $configured ) !== '' ) {
+            return self::normalizedPath( trim( $configured ) );
+        }
+
+        $projectRoot = dirname( __DIR__, 4 );
+        return self::normalizedPath( dirname( $projectRoot ) . '/metis-private/modules/' );
+    }
+
+    /**
+     * @return array{classmap:int,static:int,total:int}
+     */
+    public static function composerSourceModuleAutoloadReferenceCounts(): array {
+        $projectRoot = dirname( __DIR__, 4 );
+        $targets = [
+            'classmap' => $projectRoot . '/system/vendor/composer/autoload_classmap.php',
+            'static' => $projectRoot . '/system/vendor/composer/autoload_static.php',
+        ];
+        $counts = [
+            'classmap' => 0,
+            'static' => 0,
+            'total' => 0,
+        ];
+
+        foreach ( $targets as $key => $path ) {
+            if ( ! is_file( $path ) ) {
+                continue;
+            }
+
+            $contents = @file_get_contents( $path );
+            if ( ! is_string( $contents ) || $contents === '' ) {
+                continue;
+            }
+
+            $count = preg_match_all( '#system/src/Metis/Modules/#', $contents, $matches );
+            $counts[ $key ] = $count === false ? 0 : $count;
+        }
+
+        $counts['total'] = (int) $counts['classmap'] + (int) $counts['static'];
+
+        return $counts;
+    }
+
+    /**
+     * @return array{
+     *     ok:bool,
+     *     source_module_root:string,
+     *     runtime_module_root:string,
+     *     development_bundle_source_root:string,
+     *     runtime_module_manifest_count:int,
+     *     composer_autoload_source_module_refs:array{classmap:int,static:int,total:int},
+     *     direct_runtime_bridge_count:int,
+     *     runtime_bridge_frontier_count:int,
+     *     missing_bundle_slugs:array<int,string>,
+     *     bundle_slug_count:int,
+     *     modules:array<int,array<string,mixed>>,
+     *     blockers:array<int,string>
+     * }
+     */
+    public static function sourceRetirementSnapshot(): array {
+        $sourceRoot = self::normalizedPath( dirname( __DIR__, 3 ) . '/src/Metis/Modules/' );
+        $runtimeRoot = self::moduleRootPath();
+        $bundleRoot = self::developmentBundleSourceRootPath();
+        $legacySlugs = self::legacyStoreManagedSourceModuleSlugs();
+        sort( $legacySlugs );
+
+        $bundleDirectories = [];
+        if ( is_dir( $bundleRoot ) ) {
+            foreach ( glob( rtrim( $bundleRoot, '/\\' ) . '/*', GLOB_ONLYDIR ) ?: [] as $directory ) {
+                $slug = self::normalizedSlug( basename( $directory ) );
+                if ( $slug !== '' ) {
+                    $bundleDirectories[ $slug ] = self::normalizedPath( $directory );
+                }
+            }
+        }
+
+        $modules = [];
+        $missingBundleSlugs = [];
+        foreach ( $legacySlugs as $slug ) {
+            $bundlePath = (string) ( $bundleDirectories[ $slug ] ?? '' );
+            $manifestPath = $bundlePath !== '' ? rtrim( $bundlePath, '/\\' ) . '/module.json' : '';
+            $entryPath = $bundlePath !== '' ? rtrim( $bundlePath, '/\\' ) . '/Module.php' : '';
+            $moduleRow = [
+                'slug' => $slug,
+                'source_path' => rtrim( $sourceRoot, '/\\' ) . '/' . self::namespaceSegmentForSlug( $slug ),
+                'bundle_path' => $bundlePath,
+                'bundle_present' => $bundlePath !== '' && is_dir( $bundlePath ),
+                'manifest_present' => $manifestPath !== '' && is_file( $manifestPath ),
+                'entry_present' => $entryPath !== '' && is_file( $entryPath ),
+            ];
+
+            if ( empty( $moduleRow['bundle_present'] ) || empty( $moduleRow['manifest_present'] ) || empty( $moduleRow['entry_present'] ) ) {
+                $missingBundleSlugs[] = $slug;
+            }
+
+            $modules[] = $moduleRow;
+        }
+
+        $runtimeModuleManifestCount = count( glob( rtrim( $runtimeRoot, '/\\' ) . '/*/module.json' ) ?: [] );
+        $autoloadRefs = self::composerSourceModuleAutoloadReferenceCounts();
+        $directBridgeCount = count( self::legacyStoreManagedDirectRuntimeBridges() );
+        $runtimeBridgeFrontierCount = count( self::legacyStoreManagedRuntimeBridges() );
+
+        $blockers = [];
+        if ( ! is_dir( $bundleRoot ) ) {
+            $blockers[] = sprintf( 'Development bundle source root is missing: %s', rtrim( $bundleRoot, '/\\' ) );
+        }
+        if ( $missingBundleSlugs !== [] ) {
+            $blockers[] = sprintf( 'Legacy source modules still missing bundle replacements: %s', implode( ', ', $missingBundleSlugs ) );
+        }
+        if ( $directBridgeCount > 0 ) {
+            $blockers[] = sprintf( 'Direct source-coupled runtime bridges remain: %d', $directBridgeCount );
+        }
+        if ( $runtimeBridgeFrontierCount > 0 ) {
+            $blockers[] = sprintf( 'Runtime bridge frontier still remains: %d', $runtimeBridgeFrontierCount );
+        }
+        if ( $autoloadRefs['total'] > 0 ) {
+            $blockers[] = sprintf(
+                'Composer autoload still points at source-side module classes: %d references.',
+                (int) $autoloadRefs['total']
+            );
+        }
+
+        return [
+            'ok' => $blockers === [],
+            'source_module_root' => $sourceRoot,
+            'runtime_module_root' => $runtimeRoot,
+            'development_bundle_source_root' => $bundleRoot,
+            'runtime_module_manifest_count' => $runtimeModuleManifestCount,
+            'composer_autoload_source_module_refs' => $autoloadRefs,
+            'direct_runtime_bridge_count' => $directBridgeCount,
+            'runtime_bridge_frontier_count' => $runtimeBridgeFrontierCount,
+            'missing_bundle_slugs' => array_values( $missingBundleSlugs ),
+            'bundle_slug_count' => count( $bundleDirectories ),
+            'modules' => $modules,
+            'blockers' => $blockers,
         ];
     }
 
@@ -410,7 +576,55 @@ final class ModulePathRegistry {
         return null;
     }
 
+    public static function namespaceSegmentForSlug( string $slug ): string {
+        $slug = self::normalizedSlug( $slug );
+        if ( $slug === '' ) {
+            return '';
+        }
+
+        return (string) ( self::MODULE_NAMESPACE_SEGMENTS[ $slug ] ?? self::studlyModuleDirectory( $slug ) );
+    }
+
+    public static function slugForNamespaceSegment( string $segment ): string {
+        $segment = trim( $segment );
+        if ( $segment === '' ) {
+            return '';
+        }
+
+        foreach ( self::MODULE_NAMESPACE_SEGMENTS as $slug => $namespaceSegment ) {
+            if ( strcasecmp( $namespaceSegment, $segment ) === 0 ) {
+                return $slug;
+            }
+        }
+
+        return self::normalizedSlug( $segment );
+    }
+
     private static function normalizedPath( string $path ): string {
         return rtrim( str_replace( '\\', '/', $path ), '/' ) . '/';
+    }
+
+    private static function studlyModuleDirectory( string $slug ): string {
+        $parts = preg_split( '/[^a-z0-9]+/i', strtolower( $slug ) ) ?: [];
+
+        return implode(
+            '',
+            array_map(
+                static fn ( string $part ): string => ucfirst( $part ),
+                array_values(
+                    array_filter(
+                        $parts,
+                        static fn ( string $part ): bool => $part !== ''
+                    )
+                )
+            )
+        );
+    }
+
+    private static function normalizedSlug( string $value ): string {
+        $value = strtolower( trim( $value ) );
+        $value = preg_replace( '/[^a-z0-9]+/', '_', $value ) ?? '';
+
+        return trim( $value, '_' );
     }
 }

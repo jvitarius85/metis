@@ -9,6 +9,8 @@ if ( PHP_SAPI !== 'cli' ) {
 $root = dirname( __DIR__ );
 $failures = [];
 
+require_once __DIR__ . '/_support/module_path_resolver.php';
+
 $assert = static function ( bool $condition, string $message ) use ( &$failures ): void {
     if ( ! $condition ) {
         $failures[] = $message;
@@ -22,7 +24,8 @@ $read = static function ( string $path ) use ( $root ): string {
 
 $moduleInstall = $read( 'src/Metis/Core/Services/ModuleInstallService.php' );
 $moduleValidator = $read( 'src/Metis/Core/Modules/ModuleValidator.php' );
-$mediaBootstrap = file_get_contents( '/Users/jvitarius85/Documents/GitHub/metis-private/modules/media/bootstrap.php' );
+$mediaBootstrapPath = metis_test_private_modules_root( $root ) . '/media/bootstrap.php';
+$mediaBootstrap = file_get_contents( $mediaBootstrapPath );
 $mediaBootstrap = $mediaBootstrap === false ? '' : $mediaBootstrap;
 
 $installStart = strpos( $moduleInstall, 'public function installLatest' );
