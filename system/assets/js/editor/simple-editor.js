@@ -3743,7 +3743,7 @@
             };
             if (t === 'transcript') base.content = { source: '', rows: [] };
             else if (t === 'heading') base.content = { text: 'Heading', level: 'h2', align: 'left', vertical_align: 'top' };
-            else if (t === 'image') base.content = { src: '', media_id: 0, link_url: '', alt: '', caption: '', width: '', height: '', mode: 'contained', align: 'center' };
+            else if (t === 'image') base.content = { src: '', media_id: 0, link_url: '', alt: '', caption: '', width: '', height: '' };
             else if (t === 'button') base.content = { label: 'Learn more', url: '#', align: 'left' };
             else if (t === 'hero') base.content = { title: 'Hero Title', subtitle: '', cta_label: 'Learn More', cta_url: '#', image_src: '' };
             else if (t === 'html') base.content = { html: '<div></div>' };
@@ -3802,7 +3802,7 @@
             if (moduleType === 'newsletter_signup') return { type: 'newsletter_signup', content: { list_ids: [], submit_label: 'Subscribe', success_message: 'Thanks for subscribing.' } };
             if (moduleType === 'newsletter_archive') return { type: 'newsletter_archive', content: { list_ids: [], limit: 12 } };
             if (moduleType === 'button') return { type: 'button', content: { label: 'Learn more', url: '#', align: 'left' } };
-            if (moduleType === 'image') return { type: 'image', content: { src: '', alt: '', caption: '', width: '', height: '', mode: 'contained', align: 'center' } };
+            if (moduleType === 'image') return { type: 'image', content: { src: '', alt: '', caption: '', width: '', height: '' } };
             return { type: 'text', content: { body: '<p></p>' } };
         }
 
@@ -3860,14 +3860,10 @@
                 next.content.align = ['left', 'center', 'right'].indexOf(s(content.align || 'left')) === -1 ? 'left' : s(content.align || 'left');
             } else if (next.type === 'image') {
                 next.content.src = s(content.src || '');
-                next.content.media_id = Math.max(0, parseInt(s(content.media_id || '0'), 10) || 0);
-                next.content.link_url = s(content.link_url || '');
                 next.content.alt = repairMojibakeText(content.alt || '');
                 next.content.caption = repairMojibakeText(content.caption || '');
                 next.content.width = normalizeImageDimension(content.width || '');
                 next.content.height = normalizeImageDimension(content.height || '');
-                next.content.mode = ['contained', 'wide', 'full_width'].indexOf(s(content.mode || 'contained')) === -1 ? 'contained' : s(content.mode || 'contained');
-                next.content.align = ['left', 'center', 'right'].indexOf(s(content.align || 'center')) === -1 ? 'center' : s(content.align || 'center');
             }
             return next;
         }
@@ -4174,8 +4170,6 @@
                 out.content.caption = repairMojibakeText(content.caption || '');
                 out.content.width = normalizeImageDimension(content.width || '');
                 out.content.height = normalizeImageDimension(content.height || '');
-                out.content.mode = ['contained', 'wide', 'full_width'].indexOf(s(content.mode || 'contained')) === -1 ? 'contained' : s(content.mode || 'contained');
-                out.content.align = ['left', 'center', 'right'].indexOf(s(content.align || 'center')) === -1 ? 'center' : s(content.align || 'center');
             } else if (out.type === 'button') {
                 out.content.label = repairMojibakeText(content.label || 'Learn more');
                 out.content.action_type = s(content.action_type || 'url') === 'popup' ? 'popup' : 'url';
@@ -4656,46 +4650,6 @@
             return attrs;
         }
 
-        function imageModeValue(content) {
-            var mode = s(content && content.mode || 'contained');
-            return ['contained', 'wide', 'full_width'].indexOf(mode) === -1 ? 'contained' : mode;
-        }
-
-        function imageAlignValue(content) {
-            var align = s(content && content.align || 'center');
-            return ['left', 'center', 'right'].indexOf(align) === -1 ? 'center' : align;
-        }
-
-        function imageModeClass(content) {
-            return 'is-mode-' + imageModeValue(content).replace(/_/g, '-');
-        }
-
-        function imageAlignClass(content) {
-            return 'is-align-' + imageAlignValue(content);
-        }
-
-        function enhanceEditorSelects(scope) {
-            if (!scope || !scope.querySelectorAll) return;
-            scope.querySelectorAll('select.metis-se-select').forEach(function (select) {
-                if (!(select instanceof HTMLSelectElement)) return;
-                select.setAttribute('data-metis-ui-select', '1');
-                if (!select.getAttribute('data-metis-select-trigger-class')) {
-                    select.setAttribute('data-metis-select-trigger-class', 'metis-se-select');
-                }
-            });
-            if (window.Metis && Metis.ui && Metis.ui.select && typeof Metis.ui.select.init === 'function') {
-                Metis.ui.select.init(scope);
-            }
-        }
-
-        function preferredCalendarId(currentValue) {
-            var current = s(currentValue || '');
-            if (current) return current;
-            var options = Array.isArray(state.options.calendarSources) ? state.options.calendarSources : [];
-            if (!options.length) return '';
-            return s(options[0] && options[0].value || '');
-        }
-
         function renderCanvasToolbar(index) {
             if (!state.canEdit && !(state.id < 1 && state.canCreate)) return '';
             return '<div class="metis-builder-block-tools" aria-label="Block controls">' +
@@ -4802,7 +4756,7 @@
                 if (module.type === 'image') {
                     var moduleImage = moduleContent.src ? '<img src="' + esc(s(moduleContent.src || '')) + '" alt="' + esc(s(moduleContent.alt || '')) + '"' + imageDimensionAttrs(moduleContent) + '>' : '<div class="metis-builder-media-empty">Choose an image in settings.</div>';
                     if (moduleContent.src && s(moduleContent.link_url || '')) moduleImage = '<a class="metis-builder-image-link" href="' + esc(s(moduleContent.link_url || '')) + '" data-builder-link="1">' + moduleImage + '</a>';
-                    return '<div class="metis-builder-column"><figure class="metis-builder-image ' + imageModeClass(moduleContent) + ' ' + imageAlignClass(moduleContent) + '">' +
+                    return '<div class="metis-builder-column"><figure class="metis-builder-image">' +
                         moduleImage +
                         '<figcaption>' + esc(s(moduleContent.caption || '')) + '</figcaption>' +
                     '</figure></div>';
@@ -4820,7 +4774,7 @@
             } else if (type === 'image') {
                 var sectionImage = content.src ? '<img src="' + esc(s(content.src || '')) + '" alt="' + esc(s(content.alt || '')) + '"' + imageDimensionAttrs(content) + '>' : '<div class="metis-builder-media-empty">Choose an image in settings.</div>';
                 if (content.src && s(content.link_url || '')) sectionImage = '<a class="metis-builder-image-link" href="' + esc(s(content.link_url || '')) + '" data-builder-link="1">' + sectionImage + '</a>';
-                body = '<figure class="metis-builder-image ' + imageModeClass(content) + ' ' + imageAlignClass(content) + '">' +
+                body = '<figure class="metis-builder-image">' +
                     sectionImage +
                     '<figcaption' + editableAttr(index, 'image_caption') + '>' + esc(s(content.caption || '')) + '</figcaption>' +
                 '</figure>';
@@ -5124,8 +5078,6 @@
                 html += '<div class="metis-se-field-row"><label>Link URL</label><input id="metis-v2-image-link-url" class="metis-se-input" value="' + esc(s(sec.content.link_url || '')) + '" placeholder="Optional link target"></div>';
                 html += '<div class="metis-se-field-row"><label>Alt Text</label><input id="metis-v2-image-alt" class="metis-se-input" value="' + esc(s(sec.content.alt || '')) + '"></div>';
                 html += '<div class="metis-se-field-row"><label>Caption</label><input id="metis-v2-image-caption" class="metis-se-input" value="' + esc(s(sec.content.caption || '')) + '" placeholder="Optional caption"></div>';
-                html += '<div class="metis-se-field-row"><label>Display Mode</label><select id="metis-v2-image-mode" class="metis-se-select"><option value="contained"' + (imageModeValue(sec.content) === 'contained' ? ' selected' : '') + '>Contained</option><option value="wide"' + (imageModeValue(sec.content) === 'wide' ? ' selected' : '') + '>Wide</option><option value="full_width"' + (imageModeValue(sec.content) === 'full_width' ? ' selected' : '') + '>Full Width</option></select></div>';
-                html += '<div class="metis-se-field-row"><label>Alignment</label><select id="metis-v2-image-align" class="metis-se-select"><option value="left"' + (imageAlignValue(sec.content) === 'left' ? ' selected' : '') + '>Left</option><option value="center"' + (imageAlignValue(sec.content) === 'center' ? ' selected' : '') + '>Center</option><option value="right"' + (imageAlignValue(sec.content) === 'right' ? ' selected' : '') + '>Right</option></select></div>';
                 html += '<div class="metis-se-field-row"><label>Width</label><input id="metis-v2-image-width" class="metis-se-input" inputmode="numeric" pattern="[0-9]*" value="' + esc(s(sec.content.width || '')) + '" placeholder="Auto"></div>';
                 html += '<div class="metis-se-field-row"><label>Height</label><input id="metis-v2-image-height" class="metis-se-input" inputmode="numeric" pattern="[0-9]*" value="' + esc(s(sec.content.height || '')) + '" placeholder="Auto"></div>';
             } else if (sec.type === 'button') {
@@ -5224,13 +5176,8 @@
                         html += '<div class="metis-se-field-row"><label>Alignment</label><select class="metis-se-select" data-v2-column-field="align" data-column-idx="' + esc(String(columnIndex)) + '"><option value="left"' + (s(moduleContent.align || 'left') === 'left' ? ' selected' : '') + '>Left</option><option value="center"' + (s(moduleContent.align || '') === 'center' ? ' selected' : '') + '>Center</option><option value="right"' + (s(moduleContent.align || '') === 'right' ? ' selected' : '') + '>Right</option></select></div>';
                     } else if (module.type === 'image') {
                         html += '<div class="metis-se-field-row"><label>Image URL</label><input class="metis-se-input" data-v2-column-field="src" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.src || '')) + '"></div>';
-                        html += '<div class="metis-se-field-row"><label>Link URL</label><input class="metis-se-input" data-v2-column-field="link_url" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.link_url || '')) + '" placeholder="Optional link target"></div>';
                         html += '<div class="metis-se-field-row"><label>Alt Text</label><input class="metis-se-input" data-v2-column-field="alt" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.alt || '')) + '"></div>';
                         html += '<div class="metis-se-field-row"><label>Caption</label><input class="metis-se-input" data-v2-column-field="caption" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.caption || '')) + '"></div>';
-                        html += '<div class="metis-se-field-row"><label>Display Mode</label><select class="metis-se-select" data-v2-column-field="mode" data-column-idx="' + esc(String(columnIndex)) + '"><option value="contained"' + (imageModeValue(moduleContent) === 'contained' ? ' selected' : '') + '>Contained</option><option value="wide"' + (imageModeValue(moduleContent) === 'wide' ? ' selected' : '') + '>Wide</option><option value="full_width"' + (imageModeValue(moduleContent) === 'full_width' ? ' selected' : '') + '>Full Width</option></select></div>';
-                        html += '<div class="metis-se-field-row"><label>Alignment</label><select class="metis-se-select" data-v2-column-field="align" data-column-idx="' + esc(String(columnIndex)) + '"><option value="left"' + (imageAlignValue(moduleContent) === 'left' ? ' selected' : '') + '>Left</option><option value="center"' + (imageAlignValue(moduleContent) === 'center' ? ' selected' : '') + '>Center</option><option value="right"' + (imageAlignValue(moduleContent) === 'right' ? ' selected' : '') + '>Right</option></select></div>';
-                        html += '<div class="metis-se-field-row"><label>Width</label><input class="metis-se-input" inputmode="numeric" pattern="[0-9]*" data-v2-column-field="width" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.width || '')) + '" placeholder="Auto"></div>';
-                        html += '<div class="metis-se-field-row"><label>Height</label><input class="metis-se-input" inputmode="numeric" pattern="[0-9]*" data-v2-column-field="height" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.height || '')) + '" placeholder="Auto"></div>';
                     }
                     html += '</div></div>';
                 });
@@ -5267,10 +5214,8 @@
                     '</div></div>';
                 });
             } else if (sec.type === 'events') {
-                var selectedCalendarId = preferredCalendarId(sec.content.calendar_id);
-                if (!s(sec.content.calendar_id || '') && selectedCalendarId) sec.content.calendar_id = selectedCalendarId;
                 html += '<div class="metis-se-field-row"><label>Source</label><select id="metis-v2-events-source" class="metis-se-select"><option value="calendar"' + (s(sec.content.source || 'calendar') === 'calendar' ? ' selected' : '') + '>Public Calendar</option><option value="manual"' + (s(sec.content.source || '') === 'manual' ? ' selected' : '') + '>Manual</option></select></div>';
-                html += '<div class="metis-se-field-row"><label>Calendar</label><select id="metis-v2-events-calendar-id" class="metis-se-select">' + optionList(state.options.calendarSources, selectedCalendarId, state.options.calendarSources.length <= 1 ? 'Calendar selected automatically' : 'Select calendar') + '</select></div>';
+                html += '<div class="metis-se-field-row"><label>Calendar</label><select id="metis-v2-events-calendar-id" class="metis-se-select">' + optionList(state.options.calendarSources, sec.content.calendar_id, 'Select calendar') + '</select></div>';
                 html += '<div class="metis-se-field-row"><label>View Mode</label><select id="metis-v2-events-view-mode" class="metis-se-select"><option value="card"' + (s(sec.content.view_mode || 'card') === 'card' ? ' selected' : '') + '>Card View</option><option value="week"' + (s(sec.content.view_mode || '') === 'week' ? ' selected' : '') + '>Week View</option><option value="calendar"' + (s(sec.content.view_mode || '') === 'calendar' ? ' selected' : '') + '>Calendar View</option></select></div>';
                 html += '<div class="metis-se-field-row"><label>Item Limit</label><input id="metis-v2-events-limit" class="metis-se-input" type="number" min="1" max="50" value="' + esc(String(parseInt(s(sec.content.limit || '5'), 10) || 5)) + '"></div>';
             } else if (sec.type === 'form') {
@@ -5341,7 +5286,6 @@
             host.innerHTML = html;
             bindIconFallbacks(host);
             featureGridApplyIconFieldState(host);
-            enhanceEditorSelects(host);
         }
 
         function renderStep2Editor() {
@@ -5356,7 +5300,6 @@
                     '<div class="metis-se-meta-inline"><div class="metis-se-meta-inline-label">Editing</div><div class="metis-se-meta-inline-value">' + esc(sectionTypeLabel(sec.type)) + '</div></div>' +
                     '<div class="metis-se-field-row"><label>Background</label><select id="metis-v2-section-background" class="metis-se-select">' + backgroundOptions(settings.background) + '</select></div>' +
                 '</div></div>';
-            enhanceEditorSelects(left);
             renderSectionContentEditor();
         }
 
@@ -6288,7 +6231,6 @@
             });
             if (isPageContext()) renderHeroEditor();
             renderSectionList();
-            enhanceEditorSelects(root);
             var previewDrawer = document.getElementById('metis-v2-preview-drawer');
             if (previewDrawer && !previewDrawer.hidden) updatePreview();
         }
@@ -7240,8 +7182,6 @@
                 if (target.id === 'metis-v2-image-link-url') { sec.content.link_url = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-alt') { sec.content.alt = s(target.value || ''); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-caption') { sec.content.caption = s(target.value || ''); setDirtyAutosave(); return; }
-                if (target.id === 'metis-v2-image-mode') { sec.content.mode = imageModeValue({ mode: target.value || 'contained' }); renderBuilderCanvas(); setDirtyAutosave(); return; }
-                if (target.id === 'metis-v2-image-align') { sec.content.align = imageAlignValue({ align: target.value || 'center' }); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-width') { sec.content.width = normalizeImageDimension(target.value || ''); target.value = sec.content.width; renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-height') { sec.content.height = normalizeImageDimension(target.value || ''); target.value = sec.content.height; renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-button-label') { sec.content.label = s(target.value || ''); renderSectionList(); setDirtyAutosave(); return; }
@@ -7297,13 +7237,6 @@
                         } else if (fieldName === 'limit') {
                             fieldContent.limit = Math.max(1, Math.min(24, parseInt(s(target.value || '6'), 10) || 6));
                             target.value = String(fieldContent.limit);
-                        } else if (fieldName === 'width' || fieldName === 'height') {
-                            fieldContent[fieldName] = normalizeImageDimension(target.value || '');
-                            target.value = fieldContent[fieldName];
-                        } else if (fieldName === 'mode') {
-                            fieldContent.mode = imageModeValue({ mode: target.value || 'contained' });
-                        } else if (fieldName === 'align' && fieldColumn.module.type === 'image') {
-                            fieldContent.align = imageAlignValue({ align: target.value || 'center' });
                         } else if (fieldName === 'goal_amount' || fieldName === 'raised_amount') {
                             fieldContent[fieldName] = normalizeDecimalString(target.value || '', 1000000000);
                             target.value = fieldContent[fieldName];
