@@ -807,6 +807,8 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     color: #fff;
 }
 .metis-builder-stage-wrap {
+    flex: 1;
+    min-height: 0;
     overflow: hidden;
 }
 .metis-builder-stage {
@@ -814,6 +816,8 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     grid-template-columns: minmax(0, 1fr) 340px;
     gap: 12px;
     align-items: stretch;
+    min-height: 0;
+    height: 100%;
     padding: 0;
     background: transparent;
     overflow: hidden;
@@ -856,8 +860,10 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     align-content: start;
 }
 .metis-builder-canvas {
+    flex: 1;
     min-width: 0;
     min-height: 0;
+    height: 100%;
     overflow: auto;
     border: 1px solid var(--metis-border, #e0e2ea);
     border-radius: 10px;
@@ -1168,6 +1174,12 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     display: grid;
     gap: 8px;
 }
+.metis-builder-image.is-align-left { justify-items: start; }
+.metis-builder-image.is-align-center { justify-items: center; }
+.metis-builder-image.is-align-right { justify-items: end; }
+.metis-builder-image.is-mode-contained img { max-width: min(920px, 100%); }
+.metis-builder-image.is-mode-wide img { max-width: min(1120px, 100%); }
+.metis-builder-image.is-mode-full-width img { max-width: 100%; }
 .metis-builder-image img,
 .metis-builder-hero-media img {
     width: 100%;
@@ -1616,8 +1628,7 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     padding: 0 12px 12px;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden;
 }
 
 .metis-se-stage {
@@ -1626,8 +1637,7 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     display: flex;
     flex-direction: column;
     gap: 10px;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden;
 }
 .metis-se-stage[hidden] {
     display: none !important;
