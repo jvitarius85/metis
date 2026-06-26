@@ -6,6 +6,9 @@ namespace Metis\Core\Recovery;
 use Metis\Core\ModulePathRegistry;
 
 final class RecoveryVerifier {
+    private ?\PDO $manifestPdo = null;
+    private bool $manifestPdoResolved = false;
+
     public function __construct(
         private readonly RecoveryPolicyService $policy = new RecoveryPolicyService(),
         private readonly RecoveryAuditLogger $logger = new RecoveryAuditLogger()
@@ -124,6 +127,24 @@ final class RecoveryVerifier {
                 ]);
                 $written++;
             }
+        } elseif (($pdo = $this->manifestPdo()) instanceof \PDO) {
+            $statement = $pdo->prepare(
+                'REPLACE INTO metis_recovery_integrity_manifest (version, manifest_hash, file_path, file_hash, file_size, last_verified_at, created_at, updated_at)
+                 VALUES (:version, :manifest_hash, :file_path, :file_hash, :file_size, :last_verified_at, :created_at, :updated_at)'
+            );
+            foreach ($rows as $row) {
+                $statement->execute([
+                    ':version' => $row['version'],
+                    ':manifest_hash' => $manifestHash,
+                    ':file_path' => $row['file_path'],
+                    ':file_hash' => $row['file_hash'],
+                    ':file_size' => $row['file_size'],
+                    ':last_verified_at' => $now,
+                    ':created_at' => $now,
+                    ':updated_at' => $now,
+                ]);
+                $written++;
+            }
         }
 
         $result = [
@@ -139,7 +160,23 @@ final class RecoveryVerifier {
 
     public function expectedHash(string $relative): string {
         if (!function_exists('\metis_db') || !class_exists('\Metis_Tables')) {
-            return '';
+            $pdo = $this->manifestPdo();
+            if (!($pdo instanceof \PDO)) {
+                return '';
+            }
+            try {
+                $statement = $pdo->prepare(
+                    'SELECT file_hash FROM metis_recovery_integrity_manifest WHERE version = :version AND file_path = :file_path LIMIT 1'
+                );
+                $statement->execute([
+                    ':version' => $this->version(),
+                    ':file_path' => $relative,
+                ]);
+                $row = $statement->fetch(\PDO::FETCH_ASSOC);
+                return is_array($row) ? (string) ($row['file_hash'] ?? '') : '';
+            } catch (\Throwable) {
+                return '';
+            }
         }
         try {
             $table = \Metis_Tables::get('recovery_integrity_manifest');
@@ -246,5 +283,46 @@ final class RecoveryVerifier {
         }
 
         return '';
+    }
+
+    private function manifestPdo(): ?\PDO {
+        if ($this->manifestPdoResolved) {
+            return $this->manifestPdo;
+        }
+
+        $this->manifestPdoResolved = true;
+        $configPath = $this->absolutePath('system/config/database.php');
+        if (!is_file($configPath)) {
+            return null;
+        }
+
+        try {
+            $config = require $configPath;
+            if (!is_array($config)) {
+                return null;
+            }
+
+            $host = (string) ($config['host'] ?? '127.0.0.1');
+            $database = (string) ($config['database'] ?? '');
+            $charset = (string) ($config['charset'] ?? 'utf8mb4');
+            $username = (string) ($config['username'] ?? '');
+            $password = (string) ($config['password'] ?? '');
+            if ($database === '' || $username === '') {
+                return null;
+            }
+
+            $this->manifestPdo = new \PDO(
+                sprintf('mysql:host=%s;dbname=%s;charset=%s', $host, $database, $charset),
+                $username,
+                $password,
+                [
+                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                ]
+            );
+        } catch (\Throwable) {
+            $this->manifestPdo = null;
+        }
+
+        return $this->manifestPdo;
     }
 }

@@ -497,24 +497,54 @@ final class ModuleValidator {
         }
 
         if ( $declared === [] ) {
-            $iterator = new \RecursiveIteratorIterator(
-                new \RecursiveDirectoryIterator( $coreRoot, \FilesystemIterator::SKIP_DOTS )
-            );
+            $validatorFile = __FILE__;
+            $signatureFiles = [ $validatorFile ];
 
-            foreach ( $iterator as $fileInfo ) {
-                if ( ! $fileInfo instanceof \SplFileInfo || ! $fileInfo->isFile() ) {
-                    continue;
-                }
+            foreach ( glob( $coreRoot . '/*.php' ) ?: [] as $phpFile ) {
+                $signatureFiles[] = $phpFile;
+            }
 
-                if ( strtolower( $fileInfo->getExtension() ) !== 'php' ) {
-                    continue;
-                }
+            $cacheKey = '';
+            if ( function_exists( 'metis_runtime_setup_signature' ) ) {
+                $cacheKey = 'modules.validator.core_functions.' . \metis_runtime_setup_signature( 'module_validator_core_functions', $signatureFiles );
+            }
 
-                foreach ( $this->bootstrapDeclaredFunctions( $fileInfo->getPathname() ) as $functionName ) {
-                    $normalized = strtolower( trim( $functionName ) );
-                    if ( $normalized !== '' ) {
+            $cached = $cacheKey !== '' && class_exists( '\Metis\Core\Cache\CacheService' )
+                ? \Metis\Core\Cache\CacheService::get( $cacheKey )
+                : null;
+
+            if ( is_array( $cached ) ) {
+                $declared = [];
+                foreach ( $cached as $functionName => $present ) {
+                    $normalized = strtolower( trim( (string) $functionName ) );
+                    if ( $normalized !== '' && $present ) {
                         $declared[ $normalized ] = true;
                     }
+                }
+            } else {
+                $iterator = new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator( $coreRoot, \FilesystemIterator::SKIP_DOTS )
+                );
+
+                foreach ( $iterator as $fileInfo ) {
+                    if ( ! $fileInfo instanceof \SplFileInfo || ! $fileInfo->isFile() ) {
+                        continue;
+                    }
+
+                    if ( strtolower( $fileInfo->getExtension() ) !== 'php' ) {
+                        continue;
+                    }
+
+                    foreach ( $this->bootstrapDeclaredFunctions( $fileInfo->getPathname() ) as $functionName ) {
+                        $normalized = strtolower( trim( $functionName ) );
+                        if ( $normalized !== '' ) {
+                            $declared[ $normalized ] = true;
+                        }
+                    }
+                }
+
+                if ( $cacheKey !== '' && class_exists( '\Metis\Core\Cache\CacheService' ) ) {
+                    \Metis\Core\Cache\CacheService::set( $cacheKey, $declared, 86400 );
                 }
             }
         }

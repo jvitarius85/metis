@@ -203,11 +203,34 @@ final class Metis_Security_Enclave {
         $meta   = $this->sanitize_meta( $request['meta'] ?? [] );
         $input  = $this->sanitize_input( $request['input'] ?? [] );
 
+        $profiler_prefix = 'ENCLAVE_' . preg_replace( '/[^A-Z0-9_]+/', '_', strtoupper( $operation ) );
+        if ( class_exists( 'Profiler', false ) ) {
+            Profiler::mark( $profiler_prefix . '_AUTH_START' );
+        }
         $this->assert_authenticated( $policy, $actor, $operation );
+        if ( class_exists( 'Profiler', false ) ) {
+            Profiler::mark( $profiler_prefix . '_AUTH_DONE' );
+            Profiler::mark( $profiler_prefix . '_SESSION_START' );
+        }
         $this->assert_session( $policy, $actor, $meta, $operation );
+        if ( class_exists( 'Profiler', false ) ) {
+            Profiler::mark( $profiler_prefix . '_SESSION_DONE' );
+            Profiler::mark( $profiler_prefix . '_NONCE_START' );
+        }
         $this->assert_nonce( $policy, $actor, $input, $meta, $operation );
+        if ( class_exists( 'Profiler', false ) ) {
+            Profiler::mark( $profiler_prefix . '_NONCE_DONE' );
+            Profiler::mark( $profiler_prefix . '_RATE_START' );
+        }
         $this->assert_rate_limit( $policy, $actor, $meta, $operation );
+        if ( class_exists( 'Profiler', false ) ) {
+            Profiler::mark( $profiler_prefix . '_RATE_DONE' );
+            Profiler::mark( $profiler_prefix . '_PERMISSION_START' );
+        }
         $this->assert_permission( $policy, $actor, $meta, $operation );
+        if ( class_exists( 'Profiler', false ) ) {
+            Profiler::mark( $profiler_prefix . '_PERMISSION_DONE' );
+        }
 
         $context = [
             'operation' => $operation,
@@ -221,6 +244,9 @@ final class Metis_Security_Enclave {
         $this->trusted_stack[] = $context;
 
         try {
+            if ( class_exists( 'Profiler', false ) ) {
+                Profiler::mark( $profiler_prefix . '_CALLBACK_START' );
+            }
             return $callback( $input, $context, $this->gateways );
         } catch ( Metis_Security_Enclave_Exception $e ) {
             $this->logger->security( 'enclave.denied_runtime', $this->log_context( $context, [
@@ -231,6 +257,9 @@ final class Metis_Security_Enclave {
             ] ) );
             throw $e;
         } finally {
+            if ( class_exists( 'Profiler', false ) ) {
+                Profiler::mark( $profiler_prefix . '_CALLBACK_DONE' );
+            }
             array_pop( $this->trusted_stack );
         }
     }
@@ -409,7 +438,9 @@ final class Metis_Security_Enclave {
             return;
         }
 
-        $this->enforce_threat_threshold( $actor, $meta, [], $operation );
+        if ( ! $this->shouldBypassThreatThreshold( $policy, $operation, $actor, $meta ) ) {
+            $this->enforce_threat_threshold( $actor, $meta, [], $operation );
+        }
         $subject = (string) ( $actor['id'] ?? $meta['ip'] ?? 'anonymous' );
         $bucket  = sprintf( 'metis:%s:%s', $operation, $subject );
 
@@ -423,7 +454,40 @@ final class Metis_Security_Enclave {
         }
     }
 
+    private function shouldBypassThreatThreshold( Metis_Security_Policy $policy, string $operation, array $actor, array $meta ): bool {
+        if ( $policy->require_authentication ) {
+            return false;
+        }
+
+        if ( trim( (string) $policy->module ) !== '' ) {
+            return false;
+        }
+
+        if ( (int) ( $actor['id'] ?? 0 ) > 0 || trim( (string) ( $actor['session_id'] ?? '' ) ) !== '' ) {
+            return false;
+        }
+
+        if ( ! in_array( $operation, [ 'route.website_homepage', 'route.website_page', 'route.website_theme_css' ], true ) ) {
+            return false;
+        }
+
+        $requestMethod = strtoupper( trim( (string) ( $_SERVER['REQUEST_METHOD'] ?? '' ) ) );
+        if ( $requestMethod !== '' && $requestMethod !== 'GET' && $requestMethod !== 'HEAD' ) {
+            return false;
+        }
+
+        if ( $this->is_loopback_request( $meta ) ) {
+            return true;
+        }
+
+        return true;
+    }
+
     private function assert_permission( Metis_Security_Policy $policy, array $actor, array $meta, string $operation ): void {
+        if ( ! $policy->require_authentication && trim( (string) $policy->module ) === '' ) {
+            return;
+        }
+
         if ( ! is_callable( $this->permission_resolver ) ) {
             return;
         }

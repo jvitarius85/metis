@@ -905,6 +905,11 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
 .metis-builder-context-toolbar {
     display: none;
     margin: -2px 0 8px;
+    position: sticky;
+    top: 10px;
+    z-index: 40;
+    padding-top: 6px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--metis-surface, #fff) 98%, #fff) 0%, color-mix(in srgb, var(--metis-surface, #fff) 84%, transparent) 100%);
 }
 .metis-builder-block.is-selected .metis-builder-context-toolbar,
 .metis-builder-block:focus-within .metis-builder-context-toolbar {
@@ -914,6 +919,7 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     padding: 8px;
     border-radius: 8px;
     background: var(--metis-row-even-bg, #f8f9fd);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.10);
 }
 .metis-builder-context-toolbar .metis-se-rich-menu-trigger,
 .metis-builder-context-toolbar .metis-se-rich-icon-btn {
@@ -1925,6 +1931,11 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     gap: 8px;
     margin-bottom: 8px;
     grid-column: 2 / -1;
+    position: sticky;
+    top: 0;
+    z-index: 18;
+    padding-top: 4px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--metis-bg, #f5f6fa) 96%, #fff) 0%, color-mix(in srgb, var(--metis-bg, #f5f6fa) 82%, transparent) 100%);
 }
 .metis-se-editor-pane {
     display: grid;
@@ -1934,6 +1945,13 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
 .metis-se-editor-pane .metis-se-rich-editor {
     grid-column: auto;
 }
+.metis-se-editor-pane .metis-se-rich-tools {
+    position: sticky;
+    top: 10px;
+    z-index: 32;
+    padding-top: 6px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--metis-surface, #fff) 96%, #fff) 0%, color-mix(in srgb, var(--metis-surface, #fff) 78%, transparent) 100%);
+}
 .metis-se-rich-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -1942,6 +1960,7 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     border: 1px solid var(--metis-border, #e0e2ea);
     border-radius: 12px;
     background: color-mix(in srgb, var(--metis-row-even-bg, #f8f9fd) 82%, #fff);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 .metis-se-rich-group {
     display: flex;

@@ -25,6 +25,10 @@ final class HelpModule {
     }
 
     public static function ensureRuntimeSeeded(): void {
+        if ( ! self::shouldSeedRuntimeForCurrentRequest() ) {
+            return;
+        }
+
         $seed = static function (): void {
             try {
                 ( new HelpSearchStore() )->ensureSeeded();
@@ -45,6 +49,39 @@ final class HelpModule {
         }
 
         $seed();
+    }
+
+    private static function shouldSeedRuntimeForCurrentRequest(): bool {
+        if ( PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg' ) {
+            return true;
+        }
+
+        $requestUri = trim( (string) ( $_SERVER['REQUEST_URI'] ?? '' ) );
+        if ( $requestUri === '' ) {
+            return true;
+        }
+
+        $path = (string) parse_url( $requestUri, PHP_URL_PATH );
+        if ( $path === '' ) {
+            return true;
+        }
+
+        $normalized = '/' . ltrim( $path, '/' );
+
+        if ( str_starts_with( $normalized, '/admin/help' ) || str_starts_with( $normalized, '/help' ) ) {
+            return true;
+        }
+
+        if ( str_starts_with( $normalized, '/admin/settings' ) || str_starts_with( $normalized, '/admin/runtime' ) ) {
+            return true;
+        }
+
+        if ( str_starts_with( $normalized, '/ajax/' ) ) {
+            $action = strtolower( (string) ( $_REQUEST['action'] ?? '' ) );
+            return str_contains( $action, 'help' ) || str_contains( $action, 'remediate' );
+        }
+
+        return false;
     }
 
     public static function handleIndexRoute( Request $request ): Response {

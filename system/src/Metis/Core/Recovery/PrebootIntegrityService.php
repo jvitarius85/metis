@@ -23,6 +23,11 @@ final class PrebootIntegrityService {
             return $releaseRecovery;
         }
 
+        $cached = $this->healthyCheckpoint($trigger);
+        if ($cached !== null) {
+            return $cached + ['release_recovery' => $releaseRecovery, 'cached' => true];
+        }
+
         $scan = $this->verifier->scan($trigger, true);
         if (!$this->policy->prebootRecoveryEnabled() || !$this->policy->automaticFileRecoveryEnabled()) {
             return ['status' => 'disabled', 'scan' => $scan, 'mutation_enabled' => false, 'release_recovery' => $releaseRecovery];
@@ -30,8 +35,11 @@ final class PrebootIntegrityService {
 
         $critical = array_values(array_filter((array) ($scan['issues'] ?? []), static fn(array $issue): bool => (string) ($issue['severity'] ?? '') === 'critical'));
         if ($critical === []) {
+            $this->storeHealthyCheckpoint($scan);
             return ['status' => 'pass', 'scan' => $scan, 'release_recovery' => $releaseRecovery];
         }
+
+        $this->clearHealthyCheckpoint();
 
         $firstIssue = (array) ($critical[0] ?? []);
         $playbook = $this->playbooks->forIssueType((string) ($firstIssue['type'] ?? 'preboot_critical_corruption'), true);
@@ -63,6 +71,9 @@ final class PrebootIntegrityService {
                     'result_summary' => ['backup_recovery' => $backupResult, 'verification' => $verify],
                 ]);
                 $this->verifier->rebuildManifest('preboot_backup_recovery');
+                if ((string) ($verify['status'] ?? '') !== 'critical') {
+                    $this->storeHealthyCheckpoint($verify);
+                }
                 return ['status' => 'recovered', 'method' => 'backup', 'scan' => $scan, 'verification' => $verify];
             }
 
@@ -78,6 +89,9 @@ final class PrebootIntegrityService {
                     'result_summary' => ['backup_recovery' => $backupResult, 'git_recovery' => $gitResult, 'verification' => $verify],
                 ]);
                 $this->verifier->rebuildManifest('preboot_git_recovery');
+                if ((string) ($verify['status'] ?? '') !== 'critical') {
+                    $this->storeHealthyCheckpoint($verify);
+                }
                 return ['status' => 'recovered', 'method' => 'git', 'scan' => $scan, 'verification' => $verify];
             }
 
@@ -143,6 +157,88 @@ final class PrebootIntegrityService {
             'event_id' => $eventId,
             'scan' => $scan,
         ];
+    }
+
+    /** @return array<string,mixed>|null */
+    private function healthyCheckpoint(string $trigger): ?array {
+        if ($trigger !== 'standalone_preboot') {
+            return null;
+        }
+
+        $ttl = $this->policy->prebootHealthyCacheTtlSeconds();
+        if ($ttl < 1) {
+            return null;
+        }
+
+        $path = $this->healthyCheckpointPath();
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $decoded = json_decode((string) @file_get_contents($path), true);
+        if (!is_array($decoded)) {
+            return null;
+        }
+
+        $checkedAt = (int) ($decoded['checked_at_unix'] ?? 0);
+        if ($checkedAt < 1 || ($checkedAt + $ttl) < time()) {
+            return null;
+        }
+
+        $status = (string) ($decoded['status'] ?? '');
+        if (!in_array($status, ['pass', 'warning', 'recovered'], true)) {
+            return null;
+        }
+
+        $scan = is_array($decoded['scan'] ?? null) ? $decoded['scan'] : [];
+        if ((string) ($scan['status'] ?? '') === 'critical') {
+            return null;
+        }
+
+        return [
+            'status' => $status,
+            'scan' => $scan,
+            'checkpoint_checked_at' => gmdate('c', $checkedAt),
+        ];
+    }
+
+    /** @param array<string,mixed> $scan */
+    private function storeHealthyCheckpoint(array $scan): void {
+        if ($this->policy->prebootHealthyCacheTtlSeconds() < 1) {
+            return;
+        }
+
+        $status = (string) ($scan['status'] ?? '');
+        if ($status === 'critical') {
+            return;
+        }
+
+        $path = $this->healthyCheckpointPath();
+        $dir = dirname($path);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        $payload = json_encode([
+            'status' => $status === 'warning' ? 'warning' : 'pass',
+            'checked_at_unix' => time(),
+            'scan' => $scan,
+        ], JSON_UNESCAPED_SLASHES);
+        if (is_string($payload)) {
+            @file_put_contents($path, $payload, LOCK_EX);
+        }
+    }
+
+    private function clearHealthyCheckpoint(): void {
+        $path = $this->healthyCheckpointPath();
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
+
+    private function healthyCheckpointPath(): string {
+        $root = defined('METIS_PATH') ? rtrim((string) METIS_PATH, '/\\') : dirname(__DIR__, 5);
+        return $root . '/storage/runtime/recovery/preboot-checkpoint.json';
     }
 }
 

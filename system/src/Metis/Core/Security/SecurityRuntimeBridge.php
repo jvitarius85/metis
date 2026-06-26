@@ -95,10 +95,10 @@ final class Metis_Runtime_Rate_Limiter implements Metis_Security_Rate_Limiter_In
     public function consume( string $bucket, int $limit, int $window_seconds ): bool {
         $window_seconds = max( 1, $window_seconds );
         $window_start   = (int) floor( time() / $window_seconds ) * $window_seconds;
-        $transient_key  = 'metis_rl_' . md5( $bucket . '|' . $window_start );
-        $count          = (int) metis_get_transient( $transient_key );
+        $cache_key      = 'security.runtime_rate.' . md5( $bucket . '|' . $window_start );
+        $count          = (int) \Metis\Core\Cache\CacheService::get( $cache_key );
         $count++;
-        metis_set_transient( $transient_key, $count, $window_seconds );
+        \Metis\Core\Cache\CacheService::set( $cache_key, $count, $window_seconds );
         return $count <= max( 1, $limit );
     }
 }

@@ -92,6 +92,10 @@ final class RecoveryPolicyService {
         return max(1, (int) $this->get('release_boot_verification_passes', 2));
     }
 
+    public function prebootHealthyCacheTtlSeconds(): int {
+        return max(0, (int) $this->get('preboot_healthy_cache_ttl_seconds', 60));
+    }
+
     /** @return array<int,string> */
     public function criticalFiles(): array {
         return array_values(array_filter(array_map('strval', (array) $this->get('critical_files', []))));
@@ -119,6 +123,7 @@ final class RecoveryPolicyService {
             'recovery_file_mutation_enabled' => false,
             'recovery_release_rollback_enabled' => true,
             'release_boot_verification_passes' => 2,
+            'preboot_healthy_cache_ttl_seconds' => 60,
             'allowed_git_remotes' => [],
             'allowed_fallback_branch' => 'stable',
             'allow_latest_fallback' => false,

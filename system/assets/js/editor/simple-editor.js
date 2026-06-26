@@ -375,6 +375,7 @@
         var insert = backdrop.querySelector('[data-emoji-picker-insert="1"]');
         var renderToken = 0;
         var nodeCache = {};
+        var lastFilter = null;
         function buttonForItem(item) {
             var key = s(item && item.key || item && item.file || item && item.emoji || '');
             if (key && nodeCache[key]) return nodeCache[key];
@@ -423,11 +424,15 @@
         function render(filterValue) {
             var token = ++renderToken;
             var filter = s(filterValue || '').trim().toLowerCase();
+            if (filter === lastFilter) return;
+            lastFilter = filter;
             if (!filter) {
                 renderItems(sharedEmojiStarterItems(), 'No emoji available.');
                 return;
             }
-            renderItems([], 'Loading emoji library...');
+            if (!Array.isArray(sharedEmojiCatalog)) {
+                renderItems([], 'Loading emoji library...');
+            }
             loadEmojiCatalog().then(function (items) {
                 if (token !== renderToken) return;
                 renderItems(filterItems(items, filter), 'No matching emoji found. You can still insert a typed emoji or shortcode.');
@@ -472,7 +477,16 @@
                 close(null);
             }
         });
-        sharedEmojiPicker = { backdrop: backdrop, search: search, render: render, resolve: null };
+        sharedEmojiPicker = {
+            backdrop: backdrop,
+            search: search,
+            render: render,
+            resolve: null,
+            reset: function () {
+                if (search.value) search.value = '';
+                render('');
+            }
+        };
         return sharedEmojiPicker;
     }
     function requestPrompt(options) {
@@ -499,8 +513,7 @@
     }
     function requestEmoji() {
         var picker = ensureEmojiPicker();
-        picker.render('');
-        picker.search.value = '';
+        picker.reset();
         picker.backdrop.setAttribute('aria-hidden', 'false');
         picker.backdrop.classList.add('is-open');
         window.setTimeout(function () {
@@ -526,26 +539,166 @@
             return inlineImageSizeClass(value);
         });
     }
+    function nodePathWithin(root, node) {
+        if (!root || !node) return null;
+        var path = [];
+        var current = node;
+        while (current && current !== root) {
+            var parent = current.parentNode;
+            if (!parent) return null;
+            path.push(Array.prototype.indexOf.call(parent.childNodes, current));
+            current = parent;
+        }
+        if (current !== root) return null;
+        path.reverse();
+        return path;
+    }
+    function nodeFromPath(root, path) {
+        if (!root || !Array.isArray(path)) return null;
+        var current = root;
+        for (var i = 0; i < path.length; i += 1) {
+            var index = Number(path[i]);
+            if (!current || !current.childNodes || index < 0 || index >= current.childNodes.length) return null;
+            current = current.childNodes[index];
+        }
+        return current;
+    }
+    function nodeOffsetLimit(node) {
+        if (!node) return 0;
+        if (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE || node.nodeType === Node.CDATA_SECTION_NODE) {
+            return (node.nodeValue || '').length;
+        }
+        return node.childNodes ? node.childNodes.length : 0;
+    }
+    function serializeRangeWithin(root, range) {
+        if (!root || !range) return null;
+        if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+        var startPath = nodePathWithin(root, range.startContainer);
+        var endPath = nodePathWithin(root, range.endContainer);
+        if (!startPath || !endPath) return null;
+        return {
+            startPath: startPath,
+            startOffset: range.startOffset,
+            endPath: endPath,
+            endOffset: range.endOffset
+        };
+    }
+    function restoreSerializedRange(root, snapshot) {
+        if (!root || !snapshot) return null;
+        var startNode = nodeFromPath(root, snapshot.startPath);
+        var endNode = nodeFromPath(root, snapshot.endPath);
+        if (!startNode || !endNode) return null;
+        try {
+            var range = document.createRange();
+            range.setStart(startNode, Math.min(Number(snapshot.startOffset) || 0, nodeOffsetLimit(startNode)));
+            range.setEnd(endNode, Math.min(Number(snapshot.endOffset) || 0, nodeOffsetLimit(endNode)));
+            return range;
+        } catch (_err) {
+            return null;
+        }
+    }
+    function cloneStoredRichSelection(target) {
+        if (!target || !target.id) return null;
+        var sel = window.getSelection ? window.getSelection() : null;
+        var range = currentRichSelectionRange(target);
+        if (!range) {
+            var stored = sharedRichSelections[target.id];
+            if (stored && stored.snapshot) range = restoreSerializedRange(target, stored.snapshot);
+            if (!range && stored && stored.range) range = stored.range;
+            if (!range && stored && typeof stored.cloneRange === 'function') range = stored;
+        }
+        if (!range || !target.contains(range.commonAncestorContainer)) return null;
+        return {
+            range: range.cloneRange(),
+            snapshot: serializeRangeWithin(target, range),
+            active: !!(sel && sel.rangeCount && target.contains(sel.getRangeAt(0).commonAncestorContainer))
+        };
+    }
     function saveRichSelection(target) {
         if (!target || !target.id) return;
         var sel = window.getSelection ? window.getSelection() : null;
         if (!sel || !sel.rangeCount) return;
         var range = sel.getRangeAt(0);
         if (!target.contains(range.commonAncestorContainer)) return;
-        sharedRichSelections[target.id] = range.cloneRange();
+        sharedRichSelections[target.id] = {
+            range: range.cloneRange(),
+            snapshot: serializeRangeWithin(target, range)
+        };
+    }
+    function currentRichSelectionRange(target) {
+        var sel = window.getSelection ? window.getSelection() : null;
+        if (!target || !sel || !sel.rangeCount) return null;
+        var range = sel.getRangeAt(0);
+        return target.contains(range.commonAncestorContainer) ? range : null;
     }
     function restoreRichSelection(target) {
         if (!target || !target.id) return false;
         var sel = window.getSelection ? window.getSelection() : null;
-        var range = sharedRichSelections[target.id];
+        var stored = sharedRichSelections[target.id];
+        var range = stored && stored.snapshot ? restoreSerializedRange(target, stored.snapshot) : null;
+        if (!range && stored && stored.range) range = stored.range;
+        if (!range && stored && typeof stored.cloneRange === 'function') range = stored;
         if (!sel || !range) return false;
         try {
+            if (!target.contains(range.commonAncestorContainer)) return false;
             sel.removeAllRanges();
             sel.addRange(range);
             return true;
         } catch (_err) {
             return false;
         }
+    }
+    function restoreSpecificRichSelection(target, stored) {
+        if (!target || !target.id || !stored) return false;
+        var sel = window.getSelection ? window.getSelection() : null;
+        var range = stored.snapshot ? restoreSerializedRange(target, stored.snapshot) : null;
+        if (!range && stored.range && typeof stored.range.cloneRange === 'function') {
+            range = stored.range.cloneRange();
+        }
+        if (!sel || !range) return false;
+        try {
+            if (!target.contains(range.commonAncestorContainer)) return false;
+            target.focus();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            sharedRichSelections[target.id] = {
+                range: range.cloneRange(),
+                snapshot: serializeRangeWithin(target, range)
+            };
+            return true;
+        } catch (_err) {
+            return false;
+        }
+    }
+    function placeRichCaretAtEnd(target) {
+        if (!target || !target.id) return null;
+        target.focus();
+        var range = document.createRange();
+        range.selectNodeContents(target);
+        range.collapse(false);
+        var sel = window.getSelection ? window.getSelection() : null;
+        if (!sel) return null;
+        sel.removeAllRanges();
+        sel.addRange(range);
+        sharedRichSelections[target.id] = range.cloneRange();
+        return range;
+    }
+    function ensureRichSelection(target) {
+        if (!target) return null;
+        target.focus();
+        var range = currentRichSelectionRange(target);
+        if (range) {
+            saveRichSelection(target);
+            return range;
+        }
+        if (restoreRichSelection(target)) {
+            range = currentRichSelectionRange(target);
+            if (range) {
+                saveRichSelection(target);
+                return range;
+            }
+        }
+        return placeRichCaretAtEnd(target);
     }
     function selectedHtmlFromRange(range) {
         if (!range) return '';
@@ -571,11 +724,26 @@
     }
     function insertHtmlAtSelection(target, html) {
         if (!target) return;
-        target.focus();
-        restoreRichSelection(target);
-        if (document.execCommand) {
-            document.execCommand('insertHTML', false, html);
+        var range = ensureRichSelection(target);
+        if (document.execCommand && document.execCommand('insertHTML', false, html)) {
             saveRichSelection(target);
+            return;
+        }
+        if (!range) return;
+        var fragment = range.createContextualFragment(html);
+        var lastNode = fragment.lastChild;
+        range.deleteContents();
+        range.insertNode(fragment);
+        if (lastNode) {
+            var nextRange = document.createRange();
+            nextRange.setStartAfter(lastNode);
+            nextRange.collapse(true);
+            var sel = window.getSelection ? window.getSelection() : null;
+            if (sel) {
+                sel.removeAllRanges();
+                sel.addRange(nextRange);
+            }
+            sharedRichSelections[target.id] = nextRange.cloneRange();
         }
     }
     function insertEmojiAtSelection(target, emojiValue) {
@@ -586,9 +754,22 @@
             return true;
         }
         if (target && emojiValue) {
-            target.focus();
-            restoreRichSelection(target);
-            document.execCommand('insertText', false, emojiValue);
+            var range = ensureRichSelection(target);
+            if (document.execCommand && document.execCommand('insertText', false, emojiValue)) {
+                saveRichSelection(target);
+                return true;
+            }
+            if (!range) return false;
+            range.deleteContents();
+            var textNode = document.createTextNode(emojiValue);
+            range.insertNode(textNode);
+            range.setStartAfter(textNode);
+            range.collapse(true);
+            var sel = window.getSelection ? window.getSelection() : null;
+            if (sel) {
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
             saveRichSelection(target);
             return true;
         }
@@ -2474,9 +2655,11 @@
                             openInlineImageModal(target.id);
                         }
                     } else if (cmd === 'insertEmojiPrompt') {
+                        var emojiSelection = target ? cloneStoredRichSelection(target) : null;
                         if (target) saveRichSelection(target);
                         requestEmoji().then(function(emojiValue) {
                             if (emojiValue && target) {
+                                if (emojiSelection) restoreSpecificRichSelection(target, emojiSelection);
                                 insertEmojiAtSelection(target, emojiValue);
                             }
                             if (target) saveRichSelection(target);
@@ -2599,6 +2782,15 @@
                 if (target && target.id) state.newsletterFocusedEditor = target.id;
                 if (target) markNewsletterEditorEmpty(target);
             });
+            root.addEventListener('pointerdown', function (e) {
+                var richControl = e.target && e.target.closest ? e.target.closest('button[data-rich-cmd], [data-rich-action], button[data-rich-toggle="menu"]') : null;
+                if (!richControl) return;
+                var targetId = s(richControl.getAttribute('data-rich-target') || state.newsletterFocusedEditor || '');
+                var richTarget = targetId ? document.getElementById(targetId) : null;
+                if (!richTarget) return;
+                e.preventDefault();
+                saveRichSelection(richTarget);
+            }, true);
             root.addEventListener('mouseup', function (e) {
                 var target = e.target && e.target.closest ? e.target.closest('.metis-se-rich-editor') : null;
                 if (target) {
@@ -2616,6 +2808,19 @@
                         state.newsletterDoc.body_html = normalizeNewsletterEditorHtml(target.innerHTML || '');
                     }
                 }
+            });
+            document.addEventListener('selectionchange', function () {
+                var selection = window.getSelection ? window.getSelection() : null;
+                if (!selection || !selection.rangeCount) return;
+                var container = selection.getRangeAt(0).commonAncestorContainer;
+                var element = container && container.nodeType === Node.ELEMENT_NODE ? container : (container ? container.parentElement : null);
+                var target = element && element.closest ? element.closest('.metis-se-rich-editor') : null;
+                if (!target || !root.contains(target)) return;
+                saveRichSelection(target);
+                if (target.id === 'metis-nl-body-editor') {
+                    state.newsletterDoc.body_html = normalizeNewsletterEditorHtml(target.innerHTML || '');
+                }
+                if (target.id) state.newsletterFocusedEditor = target.id;
             });
             root.addEventListener('focusout', function (e) {
                 var target = e.target && e.target.closest ? e.target.closest('.metis-se-rich-editor') : null;
@@ -2727,21 +2932,67 @@
             if (!sel || !sel.rangeCount) return;
             var range = sel.getRangeAt(0);
             if (!target.contains(range.commonAncestorContainer)) return;
-            richSelections[target.id] = range.cloneRange();
+            richSelections[target.id] = {
+                range: range.cloneRange(),
+                snapshot: serializeRangeWithin(target, range)
+            };
+        }
+
+        function currentRichSelectionRange(target) {
+            var sel = window.getSelection ? window.getSelection() : null;
+            if (!target || !sel || !sel.rangeCount) return null;
+            var range = sel.getRangeAt(0);
+            return target.contains(range.commonAncestorContainer) ? range : null;
         }
 
         function restoreRichSelection(target) {
             if (!target || !target.id) return false;
             var sel = window.getSelection ? window.getSelection() : null;
-            var range = richSelections[target.id];
+            var stored = richSelections[target.id];
+            var range = stored && stored.snapshot ? restoreSerializedRange(target, stored.snapshot) : null;
+            if (!range && stored && stored.range) range = stored.range;
+            if (!range && stored && typeof stored.cloneRange === 'function') range = stored;
             if (!sel || !range) return false;
             try {
+                if (!target.contains(range.commonAncestorContainer)) return false;
                 sel.removeAllRanges();
                 sel.addRange(range);
                 return true;
             } catch (_err) {
                 return false;
             }
+        }
+
+        function placeRichCaretAtEnd(target) {
+            if (!target || !target.id) return null;
+            target.focus();
+            var range = document.createRange();
+            range.selectNodeContents(target);
+            range.collapse(false);
+            var sel = window.getSelection ? window.getSelection() : null;
+            if (!sel) return null;
+            sel.removeAllRanges();
+            sel.addRange(range);
+            richSelections[target.id] = range.cloneRange();
+            return range;
+        }
+
+        function ensureRichSelection(target) {
+            if (!target) return null;
+            target.focus();
+            var range = currentRichSelectionRange(target);
+            if (range) {
+                saveRichSelection(target);
+                return range;
+            }
+            if (restoreRichSelection(target)) {
+                range = currentRichSelectionRange(target);
+                if (range) {
+                    saveRichSelection(target);
+                    return range;
+                }
+            }
+            return placeRichCaretAtEnd(target);
         }
 
         function richEditorFromSelection() {
@@ -2897,11 +3148,26 @@
 
         function insertHtmlAtSelection(target, html) {
             if (!target) return;
-            target.focus();
-            restoreRichSelection(target);
-            if (document.execCommand) {
-                document.execCommand('insertHTML', false, html);
+            var range = ensureRichSelection(target);
+            if (document.execCommand && document.execCommand('insertHTML', false, html)) {
                 saveRichSelection(target);
+                return;
+            }
+            if (!range) return;
+            var fragment = range.createContextualFragment(html);
+            var lastNode = fragment.lastChild;
+            range.deleteContents();
+            range.insertNode(fragment);
+            if (lastNode) {
+                var nextRange = document.createRange();
+                nextRange.setStartAfter(lastNode);
+                nextRange.collapse(true);
+                var sel = window.getSelection ? window.getSelection() : null;
+                if (sel) {
+                    sel.removeAllRanges();
+                    sel.addRange(nextRange);
+                }
+                richSelections[target.id] = nextRange.cloneRange();
             }
         }
 
@@ -4570,7 +4836,7 @@
                         '<option value="image"' + (module.type === 'image' ? ' selected' : '') + '>Image</option>' +
                     '</select></div>';
                     if (module.type === 'text') {
-                        html += '<div class="metis-se-field-row"><label>Text</label><textarea class="metis-se-textarea" rows="6" data-v2-column-field="body" data-column-idx="' + esc(String(columnIndex)) + '">' + esc(s(moduleContent.body || '<p></p>')) + '</textarea><div class="metis-se-field-help">Rich text is also editable directly on the canvas.</div></div>';
+                        html += '<div class="metis-se-field-row"><label>Text</label><div class="metis-se-field-help">Edit column text directly on the canvas. Content no longer needs to be maintained in two places.</div></div>';
                     } else if (module.type === 'form') {
                         html += '<div class="metis-se-field-row"><label>Form</label><select class="metis-se-select" data-v2-column-field="form_id" data-column-idx="' + esc(String(columnIndex)) + '">' + optionList(state.options.forms, moduleContent.form_id, 'Select form') + '</select></div>';
                         html += '<div class="metis-se-field-row"><label>Submit Label</label><input class="metis-se-input" data-v2-column-field="submit_label" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.submit_label || 'Submit')) + '"></div>';
@@ -5474,7 +5740,10 @@
             if (selectedStatus === 'scheduled' && !autosave) {
                 return 'scheduled';
             }
-            return hasPublishedVersion() ? 'draft' : selectedStatus;
+            if (hasPublishedVersion()) {
+                return selectedStatus === 'scheduled' ? 'scheduled' : 'published';
+            }
+            return selectedStatus;
         }
 
         function saveEntity(autosave, publishRequested) {
@@ -6376,9 +6645,11 @@
                             openInlineImageModal(target.id);
                         }
                     } else if (cmd === 'insertEmojiPrompt') {
+                        var emojiSelection = target ? cloneStoredRichSelection(target) : null;
                         if (target) saveRichSelection(target);
                         requestEmoji().then(function(emojiValue) {
                             if (emojiValue && target) {
+                                if (emojiSelection) restoreSpecificRichSelection(target, emojiSelection);
                                 insertEmojiAtSelection(target, emojiValue);
                             }
                             if (target) {
@@ -6877,9 +7148,17 @@
                 uploadEditorImage(uploadContext, e.dataTransfer ? e.dataTransfer.files : null);
             });
             root.addEventListener('pointerdown', function (e) {
-                var picker = e.target && e.target.closest ? e.target.closest('[data-rich-action="color-picker"]') : null;
-                if (!picker) return;
-                captureRichColorSelection(picker);
+                var richControl = e.target && e.target.closest ? e.target.closest('[data-rich-cmd],[data-rich-action],[data-rich-toggle="menu"]') : null;
+                if (!richControl) return;
+                var targetId = s(richControl.getAttribute('data-rich-target') || state.activeRichTargetId || '');
+                var richTarget = (targetId ? document.getElementById(targetId) : null) || richEditorForControl(richControl);
+                if (!richTarget) return;
+                e.preventDefault();
+                if (richControl.matches && richControl.matches('[data-rich-action="color-picker"]')) {
+                    captureRichColorSelection(richControl);
+                } else {
+                    saveRichSelection(richTarget);
+                }
             }, true);
             root.addEventListener('mouseup', function (e) {
                 var target = e.target && e.target.closest ? e.target.closest('.metis-se-rich-editor') : null;
@@ -6888,6 +7167,18 @@
             root.addEventListener('keyup', function (e) {
                 var target = e.target && e.target.closest ? e.target.closest('.metis-se-rich-editor') : null;
                 if (target) saveRichSelection(target);
+            });
+            document.addEventListener('selectionchange', function () {
+                var selection = window.getSelection ? window.getSelection() : null;
+                if (!selection || !selection.rangeCount) return;
+                var container = selection.getRangeAt(0).commonAncestorContainer;
+                var element = container && container.nodeType === Node.ELEMENT_NODE ? container : (container ? container.parentElement : null);
+                var target = element && element.closest ? element.closest('.metis-se-rich-editor') : null;
+                if (!target || !root.contains(target)) return;
+                saveRichSelection(target);
+                if (target.id && target.closest('.metis-builder-block')) {
+                    state.activeRichTargetId = target.id;
+                }
             });
             root.addEventListener('focusin', function (e) {
                 var target = e.target && e.target.closest ? e.target.closest('.metis-se-rich-editor') : null;
