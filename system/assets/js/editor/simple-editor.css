@@ -1168,6 +1168,12 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     display: grid;
     gap: 8px;
 }
+.metis-builder-image.is-align-left { justify-items: start; }
+.metis-builder-image.is-align-center { justify-items: center; }
+.metis-builder-image.is-align-right { justify-items: end; }
+.metis-builder-image.is-mode-contained img { max-width: min(920px, 100%); }
+.metis-builder-image.is-mode-wide img { max-width: min(1120px, 100%); }
+.metis-builder-image.is-mode-full-width img { max-width: 100%; }
 .metis-builder-image img,
 .metis-builder-hero-media img {
     width: 100%;
