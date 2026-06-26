@@ -515,6 +515,13 @@ window.MetisPeopleProfileModules.initPersonDetail = function (context) {
             }
             syncPublicBio();
         });
+        publicBioToolbar.addEventListener('pointerdown', function (event) {
+            if (!(window.Metis && Metis.ui && Metis.ui.richText)) return;
+            const control = event.target.closest('[data-rich-cmd],[data-rich-action],[data-rich-toggle="menu"]');
+            if (!control) return;
+            event.preventDefault();
+            Metis.ui.richText.saveSelection(publicBioEditor);
+        }, true);
         publicBioToolbar.addEventListener('click', async function (event) {
             if (!(window.Metis && Metis.ui && Metis.ui.richText)) return;
             const toggle = event.target.closest('[data-rich-toggle="menu"]');

@@ -6,6 +6,7 @@ namespace Metis\Release;
 use Metis\Core\Application;
 use Metis\Core\Cache\CacheService;
 use Metis\Core\ModulePathRegistry;
+use Metis\Core\Recovery\RecoveryVerifier;
 use Metis\Core\Services\ProcessRunner;
 use Metis\Core\Version;
 
@@ -1263,6 +1264,7 @@ final class ReleaseManager {
         $baseline_built = true;
         $baseline_signed = false;
         $signature_required = false;
+        $recovery_manifest = [ 'status' => 'skipped' ];
 
         if ( \class_exists( 'Metis_Integrity_Manager' ) ) {
             $baseline_built = \Metis_Integrity_Manager::build_baseline( 'release_archive_apply:' . $tag );
@@ -1271,21 +1273,26 @@ final class ReleaseManager {
             $baseline_signed = ! $signature_required ? true : \Metis_Integrity_Manager::sign_baseline();
         }
 
-        if ( ! $baseline_built || ! $baseline_signed ) {
+        if ( \class_exists( RecoveryVerifier::class ) ) {
+            $recovery_manifest = ( new RecoveryVerifier() )->rebuildManifest( 'release_archive_apply:' . $tag );
+        }
+
+        if ( ! $baseline_built || ! $baseline_signed || (string) ( $recovery_manifest['status'] ?? '' ) !== 'success' ) {
             $this->clearPendingReleaseTransaction( [
                 'status' => 'baseline_failed',
                 'target_tag' => $tag,
                 'target_version' => (string) ( $release['version'] ?? '' ),
-                'message' => 'Release archive was applied, but the new integrity baseline could not be established.',
+                'message' => 'Release archive was applied, but integrity or recovery manifests could not be refreshed.',
             ] );
             $this->progress( 'failed', 'Integrity baseline could not be established.', 100 );
             return [
                 'ok' => false,
                 'status' => 'baseline_failed',
-                'message' => 'Release archive was applied, but the new integrity baseline could not be established.',
+                'message' => 'Release archive was applied, but integrity or recovery manifests could not be refreshed.',
                 'baseline_built' => $baseline_built,
                 'baseline_signed' => $baseline_signed,
                 'signature_required' => $signature_required,
+                'recovery_manifest' => $recovery_manifest,
                 'archive' => $archive_result,
             ];
         }
@@ -1394,6 +1401,7 @@ final class ReleaseManager {
         $baseline_built = true;
         $baseline_signed = false;
         $signature_required = false;
+        $recovery_manifest = [ 'status' => 'skipped' ];
 
         if ( \class_exists( 'Metis_Integrity_Manager' ) ) {
             $baseline_built = \Metis_Integrity_Manager::build_baseline( $reason . ':' . $tag );
@@ -1402,20 +1410,25 @@ final class ReleaseManager {
             $baseline_signed = ! $signature_required ? true : \Metis_Integrity_Manager::sign_baseline();
         }
 
-        if ( ! $baseline_built || ! $baseline_signed ) {
+        if ( \class_exists( RecoveryVerifier::class ) ) {
+            $recovery_manifest = ( new RecoveryVerifier() )->rebuildManifest( $reason . ':' . $tag );
+        }
+
+        if ( ! $baseline_built || ! $baseline_signed || (string) ( $recovery_manifest['status'] ?? '' ) !== 'success' ) {
             $this->clearPendingReleaseTransaction( [
                 'status' => 'baseline_failed',
                 'target_tag' => $tag,
                 'target_version' => (string) ( $release['version'] ?? '' ),
-                'message' => 'Release checkout completed, but the new integrity baseline could not be established.',
+                'message' => 'Release checkout completed, but integrity or recovery manifests could not be refreshed.',
             ] );
             return [
                 'ok' => false,
                 'status' => 'baseline_failed',
-                'message' => 'Release checkout completed, but the new integrity baseline could not be established.',
+                'message' => 'Release checkout completed, but integrity or recovery manifests could not be refreshed.',
                 'baseline_built' => $baseline_built,
                 'baseline_signed' => $baseline_signed,
                 'signature_required' => $signature_required,
+                'recovery_manifest' => $recovery_manifest,
             ];
         }
 
@@ -1496,6 +1509,9 @@ final class ReleaseManager {
         $verification = \Metis_Integrity_Manager::verify_baseline();
         if ( ! empty( $verification['signature_required'] ) ) {
             \Metis_Integrity_Manager::sign_baseline();
+        }
+        if ( \class_exists( RecoveryVerifier::class ) ) {
+            ( new RecoveryVerifier() )->rebuildManifest( $reason );
         }
 
         $this->persistState( [

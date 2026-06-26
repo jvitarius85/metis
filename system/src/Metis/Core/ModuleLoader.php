@@ -108,7 +108,13 @@ final class ModuleLoader {
 
         $this->log( 'info', 'Booting Modules' );
 
+        if ( class_exists( '\Profiler', false ) ) {
+            \Profiler::mark( 'MODULE_DISCOVERY_START' );
+        }
         $pending = $this->discoverModules();
+        if ( class_exists( '\Profiler', false ) ) {
+            \Profiler::mark( 'MODULE_DISCOVERY_DONE' );
+        }
 
         do {
             $progress = false;
@@ -147,27 +153,71 @@ final class ModuleLoader {
 
                 $manifest['_module_class'] = $module_class;
                 try {
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( 'MODULE_BOOT_' . $slug . '_START' );
+                    }
+                    $moduleProfilerPrefix = 'MODULE_BOOT_' . $slug;
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( $moduleProfilerPrefix . '_REGISTER_START' );
+                    }
                     $this->register( $slug, $dir, $manifest );
-
-                    if ( function_exists( 'metis_security_register_module_policies' ) ) {
-                        \metis_security_register_module_policies( $slug, $manifest );
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( $moduleProfilerPrefix . '_REGISTER_DONE' );
                     }
 
+                    if ( function_exists( 'metis_security_register_module_policies' ) ) {
+                        if ( class_exists( '\Profiler', false ) ) {
+                            \Profiler::mark( $moduleProfilerPrefix . '_POLICIES_START' );
+                        }
+                        \metis_security_register_module_policies( $slug, $manifest );
+                        if ( class_exists( '\Profiler', false ) ) {
+                            \Profiler::mark( $moduleProfilerPrefix . '_POLICIES_DONE' );
+                        }
+                    }
+
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( $moduleProfilerPrefix . '_EVENT_REGISTERED_START' );
+                    }
                     $this->publish_event( 'module.registered', [
                         'module'   => $slug,
                         'dir'      => metis_trailingslashit( $dir ),
                         'manifest' => $manifest,
                     ] );
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( $moduleProfilerPrefix . '_EVENT_REGISTERED_DONE' );
+                        \Profiler::mark( $moduleProfilerPrefix . '_SERVICES_START' );
+                    }
 
                     $this->autoload_manifest_files( $slug, $dir, (array) ( $manifest['services'] ?? [] ), 'service', (bool) ( $manifest['required'] ?? false ) );
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( $moduleProfilerPrefix . '_SERVICES_DONE' );
+                        \Profiler::mark( $moduleProfilerPrefix . '_BOOTSTRAP_START' );
+                    }
                     $this->autoload_bootstrap( $slug, $dir, $manifest );
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( $moduleProfilerPrefix . '_BOOTSTRAP_DONE' );
+                        \Profiler::mark( $moduleProfilerPrefix . '_LISTENERS_START' );
+                    }
                     $this->register_manifest_listeners( $slug, $manifest, (bool) ( $manifest['required'] ?? false ) );
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( $moduleProfilerPrefix . '_LISTENERS_DONE' );
+                        \Profiler::mark( $moduleProfilerPrefix . '_EVENT_BOOTED_START' );
+                    }
                     $this->publish_event( 'module.booted', [
                         'module'   => $slug,
                         'dir'      => metis_trailingslashit( $dir ),
                         'manifest' => $manifest,
                     ] );
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( $moduleProfilerPrefix . '_EVENT_BOOTED_DONE' );
+                    }
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( 'MODULE_BOOT_' . $slug . '_DONE' );
+                    }
                 } catch ( \Throwable $e ) {
+                    if ( class_exists( '\Profiler', false ) ) {
+                        \Profiler::mark( 'MODULE_BOOT_' . $slug . '_FAILED' );
+                    }
                     unset( $this->modules[ $slug ] );
                     $this->recordBootFailure( $slug, $e->getMessage(), [
                         'path' => (string) ( $manifest['_manifest_path'] ?? $dir ),

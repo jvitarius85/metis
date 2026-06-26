@@ -1876,6 +1876,7 @@ Metis.ui.richText = (function() {
         var insert = backdrop.querySelector('[data-emoji-picker-insert="1"]');
         var renderToken = 0;
         var nodeCache = {};
+        var lastFilter = null;
 
         function buttonForItem(item) {
             var key = s(item && (item.key || item.file || item.emoji));
@@ -1930,6 +1931,8 @@ Metis.ui.richText = (function() {
         function render(filterValue) {
             var token = ++renderToken;
             var filter = s(filterValue || '').trim().toLowerCase();
+            if (filter === lastFilter) return;
+            lastFilter = filter;
             if (!filter) {
                 renderItems(emojiStarterItems.map(normalizeEmojiCatalogItem).filter(Boolean), 'No emoji available.');
                 return;
@@ -1980,15 +1983,23 @@ Metis.ui.richText = (function() {
             }
         });
 
-        sharedEmojiPicker = { backdrop: backdrop, search: search, render: render, resolve: null };
+        sharedEmojiPicker = {
+            backdrop: backdrop,
+            search: search,
+            render: render,
+            resolve: null,
+            reset: function() {
+                if (search.value) search.value = '';
+                render('');
+            }
+        };
         loadEmojiCatalog();
         return sharedEmojiPicker;
     }
 
     function requestEmoji() {
         var picker = ensureEmojiPicker();
-        picker.render('');
-        picker.search.value = '';
+        picker.reset();
         picker.backdrop.setAttribute('aria-hidden', 'false');
         picker.backdrop.classList.add('is-open');
         window.setTimeout(function() {
@@ -2043,23 +2054,95 @@ Metis.ui.richText = (function() {
         return current;
     }
 
+    function nodePathWithin(root, node) {
+        if (!root || !node) return null;
+        var path = [];
+        var current = node;
+        while (current && current !== root) {
+            var parent = current.parentNode;
+            if (!parent) return null;
+            var index = Array.prototype.indexOf.call(parent.childNodes, current);
+            if (index < 0) return null;
+            path.unshift(index);
+            current = parent;
+        }
+        return current === root ? path : null;
+    }
+
+    function nodeFromPath(root, path) {
+        if (!root || !Array.isArray(path)) return null;
+        var current = root;
+        for (var i = 0; i < path.length; i += 1) {
+            if (!current || !current.childNodes || path[i] >= current.childNodes.length) return null;
+            current = current.childNodes[path[i]];
+        }
+        return current || null;
+    }
+
+    function nodeOffsetLimit(node) {
+        if (!node) return 0;
+        return node.nodeType === Node.TEXT_NODE ? String(node.nodeValue || '').length : node.childNodes.length;
+    }
+
+    function serializeRangeWithin(root, range) {
+        if (!root || !range) return null;
+        var startPath = nodePathWithin(root, range.startContainer);
+        var endPath = nodePathWithin(root, range.endContainer);
+        if (!startPath || !endPath) return null;
+        return {
+            startPath: startPath,
+            startOffset: Math.min(range.startOffset, nodeOffsetLimit(range.startContainer)),
+            endPath: endPath,
+            endOffset: Math.min(range.endOffset, nodeOffsetLimit(range.endContainer))
+        };
+    }
+
+    function restoreSerializedRange(root, snapshot) {
+        if (!root || !snapshot) return null;
+        var startNode = nodeFromPath(root, snapshot.startPath);
+        var endNode = nodeFromPath(root, snapshot.endPath);
+        if (!startNode || !endNode) return null;
+        var range = document.createRange();
+        range.setStart(startNode, Math.min(snapshot.startOffset || 0, nodeOffsetLimit(startNode)));
+        range.setEnd(endNode, Math.min(snapshot.endOffset || 0, nodeOffsetLimit(endNode)));
+        return range;
+    }
+
     function saveSelection(editor) {
         var key = String(editor && editor.getAttribute('data-metis-rich-editor') || '');
         var selection = window.getSelection ? window.getSelection() : null;
         if (!key || !selection || !selection.rangeCount) return;
         var range = selection.getRangeAt(0);
         if (!editor.contains(range.commonAncestorContainer)) return;
-        selectionStore[key] = range.cloneRange();
+        selectionStore[key] = {
+            range: range.cloneRange(),
+            snapshot: serializeRangeWithin(editor, range)
+        };
+    }
+
+    function currentSelectionRange(editor) {
+        var selection = window.getSelection ? window.getSelection() : null;
+        if (!editor || !selection || !selection.rangeCount) return null;
+        var range = selection.getRangeAt(0);
+        return editor.contains(range.commonAncestorContainer) ? range : null;
     }
 
     function restoreSelection(editor) {
         var key = String(editor && editor.getAttribute('data-metis-rich-editor') || '');
         var selection = window.getSelection ? window.getSelection() : null;
-        var range = key ? selectionStore[key] : null;
-        if (!selection || !range) return null;
-        selection.removeAllRanges();
-        selection.addRange(range);
-        return range;
+        var stored = key ? selectionStore[key] : null;
+        if (!selection || !stored) return null;
+        try {
+            var range = stored && stored.snapshot ? restoreSerializedRange(editor, stored.snapshot) : null;
+            if (!range && stored && stored.range instanceof Range) range = stored.range;
+            if (!range && stored instanceof Range) range = stored;
+            if (!editor || !editor.contains(range.commonAncestorContainer)) return null;
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return selection.getRangeAt(0);
+        } catch (_err) {
+            return null;
+        }
     }
 
     function placeCaretAtEnd(editor) {
@@ -2075,6 +2158,23 @@ Metis.ui.richText = (function() {
         saveSelection(editor);
     }
 
+    function ensureSelection(editor) {
+        if (!editor) return null;
+        editor.focus();
+        var range = currentSelectionRange(editor);
+        if (range) {
+            saveSelection(editor);
+            return range;
+        }
+        range = restoreSelection(editor);
+        if (range && editor.contains(range.commonAncestorContainer)) {
+            saveSelection(editor);
+            return range;
+        }
+        placeCaretAtEnd(editor);
+        return currentSelectionRange(editor);
+    }
+
     function selectedHtml(range) {
         if (!range) return '';
         var div = document.createElement('div');
@@ -2084,7 +2184,7 @@ Metis.ui.richText = (function() {
 
     function wrapSelection(editor, html) {
         if (!editor) return;
-        restoreSelection(editor);
+        ensureSelection(editor);
         document.execCommand('insertHTML', false, html);
         editor.innerHTML = normalizeHtml(editor.innerHTML || '');
         saveSelection(editor);
@@ -2134,10 +2234,7 @@ Metis.ui.richText = (function() {
 
     async function applyCommand(editor, command, value) {
         if (!editor || !command) return false;
-        editor.focus();
-        if (!restoreSelection(editor)) {
-            placeCaretAtEnd(editor);
-        }
+        ensureSelection(editor);
         if (command === 'createLink') {
             var url = await Metis.prompt.open({
                 title: 'Insert Link',

@@ -712,7 +712,73 @@ if ( ! function_exists( 'metis_runtime_setup_signature' ) ) {
 }
 
 if ( ! function_exists( 'metis_runtime_run_once_per_signature' ) ) {
+    function metis_runtime_signature_cache_path(): string {
+        $root = defined( 'METIS_PATH' ) ? rtrim( (string) METIS_PATH, '/\\' ) : '';
+        if ( $root === '' ) {
+            return '';
+        }
+
+        return $root . '/storage/runtime/setup/signatures.json';
+    }
+
+    function metis_runtime_signature_cache_read(): array {
+        $path = metis_runtime_signature_cache_path();
+        if ( $path === '' || ! is_file( $path ) ) {
+            return [];
+        }
+
+        $raw = @file_get_contents( $path );
+        $decoded = is_string( $raw ) ? json_decode( $raw, true ) : null;
+        return is_array( $decoded ) ? $decoded : [];
+    }
+
+    function metis_runtime_signature_cache_write( array $signatures ): void {
+        $path = metis_runtime_signature_cache_path();
+        if ( $path === '' ) {
+            return;
+        }
+
+        $directory = dirname( $path );
+        if ( ! is_dir( $directory ) ) {
+            @mkdir( $directory, 0775, true );
+        }
+
+        if ( ! is_dir( $directory ) ) {
+            return;
+        }
+
+        $json = function_exists( 'metis_runtime_json_encode' )
+            ? metis_runtime_json_encode( $signatures )
+            : ( json_encode( $signatures, JSON_UNESCAPED_SLASHES ) ?: '{}' );
+
+        @file_put_contents( $path, $json, LOCK_EX );
+    }
+
+    function metis_runtime_signature_settings_service_ready(): bool {
+        if ( ! class_exists( 'Core_Settings_Service', false ) ) {
+            $settings_file = defined( 'METIS_SRC_PATH' )
+                ? rtrim( (string) METIS_SRC_PATH, '/\\' ) . '/Metis/Core/SettingsService.php'
+                : '';
+
+            if ( $settings_file !== '' && is_file( $settings_file ) ) {
+                require_once $settings_file;
+            }
+        }
+
+        if ( ! class_exists( 'Core_Settings_Service', false ) ) {
+            return false;
+        }
+
+        if ( method_exists( 'Core_Settings_Service', 'init' ) ) {
+            \Core_Settings_Service::init();
+        }
+
+        return true;
+    }
+
     function metis_runtime_run_once_per_signature( string $scope, array $files, callable $callback ): void {
+        static $completed = [];
+
         $scope = strtolower( preg_replace( '/[^a-z0-9_]+/i', '_', $scope ) ?? $scope );
         if ( $scope === '' ) {
             $callback();
@@ -721,17 +787,32 @@ if ( ! function_exists( 'metis_runtime_run_once_per_signature' ) ) {
 
         $signature = metis_runtime_setup_signature( $scope, $files );
         $setting   = 'metis_runtime_setup_signatures';
+        $memory_key = $scope . ':' . $signature;
+        $file_signatures = metis_runtime_signature_cache_read();
 
-        if ( class_exists( 'Core_Settings_Service', false ) ) {
+        if ( isset( $completed[ $memory_key ] ) ) {
+            return;
+        }
+
+        if ( (string) ( $file_signatures[ $scope ] ?? '' ) === $signature ) {
+            $completed[ $memory_key ] = true;
+            return;
+        }
+
+        if ( metis_runtime_signature_settings_service_ready() ) {
             $signatures = \Core_Settings_Service::get( $setting, [] );
             if ( is_array( $signatures ) && (string) ( $signatures[ $scope ] ?? '' ) === $signature ) {
+                $completed[ $memory_key ] = true;
                 return;
             }
         }
 
         $callback();
+        $completed[ $memory_key ] = true;
+        $file_signatures[ $scope ] = $signature;
+        metis_runtime_signature_cache_write( $file_signatures );
 
-        if ( class_exists( 'Core_Settings_Service', false ) ) {
+        if ( metis_runtime_signature_settings_service_ready() ) {
             $signatures = \Core_Settings_Service::get( $setting, [] );
             if ( ! is_array( $signatures ) ) {
                 $signatures = [];

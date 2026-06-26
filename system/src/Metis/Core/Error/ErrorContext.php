@@ -75,6 +75,14 @@ final class ErrorContext {
         return (string) $this->get( 'classification', ErrorClassifier::SYSTEM_ERROR );
     }
 
+    public function message(): string {
+        return (string) $this->get( 'message', 'An unexpected error occurred.' );
+    }
+
+    public function requestUri(): string {
+        return (string) $this->get( 'request_uri', '' );
+    }
+
     public function severity(): string {
         return (string) $this->get( 'severity', 'error' );
     }
@@ -98,6 +106,10 @@ final class ErrorContext {
 
     public function isRetryable(): bool {
         return (bool) $this->get( 'retryable', false );
+    }
+
+    public function isFatal(): bool {
+        return (bool) $this->get( 'fatal', false );
     }
 
     public function isSecuritySensitive(): bool {
