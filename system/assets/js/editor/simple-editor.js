@@ -1221,6 +1221,109 @@
         return appBasePath() + '/api/ajax';
     }
 
+    function siteBaseUrl() {
+        var website = editorModuleAjaxConfig();
+        var core = window.metisAjax || {};
+        var raw = s(website.site_url || core.site_url || '').trim();
+        if (raw) return raw.replace(/\/+$/, '');
+        try {
+            return String(window.location.origin || '').replace(/\/+$/, '');
+        } catch (_err) {
+            return '';
+        }
+    }
+
+    function relativePublicUrl(value) {
+        var raw = s(value || '').trim();
+        if (!raw) return '';
+        if (raw.charAt(0) === '/') return raw;
+        var siteUrl = siteBaseUrl();
+        if (siteUrl && raw.indexOf(siteUrl + '/') === 0) {
+            return raw.slice(siteUrl.length);
+        }
+        try {
+            var parsed = new URL(raw, window.location.href);
+            var site = siteUrl ? new URL(siteUrl + '/', window.location.href) : null;
+            if (site && parsed.origin === site.origin) {
+                return s(parsed.pathname || '/') + s(parsed.search || '') + s(parsed.hash || '');
+            }
+        } catch (_err) {}
+        return raw;
+    }
+
+    function mediaPublicUrlForRow(row) {
+        var data = row && typeof row === 'object' ? row : {};
+        var token = s(data.value || data.token || data.public_token || '').trim();
+        if (token) return '/media/' + encodeURIComponent(token);
+        return relativePublicUrl(s(data.url || data.src || ''));
+    }
+
+    var FEATURE_GRID_ICON_CATEGORY_LABELS = {
+        all: 'All',
+        accessibility: 'Accessibility',
+        activities: 'Activities',
+        actions: 'Actions',
+        analytics: 'Analytics',
+        animals: 'Animals',
+        brands: 'Brands',
+        communication: 'Comms',
+        donations: 'Donations',
+        editor: 'Editor',
+        files: 'Files',
+        finance: 'Finance',
+        'food-drinks': 'Food & Drinks',
+        general: 'General',
+        health: 'Health',
+        infrastructure: 'Infra',
+        layout: 'Layout',
+        people: 'People',
+        security: 'Security',
+        status: 'Status',
+        ui: 'UI'
+    };
+    var FEATURE_GRID_ICON_LIBRARY = (function () {
+        var iconLibraryEl = document.getElementById('metis-editor-icon-library-json') || document.getElementById('metis-menu-icon-library-json');
+        if (iconLibraryEl) {
+            try {
+                var parsed = JSON.parse(String(iconLibraryEl.textContent || '[]'));
+                if (Array.isArray(parsed) && parsed.length) {
+                    return parsed.filter(function (entry) {
+                        if (!entry || typeof entry.key !== 'string') return false;
+                        var hasSvg = typeof entry.svg === 'string' && entry.svg.trim() !== '';
+                        var hasUrl = typeof entry.url === 'string' && entry.url.trim() !== '';
+                        return hasSvg || hasUrl;
+                    }).map(function (entry) {
+                        var normalized = Object.assign({}, entry);
+                        normalized.key = s(normalized.key || '').replace(/^icon:/, '').replace(/_/g, '-');
+                        normalized.label = s(normalized.label || normalized.key);
+                        normalized.category = s(normalized.category || 'general').toLowerCase() || 'general';
+                        normalized._search = (normalized.label + ' ' + normalized.key + ' ' + normalized.category).toLowerCase();
+                        return normalized;
+                    });
+                }
+            } catch (_err) {}
+        }
+
+        return [
+            'accessibility', 'calendar', 'chat', 'contacts', 'dashboard', 'database',
+            'disability-ramp', 'globe', 'heart', 'home', 'image', 'location',
+            'megaphone', 'people', 'phone', 'resources', 'star', 'support', 'website'
+        ].map(function (slug) {
+            var key = s(slug || '').replace(/_/g, '-');
+            var label = key.split('-').map(function (part) {
+                return part ? part.charAt(0).toUpperCase() + part.slice(1) : '';
+            }).join(' ');
+            return {
+                key: key,
+                label: label,
+                category: 'general',
+                _search: (label + ' ' + key + ' general').toLowerCase()
+            };
+        });
+    })();
+    var featureGridIconPanel = null;
+    var featureGridActiveField = null;
+
     function iconUrl(slug) {
         if (window.Metis && Metis.ui && Metis.ui.richText && typeof Metis.ui.richText.iconUrl === 'function') {
             return Metis.ui.richText.iconUrl(slug);
@@ -1249,6 +1352,179 @@
                 if (!fallback || img.getAttribute('src') === fallback) return;
                 img.setAttribute('src', fallback);
             });
+        });
+    }
+
+    function featureGridIconEntry(key) {
+        var lookup = s(key || '').trim().replace(/_/g, '-');
+        if (!lookup) return null;
+        for (var i = 0; i < FEATURE_GRID_ICON_LIBRARY.length; i += 1) {
+            if (FEATURE_GRID_ICON_LIBRARY[i].key === lookup) return FEATURE_GRID_ICON_LIBRARY[i];
+        }
+        return null;
+    }
+
+    function featureGridIconMarkup(key) {
+        var entry = featureGridIconEntry(key);
+        if (entry && typeof entry.svg === 'string' && entry.svg.trim()) {
+            return entry.svg;
+        }
+        if (entry && typeof entry.url === 'string' && entry.url.trim()) {
+            return '<img src="' + esc(entry.url) + '" alt="' + esc(entry.label || entry.key || 'Icon') + '" loading="lazy" decoding="async">';
+        }
+        var slug = s(key || '').trim().replace(/_/g, '-');
+        if (!slug) return '';
+        return '<img src="' + esc(iconUrl(slug)) + '" data-icon-fallback="' + esc(iconFallbackUrl(slug)) + '" alt="' + esc(slug) + '" loading="lazy" decoding="async">';
+    }
+
+    function ensureFeatureGridIconPanel() {
+        if (featureGridIconPanel) return featureGridIconPanel;
+        featureGridIconPanel = document.createElement('div');
+        featureGridIconPanel.className = 'metis-menu-icon-panel';
+        featureGridIconPanel.hidden = true;
+        document.body.appendChild(featureGridIconPanel);
+        return featureGridIconPanel;
+    }
+
+    function featureGridCloseIconPanel() {
+        var panel = ensureFeatureGridIconPanel();
+        panel.hidden = true;
+        panel.innerHTML = '';
+        featureGridActiveField = null;
+    }
+
+    function featureGridApplyIconFieldState(scope) {
+        var rootNode = scope && scope.querySelectorAll ? scope : document;
+        rootNode.querySelectorAll('[data-v2-feature-grid-icon-field]').forEach(function (fieldRoot) {
+            var input = fieldRoot.querySelector('[data-v2-feature-grid-icon-input]');
+            var preview = fieldRoot.querySelector('[data-v2-feature-grid-icon-preview]');
+            var token = fieldRoot.querySelector('[data-v2-feature-grid-icon-token]');
+            var raw = s(input && input.value || '').trim().replace(/_/g, '-');
+            var entry = featureGridIconEntry(raw);
+            if (preview) {
+                preview.innerHTML = raw ? featureGridIconMarkup(raw) : '';
+            }
+            if (token) {
+                token.textContent = entry ? entry.label : (raw ? raw : 'No icon selected');
+            }
+        });
+        bindIconFallbacks(rootNode);
+    }
+
+    function featureGridOpenIconPanel(fieldRoot, anchorButton) {
+        var panel = ensureFeatureGridIconPanel();
+        featureGridActiveField = fieldRoot;
+        panel.innerHTML = '';
+
+        var toolbar = document.createElement('div');
+        toolbar.className = 'metis-menu-icon-toolbar';
+        var tabs = document.createElement('div');
+        tabs.className = 'metis-menu-icon-tabs';
+        var search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'metis-menu-icon-search';
+        search.placeholder = 'Search icons...';
+        search.setAttribute('aria-label', 'Search icons');
+        toolbar.appendChild(tabs);
+        toolbar.appendChild(search);
+        panel.appendChild(toolbar);
+
+        var grid = document.createElement('div');
+        grid.className = 'metis-menu-icon-grid';
+        panel.appendChild(grid);
+
+        var activeCategory = 'all';
+        var searchTerm = '';
+
+        function renderTabs() {
+            tabs.innerHTML = '';
+            var categories = ['all'];
+            FEATURE_GRID_ICON_LIBRARY.forEach(function (entry) {
+                var category = s(entry.category || 'general').toLowerCase() || 'general';
+                if (categories.indexOf(category) === -1) categories.push(category);
+            });
+            categories = ['all'].concat(categories.slice(1).sort(function (a, b) {
+                return s(FEATURE_GRID_ICON_CATEGORY_LABELS[a] || a).localeCompare(s(FEATURE_GRID_ICON_CATEGORY_LABELS[b] || b));
+            }));
+            categories.forEach(function (category) {
+                var tab = document.createElement('button');
+                tab.type = 'button';
+                tab.className = 'metis-menu-icon-tab' + (category === activeCategory ? ' is-active' : '');
+                tab.setAttribute('data-v2-feature-grid-icon-tab', category);
+                tab.textContent = FEATURE_GRID_ICON_CATEGORY_LABELS[category] || category;
+                tabs.appendChild(tab);
+            });
+        }
+
+        function renderGrid() {
+            grid.innerHTML = '';
+            var visibleCount = 0;
+            FEATURE_GRID_ICON_LIBRARY.forEach(function (entry) {
+                if (activeCategory !== 'all' && s(entry.category || 'general') !== activeCategory) return;
+                if (searchTerm && entry._search.indexOf(searchTerm) === -1) return;
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'metis-menu-icon-option';
+                button.setAttribute('data-v2-feature-grid-icon-option', entry.key);
+                button.innerHTML = '<span class="metis-menu-icon-option-mark">' + featureGridIconMarkup(entry.key) + '</span><span class="metis-menu-icon-option-label">' + esc(entry.label) + '</span>';
+                grid.appendChild(button);
+                visibleCount += 1;
+            });
+
+            var clearBtn = document.createElement('button');
+            clearBtn.type = 'button';
+            clearBtn.className = 'metis-menu-icon-option';
+            clearBtn.setAttribute('data-v2-feature-grid-icon-option', '');
+            clearBtn.innerHTML = '<span class="metis-menu-icon-option-mark"></span><span class="metis-menu-icon-option-label">No Icon</span>';
+            grid.appendChild(clearBtn);
+
+            if (!visibleCount) {
+                var empty = document.createElement('div');
+                empty.className = 'metis-menu-icon-empty';
+                empty.textContent = 'No icons match your search.';
+                grid.appendChild(empty);
+            }
+
+            bindIconFallbacks(grid);
+        }
+
+        renderTabs();
+        renderGrid();
+
+        var rect = anchorButton.getBoundingClientRect();
+        var scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        var scrollX = window.scrollX || document.documentElement.scrollLeft || 0;
+        panel.style.top = (rect.bottom + 8 + scrollY) + 'px';
+        panel.style.left = Math.max(12, rect.left + scrollX) + 'px';
+        panel.hidden = false;
+
+        window.requestAnimationFrame(function () {
+            if (panel.hidden) return;
+            var panelRect = panel.getBoundingClientRect();
+            var viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1200;
+            var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800;
+            var left = rect.left + scrollX;
+            var top = rect.bottom + 8 + scrollY;
+            var maxLeft = scrollX + viewportWidth - panelRect.width - 12;
+            if (left > maxLeft) left = Math.max(scrollX + 12, maxLeft);
+            if (top + panelRect.height > scrollY + viewportHeight - 12) {
+                top = Math.max(scrollY + 12, rect.top + scrollY - panelRect.height - 8);
+            }
+            panel.style.left = left + 'px';
+            panel.style.top = top + 'px';
+        });
+
+        tabs.addEventListener('click', function (event) {
+            var tab = event.target.closest('[data-v2-feature-grid-icon-tab]');
+            if (!tab) return;
+            activeCategory = s(tab.getAttribute('data-v2-feature-grid-icon-tab') || 'all');
+            renderTabs();
+            renderGrid();
+        });
+
+        search.addEventListener('input', function () {
+            searchTerm = s(search.value || '').trim().toLowerCase();
+            renderGrid();
         });
     }
 
@@ -2640,9 +2916,11 @@
                         restoreRichSelection(target);
                     }
                     if (cmd === 'createLink') {
+                        var newsletterLinkSelection = target ? cloneStoredRichSelection(target) : null;
                         requestLinkUrl().then(function(url) {
-                            if (url) {
-                                document.execCommand('createLink', false, url);
+                            if (url && target) {
+                                if (newsletterLinkSelection) restoreSpecificRichSelection(target, newsletterLinkSelection);
+                                applyLinkAtSelection(target, url);
                             }
                             if (target) saveRichSelection(target);
                             hydrateNewsletterFromInputs();
@@ -3465,7 +3743,7 @@
             };
             if (t === 'transcript') base.content = { source: '', rows: [] };
             else if (t === 'heading') base.content = { text: 'Heading', level: 'h2', align: 'left', vertical_align: 'top' };
-            else if (t === 'image') base.content = { src: '', alt: '', caption: '', width: '', height: '' };
+            else if (t === 'image') base.content = { src: '', media_id: 0, link_url: '', alt: '', caption: '', width: '', height: '' };
             else if (t === 'button') base.content = { label: 'Learn more', url: '#', align: 'left' };
             else if (t === 'hero') base.content = { title: 'Hero Title', subtitle: '', cta_label: 'Learn More', cta_url: '#', image_src: '' };
             else if (t === 'html') base.content = { html: '<div></div>' };
@@ -3473,7 +3751,7 @@
             else if (t === 'feature_grid') base.content = { columns: 3, items: [{ icon: '', title: 'Feature', text: '', cta: { label: '', url: '#' } }] };
             else if (t === 'card_grid') base.content = { columns: 3, items: [{ icon: '', title: 'Card', text: '', cta: { label: '', url: '#' } }] };
             else if (t === 'cta') base.content = { layout: 'single', items: [{ title: 'Call to Action', text: '', button: { label: 'Learn More', url: '#' } }] };
-            else if (t === 'events') base.content = { source: 'calendar', limit: 5 };
+            else if (t === 'events') base.content = { source: 'calendar', limit: 5, view_mode: 'card' };
             else if (t === 'form') base.content = { form_id: '', submit_label: 'Submit' };
             else if (t === 'donation_form') base.content = { campaign_id: '', preset_amounts: [25, 50, 100], allow_custom_amount: true, mode: 'both', show_name: true, show_email: true, show_phone: false };
             else if (t === 'donation_progress') base.content = { campaign_id: '', goal_amount: '', raised_amount: '', percent: '' };
@@ -3886,6 +4164,8 @@
                 out.content.body = repairMojibakeHtml(content.body || '<p></p>') || '<p></p>';
             } else if (out.type === 'image') {
                 out.content.src = s(content.src || '');
+                out.content.media_id = Math.max(0, parseInt(s(content.media_id || '0'), 10) || 0);
+                out.content.link_url = s(content.link_url || '');
                 out.content.alt = repairMojibakeText(content.alt || '');
                 out.content.caption = repairMojibakeText(content.caption || '');
                 out.content.width = normalizeImageDimension(content.width || '');
@@ -3953,7 +4233,9 @@
             } else if (out.type === 'events') {
                 var source = s(content.source || 'calendar');
                 out.content.source = source === 'manual' ? 'manual' : 'calendar';
+                out.content.calendar_id = s(content.calendar_id || '');
                 out.content.limit = Math.max(1, Math.min(50, parseInt(s(content.limit || '5'), 10) || 5));
+                out.content.view_mode = ['card', 'week', 'calendar'].indexOf(s(content.view_mode || 'card')) === -1 ? 'card' : s(content.view_mode || 'card');
             } else if (out.type === 'form') {
                 out.content.form_id = s(content.form_id || '');
                 out.content.submit_label = repairMojibakeText(content.submit_label || 'Submit') || 'Submit';
@@ -4472,8 +4754,10 @@
                     return '<div class="metis-builder-column"><div class="metis-builder-button-row is-' + esc(s(moduleContent.align || 'left')) + '"><a class="metis-builder-button" href="' + esc(moduleActionType === 'popup' ? '#' : s(moduleContent.url || '#')) + '" data-builder-link="1">' + esc(s(moduleContent.label || 'Learn more')) + '</a><small class="metis-builder-button-meta">' + esc(moduleActionType === 'popup' ? ('Opens popup: ' + moduleTargetLabel) : moduleTargetLabel) + '</small></div></div>';
                 }
                 if (module.type === 'image') {
+                    var moduleImage = moduleContent.src ? '<img src="' + esc(s(moduleContent.src || '')) + '" alt="' + esc(s(moduleContent.alt || '')) + '"' + imageDimensionAttrs(moduleContent) + '>' : '<div class="metis-builder-media-empty">Choose an image in settings.</div>';
+                    if (moduleContent.src && s(moduleContent.link_url || '')) moduleImage = '<a class="metis-builder-image-link" href="' + esc(s(moduleContent.link_url || '')) + '" data-builder-link="1">' + moduleImage + '</a>';
                     return '<div class="metis-builder-column"><figure class="metis-builder-image">' +
-                        (moduleContent.src ? '<img src="' + esc(s(moduleContent.src || '')) + '" alt="' + esc(s(moduleContent.alt || '')) + '"' + imageDimensionAttrs(moduleContent) + '>' : '<div class="metis-builder-media-empty">Choose an image in settings.</div>') +
+                        moduleImage +
                         '<figcaption>' + esc(s(moduleContent.caption || '')) + '</figcaption>' +
                     '</figure></div>';
                 }
@@ -4488,8 +4772,10 @@
             } else if (type === 'text') {
                 body = '<div class="metis-builder-richtext metis-se-rich-editor" data-v2-rich="canvas_text" id="metis-v2-canvas-rich-' + esc(String(index)) + '"' + editableAttr(index, 'text_body') + '>' + s(content.body || '<p>Start typing...</p>') + '</div>';
             } else if (type === 'image') {
+                var sectionImage = content.src ? '<img src="' + esc(s(content.src || '')) + '" alt="' + esc(s(content.alt || '')) + '"' + imageDimensionAttrs(content) + '>' : '<div class="metis-builder-media-empty">Choose an image in settings.</div>';
+                if (content.src && s(content.link_url || '')) sectionImage = '<a class="metis-builder-image-link" href="' + esc(s(content.link_url || '')) + '" data-builder-link="1">' + sectionImage + '</a>';
                 body = '<figure class="metis-builder-image">' +
-                    (content.src ? '<img src="' + esc(s(content.src || '')) + '" alt="' + esc(s(content.alt || '')) + '"' + imageDimensionAttrs(content) + '>' : '<div class="metis-builder-media-empty">Choose an image in settings.</div>') +
+                    sectionImage +
                     '<figcaption' + editableAttr(index, 'image_caption') + '>' + esc(s(content.caption || '')) + '</figcaption>' +
                 '</figure>';
             } else if (type === 'button') {
@@ -4546,7 +4832,7 @@
                     return '<div><h3 contenteditable="' + ((state.canEdit || (state.id < 1 && state.canCreate)) ? 'true' : 'false') + '" data-v2-inline-item="' + esc(String(ctaIndex)) + '" data-inline-item-field="title" data-inline-index="' + esc(String(index)) + '">' + esc(s(item.title || 'Call to Action')) + '</h3><p>' + esc(s(item.text || '')) + '</p>' + (btn.label ? '<a class="metis-builder-button" data-builder-link="1" href="' + esc(s(btn.url || '#')) + '">' + esc(s(btn.label || 'Learn More')) + '</a>' : '') + '</div>';
                 }).join('') + '</div>';
             } else if (type === 'events') {
-                body = '<div class="metis-builder-posts-list"><div><strong>Events</strong><span>' + esc(String(parseInt(s(content.limit || '5'), 10) || 5)) + ' upcoming items</span></div></div>';
+                body = '<div class="metis-builder-posts-list"><div><strong>Events</strong><span>' + esc(String(parseInt(s(content.limit || '5'), 10) || 5)) + ' upcoming items • ' + esc(s(content.view_mode || 'card')) + ' view</span></div></div>';
             } else if (type === 'form') {
                 body = '<div class="metis-builder-dynamic-card"><strong>Form</strong><span>' + esc(optionLabel(state.options.forms, content.form_id, 'Select a form in settings.')) + '</span><small>Submit button: ' + esc(s(content.submit_label || 'Submit')) + '</small></div>';
             } else if (type === 'form_tabs') {
@@ -4788,6 +5074,8 @@
             } else if (sec.type === 'image') {
                 html += '<div class="metis-se-field-row"><label>Image</label><div class="metis-featured-image-actions"><button type="button" class="metis-se-nav-btn" data-open-block-media="src">Choose from Media</button></div></div>';
                 html += '<div class="metis-se-field-row"><label>Image URL</label><input id="metis-v2-image-src" class="metis-se-input" value="' + esc(s(sec.content.src || '')) + '" placeholder="https://"></div>';
+                html += '<input id="metis-v2-image-media-id" type="hidden" value="' + esc(String(Math.max(0, parseInt(s(sec.content.media_id || '0'), 10) || 0))) + '">';
+                html += '<div class="metis-se-field-row"><label>Link URL</label><input id="metis-v2-image-link-url" class="metis-se-input" value="' + esc(s(sec.content.link_url || '')) + '" placeholder="Optional link target"></div>';
                 html += '<div class="metis-se-field-row"><label>Alt Text</label><input id="metis-v2-image-alt" class="metis-se-input" value="' + esc(s(sec.content.alt || '')) + '"></div>';
                 html += '<div class="metis-se-field-row"><label>Caption</label><input id="metis-v2-image-caption" class="metis-se-input" value="' + esc(s(sec.content.caption || '')) + '" placeholder="Optional caption"></div>';
                 html += '<div class="metis-se-field-row"><label>Width</label><input id="metis-v2-image-width" class="metis-se-input" inputmode="numeric" pattern="[0-9]*" value="' + esc(s(sec.content.width || '')) + '" placeholder="Auto"></div>';
@@ -4905,11 +5193,11 @@
                 items.forEach(function (item, i) {
                     var cta = item.cta && typeof item.cta === 'object' ? item.cta : {};
                     html += '<div class="metis-se-card"><div class="metis-se-field-grid">' +
-                        '<div class="metis-se-field-row"><label>Icon</label><input class="metis-se-input" data-v2-item="feature_grid" data-item-idx="' + i + '" data-item-field="icon" value="' + esc(s(item.icon || '')) + '"></div>' +
+                        '<div class="metis-se-field-row" data-v2-feature-grid-icon-field data-item-idx="' + i + '"><label>Icon</label><input type="hidden" data-v2-feature-grid-icon-input value="' + esc(s(item.icon || '')) + '"><div class="metis-menu-icon-picker-row"><div class="metis-menu-icon-preview" data-v2-feature-grid-icon-preview></div><button type="button" class="metis-se-nav-btn" data-v2-feature-grid-icon-pick>Choose Icon</button><button type="button" class="metis-se-nav-btn" data-v2-feature-grid-icon-clear>Clear</button><span class="metis-menu-icon-token" data-v2-feature-grid-icon-token></span></div></div>' +
                         '<div class="metis-se-field-row"><label>Title</label><input class="metis-se-input" data-v2-item="feature_grid" data-item-idx="' + i + '" data-item-field="title" value="' + esc(s(item.title || '')) + '"></div>' +
                         '<div class="metis-se-field-row"><label>Text</label><textarea class="metis-se-input" data-v2-item="feature_grid" data-item-idx="' + i + '" data-item-field="text">' + esc(s(item.text || '')) + '</textarea></div>' +
                         '<div class="metis-se-field-row"><label>CTA Label</label><input class="metis-se-input" data-v2-item="feature_grid" data-item-idx="' + i + '" data-item-field="cta_label" value="' + esc(s(cta.label || '')) + '"></div>' +
-                        '<div class="metis-se-field-row"><label>CTA Link</label><input class="metis-se-input" data-v2-item="feature_grid" data-item-idx="' + i + '" data-item-field="cta_url" value="' + esc(s(cta.url || '#')) + '"></div>' +
+                        '<div class="metis-se-field-row"><label>CTA Link</label><input class="metis-se-input" placeholder="/about or https://example.org" data-v2-item="feature_grid" data-item-idx="' + i + '" data-item-field="cta_url" value="' + esc(s(cta.url || '')) + '"></div>' +
                         '<div class="metis-se-field-row"><button type="button" class="metis-se-nav-btn" data-v2-remove-item="feature_grid" data-item-idx="' + i + '">Remove Item</button></div>' +
                     '</div></div>';
                 });
@@ -4927,6 +5215,8 @@
                 });
             } else if (sec.type === 'events') {
                 html += '<div class="metis-se-field-row"><label>Source</label><select id="metis-v2-events-source" class="metis-se-select"><option value="calendar"' + (s(sec.content.source || 'calendar') === 'calendar' ? ' selected' : '') + '>Public Calendar</option><option value="manual"' + (s(sec.content.source || '') === 'manual' ? ' selected' : '') + '>Manual</option></select></div>';
+                html += '<div class="metis-se-field-row"><label>Calendar</label><select id="metis-v2-events-calendar-id" class="metis-se-select">' + optionList(state.options.calendarSources, sec.content.calendar_id, 'Select calendar') + '</select></div>';
+                html += '<div class="metis-se-field-row"><label>View Mode</label><select id="metis-v2-events-view-mode" class="metis-se-select"><option value="card"' + (s(sec.content.view_mode || 'card') === 'card' ? ' selected' : '') + '>Card View</option><option value="week"' + (s(sec.content.view_mode || '') === 'week' ? ' selected' : '') + '>Week View</option><option value="calendar"' + (s(sec.content.view_mode || '') === 'calendar' ? ' selected' : '') + '>Calendar View</option></select></div>';
                 html += '<div class="metis-se-field-row"><label>Item Limit</label><input id="metis-v2-events-limit" class="metis-se-input" type="number" min="1" max="50" value="' + esc(String(parseInt(s(sec.content.limit || '5'), 10) || 5)) + '"></div>';
             } else if (sec.type === 'form') {
                 html += '<div class="metis-se-field-row"><label>Form</label><select id="metis-v2-form-id" class="metis-se-select">' + optionList(state.options.forms, sec.content.form_id, 'Select form') + '</select></div>';
@@ -4995,6 +5285,7 @@
             }
             host.innerHTML = html;
             bindIconFallbacks(host);
+            featureGridApplyIconFieldState(host);
         }
 
         function renderStep2Editor() {
@@ -5275,7 +5566,15 @@
                 variant: s(sec.content && sec.content.variant || 'default')
             };
             else if (type === 'text') data = { content: s(sec.content && sec.content.body || '<p></p>'), tag: 'div' };
-            else if (type === 'image') data = { src: s(sec.content && sec.content.src || ''), alt: s(sec.content && sec.content.alt || '') };
+            else if (type === 'image') data = {
+                src: s(sec.content && sec.content.src || ''),
+                media_id: Math.max(0, parseInt(s(sec.content && sec.content.media_id || '0'), 10) || 0),
+                link_url: s(sec.content && sec.content.link_url || ''),
+                alt: s(sec.content && sec.content.alt || ''),
+                caption: s(sec.content && sec.content.caption || ''),
+                width: s(sec.content && sec.content.width || ''),
+                height: s(sec.content && sec.content.height || '')
+            };
             else if (type === 'button') data = {
                 label: s(sec.content && sec.content.label || 'Learn more'),
                 url: s(sec.content && sec.content.url || '#'),
@@ -5564,8 +5863,8 @@
         }
 
         function applyUploadedEditorImage(context, media) {
-            var row = upsertEditorMediaOption(media);
-            if (!row) return;
+                var row = upsertEditorMediaOption(media);
+                if (!row) return;
             var ctx = s(context || 'inline');
             if (ctx === 'featured') {
                 var hiddenEl = document.getElementById('metis-v2-featured-image-id');
@@ -5582,7 +5881,8 @@
             if (blockTarget && state.sections[blockTarget.index]) {
                 var imageSection = state.sections[blockTarget.index];
                 imageSection.content = imageSection.content && typeof imageSection.content === 'object' ? imageSection.content : {};
-                imageSection.content[blockTarget.field] = s(row.url || '');
+                imageSection.content[blockTarget.field] = mediaPublicUrlForRow(row);
+                if (blockTarget.field === 'src') imageSection.content.media_id = Math.max(0, parseInt(s(row.id || '0'), 10) || 0);
                 if (imageSection.type === 'image' && blockTarget.field === 'src' && !s(imageSection.content.alt || '')) {
                     imageSection.content.alt = s(row.label || 'Image');
                 }
@@ -6160,6 +6460,52 @@
                 retargetContextToolbar(state.activeRichTargetId);
             }, true);
             root.addEventListener('click', function (e) {
+                var featureGridIconPick = e.target.closest('[data-v2-feature-grid-icon-pick]');
+                if (featureGridIconPick) {
+                    var featureGridIconField = featureGridIconPick.closest('[data-v2-feature-grid-icon-field]');
+                    if (featureGridIconField) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!featureGridIconPanel || featureGridIconPanel.hidden || featureGridActiveField !== featureGridIconField) {
+                            featureGridOpenIconPanel(featureGridIconField, featureGridIconPick);
+                        } else {
+                            featureGridCloseIconPanel();
+                        }
+                    }
+                    return;
+                }
+                var featureGridIconClear = e.target.closest('[data-v2-feature-grid-icon-clear]');
+                if (featureGridIconClear) {
+                    var featureGridClearField = featureGridIconClear.closest('[data-v2-feature-grid-icon-field]');
+                    var featureGridClearInput = featureGridClearField && featureGridClearField.querySelector('[data-v2-feature-grid-icon-input]');
+                    var featureGridClearIndex = parseInt(s(featureGridClearField && featureGridClearField.getAttribute('data-item-idx') || '-1'), 10);
+                    var featureGridClearSection = activeSection();
+                    if (featureGridClearInput) featureGridClearInput.value = '';
+                    if (featureGridClearSection && Array.isArray(featureGridClearSection.content.items) && featureGridClearIndex >= 0 && featureGridClearSection.content.items[featureGridClearIndex]) {
+                        featureGridClearSection.content.items[featureGridClearIndex].icon = '';
+                        featureGridApplyIconFieldState(featureGridClearField);
+                        renderBuilderCanvas();
+                        setDirtyAutosave();
+                    }
+                    featureGridCloseIconPanel();
+                    return;
+                }
+                var featureGridIconOption = e.target.closest('[data-v2-feature-grid-icon-option]');
+                if (featureGridIconOption && featureGridActiveField) {
+                    var featureGridOptionValue = s(featureGridIconOption.getAttribute('data-v2-feature-grid-icon-option') || '');
+                    var featureGridOptionInput = featureGridActiveField.querySelector('[data-v2-feature-grid-icon-input]');
+                    var featureGridOptionIndex = parseInt(s(featureGridActiveField.getAttribute('data-item-idx') || '-1'), 10);
+                    var featureGridOptionSection = activeSection();
+                    if (featureGridOptionInput) featureGridOptionInput.value = featureGridOptionValue;
+                    if (featureGridOptionSection && Array.isArray(featureGridOptionSection.content.items) && featureGridOptionIndex >= 0 && featureGridOptionSection.content.items[featureGridOptionIndex]) {
+                        featureGridOptionSection.content.items[featureGridOptionIndex].icon = featureGridOptionValue;
+                        featureGridApplyIconFieldState(featureGridActiveField);
+                        renderBuilderCanvas();
+                        setDirtyAutosave();
+                    }
+                    featureGridCloseIconPanel();
+                    return;
+                }
                 var publishBtn = e.target.closest('#metis-v2-publish');
                 if (publishBtn) {
                     var publishStatusEl = document.getElementById('metis-v2-status');
@@ -6531,7 +6877,8 @@
                     if (blockTarget && inlineRow && state.sections[blockTarget.index]) {
                         var imageSection = state.sections[blockTarget.index];
                         imageSection.content = imageSection.content && typeof imageSection.content === 'object' ? imageSection.content : {};
-                        imageSection.content[blockTarget.field] = s(inlineRow.url || '');
+                        imageSection.content[blockTarget.field] = mediaPublicUrlForRow(inlineRow);
+                        if (blockTarget.field === 'src') imageSection.content.media_id = Math.max(0, parseInt(s(inlineRow.id || '0'), 10) || 0);
                         if (imageSection.type === 'image' && blockTarget.field === 'src' && !s(imageSection.content.alt || '')) {
                             imageSection.content.alt = s(inlineRow.label || 'Image');
                         }
@@ -6544,7 +6891,7 @@
                     var inlineTarget = state.inlineImageTargetId ? document.getElementById(state.inlineImageTargetId) : null;
                     requestInlineImageSize().then(function(sizeChoice) {
                         if (inlineRow && inlineTarget && sizeChoice) {
-                            insertHtmlAtSelection(inlineTarget, '<figure class="metis-inline-image is-' + esc(sizeChoice) + '"><img src="' + esc(s(inlineRow.url || '')) + '" alt="' + esc(s(inlineRow.label || 'Inline image')) + '"></figure>');
+                            insertHtmlAtSelection(inlineTarget, '<figure class="metis-inline-image is-' + esc(sizeChoice) + '"><img src="' + esc(mediaPublicUrlForRow(inlineRow)) + '" alt="' + esc(s(inlineRow.label || 'Inline image')) + '"></figure>');
                             setDirtyAutosave();
                         }
                         closeInlineImageModal();
@@ -6627,9 +6974,10 @@
                         restoreRichSelection(target);
                     }
                     if (cmd === 'createLink') {
-                        if (target) saveRichSelection(target);
+                        var linkSelection = target ? cloneStoredRichSelection(target) : null;
                         requestLinkUrl().then(function(url) {
                             if (url && target) {
+                                if (linkSelection) restoreSpecificRichSelection(target, linkSelection);
                                 applyLinkAtSelection(target, url);
                             }
                             if (target) {
@@ -6830,7 +7178,8 @@
                 if (target.id === 'metis-v2-section-subtext') { sec.subtext = s(target.value || '').trim() || null; setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-section-background') { sec.settings = normalizeSectionSettings(Object.assign({}, sec.settings || {}, { background: target.value })); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-heading-text') { sec.content.text = s(target.value || ''); renderSectionList(); setDirtyAutosave(); return; }
-                if (target.id === 'metis-v2-image-src') { sec.content.src = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-image-src') { sec.content.src = s(target.value || ''); sec.content.media_id = 0; renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-image-link-url') { sec.content.link_url = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-alt') { sec.content.alt = s(target.value || ''); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-caption') { sec.content.caption = s(target.value || ''); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-width') { sec.content.width = normalizeImageDimension(target.value || ''); target.value = sec.content.width; renderBuilderCanvas(); setDirtyAutosave(); return; }
@@ -6917,7 +7266,7 @@
                         var row = sec.content.items[i];
                         row.cta = row.cta && typeof row.cta === 'object' ? row.cta : { label: '', url: '#' };
                         if (field === 'cta_label') row.cta.label = s(target.value || '');
-                        else if (field === 'cta_url') row.cta.url = s(target.value || '') || '#';
+                        else if (field === 'cta_url') row.cta.url = normalizeEditorLinkUrl(target.value || '');
                         else row[field] = s(target.value || '');
                         setDirtyAutosave();
                     }
@@ -6946,6 +7295,8 @@
                     return;
                 }
                 if (target.id === 'metis-v2-events-source') { sec.content.source = s(target.value || 'calendar') === 'manual' ? 'manual' : 'calendar'; setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-events-calendar-id') { sec.content.calendar_id = s(target.value || ''); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-events-view-mode') { sec.content.view_mode = ['card', 'week', 'calendar'].indexOf(s(target.value || 'card')) === -1 ? 'card' : s(target.value || 'card'); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-events-limit') { sec.content.limit = Math.max(1, Math.min(50, parseInt(s(target.value || '5'), 10) || 5)); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-form-submit-label') { sec.content.submit_label = s(target.value || 'Submit') || 'Submit'; renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-donation-amounts') { sec.content.preset_amounts = normalizePresetAmounts(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
@@ -6982,6 +7333,12 @@
                     }
                     return;
                 }
+            });
+            document.addEventListener('click', function (event) {
+                if (!featureGridIconPanel || featureGridIconPanel.hidden) return;
+                if (event.target.closest('[data-v2-feature-grid-icon-pick]')) return;
+                if (event.target.closest('.metis-menu-icon-panel')) return;
+                featureGridCloseIconPanel();
             });
             root.addEventListener('change', function (e) {
                 var target = e.target;
