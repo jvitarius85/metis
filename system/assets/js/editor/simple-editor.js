@@ -1382,9 +1382,11 @@
         featureGridIconPanel = document.createElement('div');
         featureGridIconPanel.className = 'metis-menu-icon-panel';
         featureGridIconPanel.hidden = true;
-        featureGridIconPanel.addEventListener('click', function (event) {
+        featureGridIconPanel.addEventListener('pointerdown', function (event) {
             var option = event.target.closest('[data-v2-feature-grid-icon-option]');
             if (!option || !featureGridActiveField) return;
+            event.preventDefault();
+            event.stopPropagation();
             var optionValue = s(option.getAttribute('data-v2-feature-grid-icon-option') || '');
             var optionInput = featureGridActiveField.querySelector('[data-v2-feature-grid-icon-input]');
             var optionIndex = parseInt(s(featureGridActiveField.getAttribute('data-item-idx') || '-1'), 10);
@@ -5159,6 +5161,14 @@
             var titleEl = document.getElementById('metis-v2-title');
             var topStatus = document.getElementById('metis-builder-top-status');
             var publishBtn = document.getElementById('metis-v2-publish');
+            var shell = root.querySelector('.metis-builder-shell');
+            var topbar = root.querySelector('.metis-builder-topbar');
+            if (shell && topbar) {
+                var chromeHeight = Math.ceil(topbar.getBoundingClientRect().height || topbar.offsetHeight || 0);
+                if (chromeHeight > 0) {
+                    shell.style.setProperty('--metis-builder-chrome-height', String(chromeHeight + 16) + 'px');
+                }
+            }
             if (topStatus) {
                 var status = s(statusEl && statusEl.value || state.entity && state.entity.status || 'draft') || 'draft';
                 topStatus.textContent = status.charAt(0).toUpperCase() + status.slice(1);
@@ -7469,6 +7479,11 @@
                 if (event.target.closest('.metis-menu-icon-panel')) return;
                 featureGridCloseIconPanel();
             });
+            window.addEventListener('resize', syncBuilderChrome);
+            var builderTopbar = root.querySelector('.metis-builder-topbar');
+            if (builderTopbar && typeof ResizeObserver === 'function') {
+                new ResizeObserver(syncBuilderChrome).observe(builderTopbar);
+            }
             root.addEventListener('change', function (e) {
                 var target = e.target;
                 if (target && target.matches && target.matches('[data-editor-media-upload-input]')) {
