@@ -4139,8 +4139,22 @@
             };
         }
 
+        function columnImageTargetFromId(raw) {
+            var match = s(raw || '').match(/^column-image:(\d+):(\d+):(src)$/);
+            if (!match) return null;
+            return {
+                index: parseInt(match[1], 10),
+                columnIndex: parseInt(match[2], 10),
+                field: match[3]
+            };
+        }
+
         function openBlockImagePicker(index, field) {
             openInlineImageModal('block-image:' + String(index) + ':' + s(field || 'src'));
+        }
+
+        function openColumnImagePicker(index, columnIndex, field) {
+            openInlineImageModal('column-image:' + String(index) + ':' + String(columnIndex) + ':' + s(field || 'src'));
         }
 
         function sanitizeTranscriptSource(value) {
@@ -5393,6 +5407,7 @@
                         html += '<div class="metis-se-field-row"><label>URL</label><input class="metis-se-input" data-v2-column-field="url" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.url || '#')) + '"></div>';
                         html += '<div class="metis-se-field-row"><label>Alignment</label><select class="metis-se-select" data-v2-column-field="align" data-column-idx="' + esc(String(columnIndex)) + '"><option value="left"' + (s(moduleContent.align || 'left') === 'left' ? ' selected' : '') + '>Left</option><option value="center"' + (s(moduleContent.align || '') === 'center' ? ' selected' : '') + '>Center</option><option value="right"' + (s(moduleContent.align || '') === 'right' ? ' selected' : '') + '>Right</option></select></div>';
                     } else if (module.type === 'image') {
+                        html += '<div class="metis-se-field-row"><label>Image</label><div class="metis-featured-image-actions"><button type="button" class="metis-se-nav-btn" data-open-column-media="' + esc(String(columnIndex)) + '" data-open-column-media-field="src">Choose from Media</button></div></div>';
                         html += '<div class="metis-se-field-row"><label>Image URL</label><input class="metis-se-input" data-v2-column-field="src" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.src || '')) + '"></div>';
                         html += '<div class="metis-se-field-row"><label>Link URL</label><input class="metis-se-input" data-v2-column-field="link_url" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.link_url || '')) + '" placeholder="Optional link target"></div>';
                         html += '<div class="metis-se-field-row"><label>Alt Text</label><input class="metis-se-input" data-v2-column-field="alt" data-column-idx="' + esc(String(columnIndex)) + '" value="' + esc(s(moduleContent.alt || '')) + '"></div>';
@@ -7083,11 +7098,21 @@
                     if (state.activeSection >= 0) openBlockImagePicker(state.activeSection, mediaField);
                     return;
                 }
+                var openColumnMedia = e.target.closest('[data-open-column-media]');
+                if (openColumnMedia) {
+                    var columnMediaIdx = parseInt(s(openColumnMedia.getAttribute('data-open-column-media') || '-1'), 10);
+                    var columnMediaField = s(openColumnMedia.getAttribute('data-open-column-media-field') || 'src');
+                    if (state.activeSection >= 0 && columnMediaIdx >= 0) {
+                        openColumnImagePicker(state.activeSection, columnMediaIdx, columnMediaField);
+                    }
+                    return;
+                }
                 var pickInline = e.target.closest('[data-inline-image-select]');
                 if (pickInline) {
                     var inlineMediaId = parseInt(s(pickInline.getAttribute('data-inline-image-select') || '0'), 10) || 0;
                     var inlineRow = featuredImageMediaById(inlineMediaId);
                     var blockTarget = blockImageTargetFromId(state.inlineImageTargetId);
+                    var columnTarget = columnImageTargetFromId(state.inlineImageTargetId);
                     if (blockTarget && inlineRow && state.sections[blockTarget.index]) {
                         var imageSection = state.sections[blockTarget.index];
                         imageSection.content = imageSection.content && typeof imageSection.content === 'object' ? imageSection.content : {};
@@ -7101,6 +7126,26 @@
                         renderSectionList();
                         setDirtyAutosave();
                         return;
+                    }
+                    if (columnTarget && inlineRow && state.sections[columnTarget.index]) {
+                        var columnSection = state.sections[columnTarget.index];
+                        if (Array.isArray(columnSection.content && columnSection.content.columns) && columnSection.content.columns[columnTarget.columnIndex]) {
+                            var targetColumn = columnSection.content.columns[columnTarget.columnIndex];
+                            targetColumn.module = normalizeColumnModule(targetColumn.module, targetColumn.body);
+                            var targetContent = targetColumn.module.content && typeof targetColumn.module.content === 'object' ? targetColumn.module.content : {};
+                            targetContent[columnTarget.field] = mediaPublicUrlForRow(inlineRow);
+                            targetContent.media_id = Math.max(0, parseInt(s(inlineRow.id || '0'), 10) || 0);
+                            if (columnTarget.field === 'src' && !s(targetContent.alt || '')) {
+                                targetContent.alt = s(inlineRow.label || 'Image');
+                            }
+                            targetColumn.module.content = targetContent;
+                            state.activeSection = columnTarget.index;
+                            closeInlineImageModal();
+                            renderStep2Editor();
+                            renderBuilderCanvas();
+                            setDirtyAutosave();
+                            return;
+                        }
                     }
                     var inlineTarget = state.inlineImageTargetId ? document.getElementById(state.inlineImageTargetId) : null;
                     requestInlineImageSize().then(function(sizeChoice) {
