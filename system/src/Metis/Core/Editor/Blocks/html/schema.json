@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "required": ["content"],
+  "properties": {
+    "content": { "type": "string", "default": "<div></div>" },
+    "tag": { "type": "string", "default": "div" }
+  }
+}
