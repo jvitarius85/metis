@@ -5217,7 +5217,7 @@
             if (shell && topbar) {
                 var chromeHeight = Math.ceil(topbar.getBoundingClientRect().height || topbar.offsetHeight || 0);
                 if (chromeHeight > 0) {
-                    shell.style.setProperty('--metis-builder-chrome-height', String(chromeHeight + 16) + 'px');
+                    shell.style.setProperty('--metis-builder-chrome-height', String(chromeHeight) + 'px');
                 }
             }
             if (topStatus) {
@@ -5386,16 +5386,16 @@
                     '<option value="3"' + (fgCols === 3 ? ' selected' : '') + '>3</option>' +
                     '<option value="4"' + (fgCols === 4 ? ' selected' : '') + '>4</option>' +
                 '</select></div>';
-                html += '<div class="metis-se-field-row"><button type="button" class="metis-se-nav-btn" data-v2-add-item="feature_grid">Add Item</button></div>';
+                html += '<div class="metis-se-field-row"><button type="button" class="metis-se-nav-btn" data-v2-add-item="card_grid">Add Item</button></div>';
                 items.forEach(function (item, i) {
                     var cta = item.cta && typeof item.cta === 'object' ? item.cta : {};
                     html += '<div class="metis-se-card"><div class="metis-se-field-grid">' +
                         '<div class="metis-se-field-row" data-v2-feature-grid-icon-field data-item-idx="' + i + '"><label>Icon</label><input type="hidden" data-v2-feature-grid-icon-input value="' + esc(s(item.icon || '')) + '"><div class="metis-menu-icon-picker-row"><div class="metis-menu-icon-preview" data-v2-feature-grid-icon-preview></div><button type="button" class="metis-se-nav-btn" data-v2-feature-grid-icon-pick>Choose Icon</button><button type="button" class="metis-se-nav-btn" data-v2-feature-grid-icon-clear>Clear</button><span class="metis-menu-icon-token" data-v2-feature-grid-icon-token></span></div></div>' +
-                        '<div class="metis-se-field-row"><label>Title</label><input class="metis-se-input" data-v2-item="feature_grid" data-item-idx="' + i + '" data-item-field="title" value="' + esc(s(item.title || '')) + '"></div>' +
-                        '<div class="metis-se-field-row"><label>Text</label><textarea class="metis-se-input" data-v2-item="feature_grid" data-item-idx="' + i + '" data-item-field="text">' + esc(s(item.text || '')) + '</textarea></div>' +
-                        '<div class="metis-se-field-row"><label>CTA Label</label><input class="metis-se-input" data-v2-item="feature_grid" data-item-idx="' + i + '" data-item-field="cta_label" value="' + esc(s(cta.label || '')) + '"></div>' +
-                        '<div class="metis-se-field-row"><label>CTA Link</label><input class="metis-se-input" placeholder="/about or https://example.org" data-v2-item="feature_grid" data-item-idx="' + i + '" data-item-field="cta_url" value="' + esc(s(cta.url || '')) + '"></div>' +
-                        '<div class="metis-se-field-row"><button type="button" class="metis-se-nav-btn" data-v2-remove-item="feature_grid" data-item-idx="' + i + '">Remove Item</button></div>' +
+                        '<div class="metis-se-field-row"><label>Title</label><input class="metis-se-input" data-v2-item="card_grid" data-item-idx="' + i + '" data-item-field="title" value="' + esc(s(item.title || '')) + '"></div>' +
+                        '<div class="metis-se-field-row"><label>Text</label><textarea class="metis-se-input" data-v2-item="card_grid" data-item-idx="' + i + '" data-item-field="text">' + esc(s(item.text || '')) + '</textarea></div>' +
+                        '<div class="metis-se-field-row"><label>CTA Label</label><input class="metis-se-input" data-v2-item="card_grid" data-item-idx="' + i + '" data-item-field="cta_label" value="' + esc(s(cta.label || '')) + '"></div>' +
+                        '<div class="metis-se-field-row"><label>CTA Link</label><input class="metis-se-input" placeholder="/about or https://example.org" data-v2-item="card_grid" data-item-idx="' + i + '" data-item-field="cta_url" value="' + esc(s(cta.url || '')) + '"></div>' +
+                        '<div class="metis-se-field-row"><button type="button" class="metis-se-nav-btn" data-v2-remove-item="card_grid" data-item-idx="' + i + '">Remove Item</button></div>' +
                     '</div></div>';
                 });
             } else if (sec.type === 'cta') {
@@ -7111,7 +7111,7 @@
                     setDirtyAutosave();
                     return;
                 }
-                var addItem = e.target.closest('[data-v2-add-item=\"feature_grid\"]');
+                var addItem = e.target.closest('[data-v2-add-item=\"card_grid\"], [data-v2-add-item=\"feature_grid\"]');
                 if (addItem) {
                     var sec = activeSection();
                     sec.content.items.push({ icon: '', title: '', text: '', cta: { label: '', url: '#' } });
@@ -7120,7 +7120,7 @@
                     setDirtyAutosave();
                     return;
                 }
-                var removeItem = e.target.closest('[data-v2-remove-item=\"feature_grid\"]');
+                var removeItem = e.target.closest('[data-v2-remove-item=\"card_grid\"], [data-v2-remove-item=\"feature_grid\"]');
                 if (removeItem) {
                     var remIdx = parseInt(s(removeItem.getAttribute('data-item-idx') || '-1'), 10);
                     var secR = activeSection();
@@ -7436,7 +7436,7 @@
                     setDirtyAutosave();
                     return;
                 }
-                if (target.matches('[data-v2-item=\"feature_grid\"]')) {
+                if (target.matches('[data-v2-item=\"card_grid\"], [data-v2-item=\"feature_grid\"]')) {
                     var i = parseInt(s(target.getAttribute('data-item-idx') || '-1'), 10);
                     var field = s(target.getAttribute('data-item-field') || '');
                     if (Array.isArray(sec.content.items) && i >= 0 && i < sec.content.items.length) {

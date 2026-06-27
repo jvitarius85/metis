@@ -832,6 +832,7 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     align-items: stretch;
     min-height: 0;
     height: 100%;
+    max-height: 100%;
     padding: 0;
     background: transparent;
     overflow: hidden;
@@ -850,9 +851,13 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     align-content: start;
 }
 .metis-builder-settings-panel {
-    position: sticky;
-    top: 0;
+    position: relative;
+    top: auto;
+    align-self: stretch;
+    height: 100%;
     max-height: 100%;
+    overflow: auto;
+    overscroll-behavior: contain;
 }
 .metis-builder-left-panel[hidden] {
     display: none !important;
@@ -883,6 +888,7 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     min-width: 0;
     min-height: 0;
     height: 100%;
+    max-height: 100%;
     overflow: auto;
     overscroll-behavior: contain;
     border: 1px solid var(--metis-border, #e0e2ea);
@@ -1519,6 +1525,8 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     .metis-builder-settings-panel,
     .metis-builder-canvas {
         overflow: auto;
+        height: auto;
+        max-height: none;
     }
     .metis-content-compare-values {
         grid-template-columns: 1fr;
