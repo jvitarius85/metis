@@ -416,6 +416,7 @@ function metisInitSettingsUi() {
             people: 'People',
             security: 'Security',
             status: 'Status',
+            transport: 'Transport',
             ui: 'UI',
             
         };

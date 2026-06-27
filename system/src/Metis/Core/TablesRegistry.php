@@ -134,6 +134,8 @@ final class Metis_Tables {
         "website_posts" => "metis_website_posts",
         "website_post_categories" => "metis_website_post_categories",
         "website_post_category_map" => "metis_website_post_category_map",
+        "website_post_tags" => "metis_website_post_tags",
+        "website_post_tag_map" => "metis_website_post_tag_map",
         "website_global_layouts" => "metis_website_global_layouts",
         "website_menus" => "metis_website_menus",
         "website_banners" => "metis_website_banners",

@@ -400,6 +400,48 @@ function metis_navigation_sanitize_svg_markup( string $svg ): string {
         $sanitized = $colorized;
     }
 
+    $style_colorized = preg_replace_callback(
+        '/\sstyle=["\']([^"\']*)["\']/i',
+        static function ( array $matches ): string {
+            $raw_style = (string) ( $matches[1] ?? '' );
+            if ( trim( $raw_style ) === '' ) {
+                return '';
+            }
+
+            $rules = preg_split( '/\s*;\s*/', $raw_style ) ?: [];
+            $next_rules = [];
+            foreach ( $rules as $rule ) {
+                $rule = trim( (string) $rule );
+                if ( $rule === '' || ! str_contains( $rule, ':' ) ) {
+                    continue;
+                }
+
+                [ $name, $value ] = array_map( 'trim', explode( ':', $rule, 2 ) );
+                $name_lower = strtolower( $name );
+                $value_lower = strtolower( $value );
+                if ( in_array( $name_lower, [ 'fill', 'stroke' ], true ) ) {
+                    if ( ! in_array( $value_lower, [ 'none', 'transparent', 'currentcolor' ], true ) ) {
+                        $value = 'currentColor';
+                    } elseif ( $value_lower === 'currentcolor' ) {
+                        $value = 'currentColor';
+                    }
+                }
+
+                $next_rules[] = $name . ': ' . $value;
+            }
+
+            if ( $next_rules === [] ) {
+                return '';
+            }
+
+            return ' style="' . implode( '; ', $next_rules ) . '"';
+        },
+        $sanitized
+    );
+    if ( is_string( $style_colorized ) ) {
+        $sanitized = $style_colorized;
+    }
+
     return trim( $sanitized );
 }
 

@@ -49,6 +49,8 @@ Structured website management for pages, posts, categories, menus, redirects, te
 - `website_popups` (`metis_website_popups`)
 - `website_post_categories` (`metis_website_post_categories`)
 - `website_post_category_map` (`metis_website_post_category_map`)
+- `website_post_tags` (`metis_website_post_tags`)
+- `website_post_tag_map` (`metis_website_post_tag_map`)
 - `website_posts` (`metis_website_posts`)
 - `website_redirects` (`metis_website_redirects`)
 - `website_revisions` (`metis_website_revisions`)

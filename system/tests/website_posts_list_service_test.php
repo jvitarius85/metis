@@ -44,6 +44,7 @@ namespace {
         [
             'source' => 'this_page',
             'category_ids' => [ '4', 7, 'bad', 7 ],
+            'tag_ids' => [ '8', 11, 'bad', 11 ],
             'limit' => '12',
         ],
         [
@@ -86,6 +87,7 @@ namespace {
     $assert( ( $query['limit'] ?? 0 ) === 12, 'Posts list query should keep the configured limit.' );
     $assert( ! isset( $query['parent_page_id'] ), 'Category-filtered this-page posts lists should not force a current-page parent filter.' );
     $assert( ( $query['post_category_ids'] ?? [] ) === [ 4, 7 ], 'Posts list query should normalize category IDs.' );
+    $assert( ( $query['post_tag_ids'] ?? [] ) === [ 8, 11 ], 'Posts list query should normalize tag IDs.' );
 
     $assert( ( $specificPageQuery['limit'] ?? 0 ) === 8, 'Specific-page posts list should fall back to count when limit is absent.' );
     $assert( ( $specificPageQuery['parent_page_id'] ?? 0 ) === 19, 'Specific-page posts list should scope to the chosen page.' );
@@ -120,6 +122,10 @@ namespace {
     $assert(
         str_contains( $editorSource, 'var richSelections = sharedRichSelections;' ),
         'Simple editor rich selection state must use the shared selection store so emoji insertion restores the active cursor.'
+    );
+    $assert(
+        str_contains( $editorSource, "metis-v2-posts-tag-ids" ) && str_contains( $editorSource, "state.options.postTags" ),
+        'Simple editor posts list settings must expose shared tag filtering.'
     );
 
     if ( $failures !== [] ) {

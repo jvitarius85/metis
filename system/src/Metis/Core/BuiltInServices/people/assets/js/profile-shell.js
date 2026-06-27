@@ -1,7 +1,7 @@
 function initMetisPeopleProfileShell(context) {
     const scope = context && context.root ? context.root : document;
     const initRoot = scope === document ? document.documentElement : scope;
-    const hasPeopleUi = scope.querySelector('.metis-people-detail, .metis-people-role-detail, .metis-people-activity-log, .metis-people-profile-card, .metis-people-workspace');
+    const hasPeopleUi = scope.querySelector('.metis-people, .metis-people-ops, .metis-people-dashboard, .metis-people-detail, .metis-people-role-detail, .metis-people-activity-log, .metis-people-profile-card, .metis-people-workspace');
     if (!hasPeopleUi) return;
     if (initRoot && initRoot.getAttribute('data-metis-people-shell-initialized') === '1') return;
     if (initRoot) initRoot.setAttribute('data-metis-people-shell-initialized', '1');
@@ -216,6 +216,101 @@ function initMetisPeopleProfileShell(context) {
             modules.initWorkspace(moduleContext);
         }
     });
+    const peopleListRoot = document.querySelector('.metis-people');
+    if (peopleListRoot) {
+        const canManage = peopleListRoot.dataset.canManage === '1';
+        const personBaseUrl = String(peopleListRoot.dataset.personBaseUrl || '').trim();
+        const searchInput = document.getElementById('metis-people-search');
+        const rowsRoot = document.getElementById('metis-people-rows');
+        const addOpen = document.getElementById('metis-people-add-open');
+        const addModal = document.getElementById('metis-people-add-modal');
+        const addForm = document.getElementById('metis-people-add-form');
+        const addCancel = document.getElementById('metis-people-add-cancel');
+
+        function applyPeopleListFilter() {
+            if (!rowsRoot) return;
+            const query = normalize(searchInput ? searchInput.value : '');
+            Array.from(rowsRoot.querySelectorAll('.metis-people-row')).forEach(function (row) {
+                const haystack = normalize(row.dataset.search || '');
+                row.style.display = !query || haystack.indexOf(query) !== -1 ? '' : 'none';
+            });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', applyPeopleListFilter);
+            applyPeopleListFilter();
+        }
+
+        if (rowsRoot) {
+            rowsRoot.addEventListener('click', function (event) {
+                if (event.target && event.target.closest && event.target.closest('a, button, input, label, select, textarea')) return;
+                const row = event.target && event.target.closest ? event.target.closest('.metis-people-row[data-href]') : null;
+                const href = row ? String(row.dataset.href || '').trim() : '';
+                if (href) window.location.href = href;
+            });
+        }
+
+        if (canManage && addOpen && addModal && addForm) {
+            const firstNameInput = document.getElementById('metis-people-add-first-name');
+            const lastNameInput = document.getElementById('metis-people-add-last-name');
+            const emailInput = document.getElementById('metis-people-add-email');
+            let addSubmitting = false;
+
+            function closeAddModal() {
+                closeModal(addModal);
+                addForm.reset();
+                addSubmitting = false;
+                const submitBtn = addForm.querySelector('button[type="submit"]');
+                if (submitBtn) submitBtn.disabled = false;
+            }
+
+            addOpen.addEventListener('click', function () {
+                openModal(addModal);
+                window.requestAnimationFrame(function () {
+                    if (firstNameInput && typeof firstNameInput.focus === 'function') firstNameInput.focus();
+                });
+            });
+
+            if (addCancel) {
+                addCancel.addEventListener('click', function () {
+                    closeAddModal();
+                });
+            }
+
+            addModal.addEventListener('click', function (event) {
+                if (event.target === addModal) closeAddModal();
+            });
+
+            addForm.addEventListener('submit', function (event) {
+                event.preventDefault();
+                if (addSubmitting) return;
+                addSubmitting = true;
+                const submitBtn = addForm.querySelector('button[type="submit"]');
+                if (submitBtn) submitBtn.disabled = true;
+                post('metis_people_save_person', {
+                    first_name: firstNameInput ? firstNameInput.value : '',
+                    last_name: lastNameInput ? lastNameInput.value : '',
+                    display_name: [String(firstNameInput ? firstNameInput.value : '').trim(), String(lastNameInput ? lastNameInput.value : '').trim()].filter(Boolean).join(' '),
+                    email: emailInput ? emailInput.value : '',
+                    status: 'active',
+                    lifecycle_status: 'active'
+                }).then(function (data) {
+                    const pid = String((data && data.pid) || (data && data.person_pid) || '').trim();
+                    closeAddModal();
+                    showAlert('Person created.', 'success');
+                    if (pid && personBaseUrl) {
+                        window.location.href = personBaseUrl.replace(/\/?$/, '/') + encodeURIComponent(pid);
+                        return;
+                    }
+                    window.location.reload();
+                }).catch(function (err) {
+                    addSubmitting = false;
+                    if (submitBtn) submitBtn.disabled = false;
+                    showAlert(err.message || 'Failed to create person.', 'error');
+                });
+            });
+        }
+    }
     // Person detail behavior.
     const personDetailRoot = document.querySelector('.metis-people-detail');
     if (personDetailRoot) {

@@ -967,6 +967,32 @@
         });
         renderPostPathPreview();
     }
+    function mergePostTagOptionsFromEntity(entity) {
+        if (!entity || typeof entity !== 'object') return;
+        var tags = Array.isArray(entity.tags) ? entity.tags : [];
+        if (!tags.length) return;
+        var existing = Array.isArray(state.options.postTags) ? state.options.postTags.slice() : [];
+        tags.forEach(function (row) {
+            var id = parseInt(s(row && row.id || '0'), 10) || 0;
+            var name = s(row && (row.name || row.label) || '').trim();
+            if (id < 1 || !name) return;
+            var found = existing.some(function (option) {
+                return (parseInt(s(option && option.value || '0'), 10) || 0) === id;
+            });
+            if (!found) {
+                existing.push({
+                    value: String(id),
+                    label: name,
+                    name: name,
+                    slug: s(row && row.slug || '')
+                });
+            }
+        });
+        existing.sort(function (a, b) {
+            return s(a && (a.name || a.label) || '').localeCompare(s(b && (b.name || b.label) || ''));
+        });
+        state.options.postTags = existing;
+    }
     function featuredImageMediaById(id) {
         var targetId = parseInt(s(id || '0'), 10) || 0;
         var found = null;
@@ -1077,6 +1103,7 @@
             parentPages: [],
             authors: [],
             categories: [],
+            postTags: [],
             forms: [],
             popups: [],
             donationCampaigns: [],
@@ -1135,6 +1162,7 @@
             parentPages: Array.isArray(initialOptions.parent_pages) ? initialOptions.parent_pages : [],
             authors: Array.isArray(initialOptions.authors) ? initialOptions.authors : [],
             categories: Array.isArray(initialOptions.categories) ? initialOptions.categories : [],
+            postTags: Array.isArray(initialOptions.post_tags) ? initialOptions.post_tags : [],
             forms: Array.isArray(initialOptions.forms) ? initialOptions.forms : [],
             popups: Array.isArray(initialOptions.popups) ? initialOptions.popups : [],
             donationCampaigns: Array.isArray(initialOptions.donation_campaigns) ? initialOptions.donation_campaigns : [],
@@ -1281,6 +1309,7 @@
         people: 'People',
         security: 'Security',
         status: 'Status',
+        transport: 'Transport',
         ui: 'UI'
     };
     var FEATURE_GRID_ICON_LIBRARY = (function () {
@@ -3808,7 +3837,7 @@
             else if (t === 'people_directory') base.content = { group: 'staff', layout: 'grid', limit: 12 };
             else if (t === 'divider') base.content = { label: '', style: 'solid' };
             else if (t === 'spacer') base.content = { height: 'medium' };
-            else if (t === 'posts_list') base.content = { source: 'this_page', specific_page: 0, category_ids: [], limit: 5, sort: 'latest' };
+            else if (t === 'posts_list') base.content = { source: 'this_page', specific_page: 0, category_ids: [], tag_ids: [], limit: 5, sort: 'latest' };
             else if (t === 'newsletter_signup') base.content = { list_ids: [], submit_label: 'Subscribe', success_message: 'Thanks for subscribing.' };
             else if (t === 'newsletter_archive') base.content = { list_ids: [], limit: 12 };
             else base.content = { body: '<p></p>' };
@@ -4391,6 +4420,7 @@
                 out.content.source = listSource === 'specific_page' ? 'specific_page' : 'this_page';
                 out.content.specific_page = Math.max(0, parseInt(s(content.specific_page || '0'), 10) || 0);
                 out.content.category_ids = normalizeIdList(content.category_ids || []);
+                out.content.tag_ids = normalizeIdList(content.tag_ids || []);
                 if (out.content.source !== 'specific_page') out.content.specific_page = 0;
                 out.content.limit = Math.max(1, Math.min(50, parseInt(s(content.limit || '5'), 10) || 5));
                 out.content.sort = 'latest';
@@ -5503,6 +5533,7 @@
                 var listSource = s(sec.content.source || 'this_page');
                 var specificPage = parseInt(s(sec.content.specific_page || '0'), 10) || 0;
                 var selectedCategoryIds = normalizeIdList(sec.content.category_ids || []);
+                var selectedTagIds = normalizeIdList(sec.content.tag_ids || []);
                 var pageOptions = '<option value="0">Select page</option>';
                 (state.options.parentPages || []).forEach(function (row) {
                     var value = parseInt(s(row && row.value || '0'), 10) || 0;
@@ -5511,6 +5542,7 @@
                 html += '<div class="metis-se-field-row"><label>Source</label><select id="metis-v2-posts-source" class="metis-se-select"><option value="this_page"' + (listSource === 'this_page' ? ' selected' : '') + '>This Page</option><option value="specific_page"' + (listSource === 'specific_page' ? ' selected' : '') + '>Specific Page</option></select></div>';
                 html += '<div class="metis-se-field-row"><label>Specific Page</label><select id="metis-v2-posts-specific-page" class="metis-se-select"' + (listSource === 'specific_page' ? '' : ' disabled') + '>' + pageOptions + '</select></div>';
                 html += '<div class="metis-se-field-row"><label>Categories</label>' + categoryChipField('metis-v2-posts-category-ids', selectedCategoryIds, 'No categories available.') + '</div>';
+                html += '<div class="metis-se-field-row"><label>Tags</label>' + categoryChipField('metis-v2-posts-tag-ids', selectedTagIds, 'No tags available.', state.options.postTags) + '</div>';
                 html += '<div class="metis-se-field-row"><label>Item Limit</label><input id="metis-v2-posts-limit" class="metis-se-input" type="number" min="1" max="50" value="' + esc(String(parseInt(s(sec.content.limit || '5'), 10) || 5)) + '"></div>';
                 html += '<div class="metis-se-field-row"><label>Sort</label><input class="metis-se-input" value="Latest" disabled></div>';
             } else if (sec.type === 'newsletter_signup') {
@@ -6311,6 +6343,8 @@
             var publishedEl = document.getElementById('metis-v2-published-date');
             var parentEl = document.getElementById('metis-v2-parent-id');
             var categoryIds = selectedCategoryIds('metis-v2-category-ids');
+            var postTagsTextEl = document.getElementById('metis-v2-post-tags-text');
+            var postTagsRaw = s(postTagsTextEl && postTagsTextEl.value || '').trim();
             var excerptEl = document.getElementById('metis-v2-excerpt');
             var featuredImageEl = document.getElementById('metis-v2-featured-image-id');
             var featuredImageCaptionEl = document.getElementById('metis-v2-featured-image-caption');
@@ -6354,6 +6388,7 @@
                 payload.content_json = layoutJsonFromState();
                 payload.post_category_ids = categoryIds;
                 payload.post_category_id = categoryIds.length ? categoryIds[0] : 0;
+                payload.post_tags = postTagsRaw;
                 payload.parent_page_id = parseInt(s(parentEl && parentEl.value || '0'), 10) || 0;
                 if ((payload.status === 'published' || payload.status === 'scheduled') && !payload.post_category_ids.length) {
                     setStatus('Published or scheduled posts must have a category.', 'error');
@@ -6367,6 +6402,7 @@
             setStatus(autosave ? 'Autosaving...' : 'Saving...', 'saving');
             request(action, payload).then(function (resp) {
                 var entity = isPageContext() ? (resp.page || {}) : (resp.post || {});
+                mergePostTagOptionsFromEntity(entity);
                 state.entity = entity;
                 state.entityLoaded = true;
                 state.id = parseInt(s(entity.id || state.id || '0'), 10) || state.id;
@@ -6433,7 +6469,7 @@
                                         '<div class="metis-se-field-row"><label for="metis-v2-slug">URL Path</label><input id="metis-v2-slug" class="metis-se-input" type="text" placeholder="' + (isPostContext() ? 'post-slug-title' : 'page-slug') + '">' + (isPostContext() ? '<div class="metis-se-field-help">Public path uses the primary category, optional child category, and original publish year automatically.</div><div id="metis-v2-post-path-preview" class="metis-se-meta-value metis-se-path-preview">Select a primary category to generate the public path.</div>' : '') + '</div>' +
                                         '<div class="metis-se-field-row"><label for="metis-v2-template-key">' + esc(contentTypeLabel()) + ' Template</label><select id="metis-v2-template-key" class="metis-se-select"><option value="">Loading templates...</option></select><div id="metis-v2-template-display" class="metis-se-meta-value">Default template</div></div>' +
                                         '<div class="metis-se-field-row"><label for="metis-v2-parent-id">Parent Page</label><select id="metis-v2-parent-id" class="metis-se-select"><option value="">None</option></select></div>' +
-                                        (isPostContext() ? '<div class="metis-se-field-row"><label>Categories</label><div id="metis-v2-category-chip-host">' + categoryChipField('metis-v2-category-ids', [], 'No categories available.') + '</div></div>' : '') +
+                                        (isPostContext() ? '<div class="metis-se-field-row"><label>Categories</label><div id="metis-v2-category-chip-host">' + categoryChipField('metis-v2-category-ids', [], 'No categories available.') + '</div></div><div class="metis-se-field-row"><label for="metis-v2-post-tags-text">Tags</label><input id="metis-v2-post-tags-text" class="metis-se-input" placeholder="community, advocacy, leadership"></div>' : '') +
                                         (isPostContext() ? '<div class="metis-se-field-row"><label>Featured Image</label><input id="metis-v2-featured-image-id" type="hidden" value=""><div class="metis-featured-image-actions"><button type="button" id="metis-v2-featured-image-open" class="metis-se-nav-btn">Choose Image</button><button type="button" id="metis-v2-featured-image-clear" class="metis-se-nav-btn">Remove</button></div><div id="metis-v2-featured-image-preview" class="metis-media-grid metis-featured-image-preview"></div></div>' : '') +
                                         (isPostContext() ? '<div class="metis-se-field-row" id="metis-v2-featured-image-caption-row" style="display:none;"><label for="metis-v2-featured-image-caption">Featured Image Caption</label><textarea id="metis-v2-featured-image-caption" class="metis-se-textarea" rows="2" placeholder="Optional caption shown under the featured image."></textarea></div>' : '') +
                                         (isPostContext() ? '<div class="metis-se-field-row"><label for="metis-v2-excerpt">Excerpt</label><textarea id="metis-v2-excerpt" class="metis-se-textarea" rows="3" placeholder="Optional summary for cards and SEO."></textarea></div>' : '') +
@@ -6485,6 +6521,7 @@
             var slugEl = document.getElementById('metis-v2-slug');
             var homeEl = document.getElementById('metis-v2-homepage');
             var parentEl = document.getElementById('metis-v2-parent-id');
+            var postTagsTextEl = document.getElementById('metis-v2-post-tags-text');
             var featuredImageEl = document.getElementById('metis-v2-featured-image-id');
             var featuredImageCaptionEl = document.getElementById('metis-v2-featured-image-caption');
             var excerptEl = document.getElementById('metis-v2-excerpt');
@@ -6504,6 +6541,10 @@
             syncTemplateField();
             if (parentEl) parentEl.value = s(data.parent_page_id || data.parent_id || '');
             setSelectedCategoryIds('metis-v2-category-ids', data.post_category_ids || data.category_ids || (data.post_category_id ? [data.post_category_id] : []));
+            if (postTagsTextEl) {
+                var tagLabels = Array.isArray(data.post_tags) ? data.post_tags : (Array.isArray(data.tags) ? data.tags.map(function (row) { return s(row && (row.name || row.label) || ''); }).filter(Boolean) : []);
+                postTagsTextEl.value = tagLabels.join(', ');
+            }
             if (featuredImageEl) featuredImageEl.value = s(data.featured_image_id || '');
             if (featuredImageCaptionEl) featuredImageCaptionEl.value = s(data.featured_image_caption || '');
             if (excerptEl) excerptEl.value = s(data.excerpt || '');
@@ -6525,6 +6566,7 @@
             state.options.parentPages = Array.isArray(resp.parent_pages) ? resp.parent_pages : [];
             state.options.authors = Array.isArray(resp.authors) ? resp.authors : [];
             state.options.categories = Array.isArray(resp.categories) ? resp.categories : [];
+            state.options.postTags = Array.isArray(resp.post_tags) ? resp.post_tags : [];
             state.options.forms = Array.isArray(resp.forms) ? resp.forms : [];
             state.options.popups = Array.isArray(resp.popups) ? resp.popups : [];
             state.options.donationCampaigns = Array.isArray(resp.donation_campaigns) ? resp.donation_campaigns : [];
@@ -6980,8 +7022,9 @@
                         if (exists) selectedIds = selectedIds.filter(function (id) { return id !== categoryId; });
                         else selectedIds.push(categoryId);
                         setSelectedCategoryIds(fieldId, selectedIds);
-                        if (fieldId === 'metis-v2-posts-category-ids' || fieldId === 'metis-v2-testimony-category-ids') {
-                            activeSection().content.category_ids = selectedIds;
+                        if (fieldId === 'metis-v2-posts-category-ids' || fieldId === 'metis-v2-testimony-category-ids' || fieldId === 'metis-v2-posts-tag-ids') {
+                            if (fieldId === 'metis-v2-posts-tag-ids') activeSection().content.tag_ids = selectedIds;
+                            else activeSection().content.category_ids = selectedIds;
                             renderBuilderCanvas();
                         } else if (fieldId === 'metis-v2-newsletter-signup-list-ids' || fieldId === 'metis-v2-newsletter-archive-list-ids') {
                             activeSection().content.list_ids = selectedIds;
@@ -7552,7 +7595,9 @@
                 if (target.id === 'metis-v2-testimony-limit') { sec.content.limit = Math.max(1, Math.min(24, parseInt(s(target.value || '6'), 10) || 6)); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-posts-specific-page') { sec.content.specific_page = Math.max(0, parseInt(s(target.value || '0'), 10) || 0); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-category-ids') { setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-post-tag-ids') { setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-posts-category-ids') { sec.content.category_ids = selectedCategoryIds('metis-v2-posts-category-ids'); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-posts-tag-ids') { sec.content.tag_ids = selectedCategoryIds('metis-v2-posts-tag-ids'); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-testimony-category-ids') { sec.content.category_ids = selectedCategoryIds('metis-v2-testimony-category-ids'); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-testimony-empty-message') { sec.content.empty_message = s(target.value || ''); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-newsletter-signup-submit-label') { sec.content.submit_label = s(target.value || 'Subscribe') || 'Subscribe'; renderBuilderCanvas(); setDirtyAutosave(); return; }
