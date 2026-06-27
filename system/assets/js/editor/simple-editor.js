@@ -4678,12 +4678,14 @@
             if (!target || !sec || !sec.content || typeof sec.content !== 'object') return false;
             if (target.id === 'metis-v2-image-mode') {
                 sec.content.mode = imageModeValue({ mode: target.value || 'contained' });
+                renderStep2Editor();
                 renderBuilderCanvas();
                 setDirtyAutosave();
                 return true;
             }
             if (target.id === 'metis-v2-image-align') {
                 sec.content.align = imageAlignValue({ align: target.value || 'center' });
+                renderStep2Editor();
                 renderBuilderCanvas();
                 setDirtyAutosave();
                 return true;
@@ -4751,6 +4753,14 @@
             var options = Array.isArray(state.options.calendarSources) ? state.options.calendarSources : [];
             if (!options.length) return '';
             return s(options[0] && options[0].value || '');
+        }
+
+        function eventsCalendarFieldState(sec) {
+            var options = Array.isArray(state.options.calendarSources) ? state.options.calendarSources : [];
+            return {
+                selected: preferredCalendarId(sec && sec.content ? sec.content.calendar_id : ''),
+                disabled: options.length <= 1
+            };
         }
 
         function renderCanvasToolbar(index) {
@@ -5324,10 +5334,10 @@
                     '</div></div>';
                 });
             } else if (sec.type === 'events') {
-                var selectedCalendarId = preferredCalendarId(sec.content.calendar_id);
-                if (!s(sec.content.calendar_id || '') && selectedCalendarId) sec.content.calendar_id = selectedCalendarId;
+                var calendarField = eventsCalendarFieldState(sec);
+                if (!s(sec.content.calendar_id || '') && calendarField.selected) sec.content.calendar_id = calendarField.selected;
                 html += '<div class="metis-se-field-row"><label>Source</label><select id="metis-v2-events-source" class="metis-se-select"><option value="calendar"' + (s(sec.content.source || 'calendar') === 'calendar' ? ' selected' : '') + '>Public Calendar</option><option value="manual"' + (s(sec.content.source || '') === 'manual' ? ' selected' : '') + '>Manual</option></select></div>';
-                html += '<div class="metis-se-field-row"><label>Calendar</label><select id="metis-v2-events-calendar-id" class="metis-se-select">' + optionList(state.options.calendarSources, selectedCalendarId, state.options.calendarSources.length <= 1 ? 'Calendar selected automatically' : 'Select calendar') + '</select></div>';
+                html += '<div class="metis-se-field-row"><label>Calendar</label><select id="metis-v2-events-calendar-id" class="metis-se-select"' + (calendarField.disabled ? ' disabled' : '') + '>' + optionList(state.options.calendarSources, calendarField.selected, calendarField.disabled ? 'Calendar selected automatically' : 'Select calendar') + '</select></div>';
                 html += '<div class="metis-se-field-row"><label>View Mode</label><select id="metis-v2-events-view-mode" class="metis-se-select"><option value="card"' + (s(sec.content.view_mode || 'card') === 'card' ? ' selected' : '') + '>Card View</option><option value="week"' + (s(sec.content.view_mode || '') === 'week' ? ' selected' : '') + '>Week View</option><option value="calendar"' + (s(sec.content.view_mode || '') === 'calendar' ? ' selected' : '') + '>Calendar View</option></select></div>';
                 html += '<div class="metis-se-field-row"><label>Item Limit</label><input id="metis-v2-events-limit" class="metis-se-input" type="number" min="1" max="50" value="' + esc(String(parseInt(s(sec.content.limit || '5'), 10) || 5)) + '"></div>';
             } else if (sec.type === 'form') {
@@ -7028,6 +7038,7 @@
                     var sec = activeSection();
                     sec.content.items.push({ icon: '', title: '', text: '', cta: { label: '', url: '#' } });
                     renderStep2Editor();
+                    renderBuilderCanvas();
                     setDirtyAutosave();
                     return;
                 }
@@ -7038,6 +7049,7 @@
                     if (Array.isArray(secR.content.items) && remIdx >= 0 && remIdx < secR.content.items.length) secR.content.items.splice(remIdx, 1);
                     if (!secR.content.items.length) secR.content.items = [{ icon: '', title: '', text: '', cta: { label: '', url: '#' } }];
                     renderStep2Editor();
+                    renderBuilderCanvas();
                     setDirtyAutosave();
                     return;
                 }
@@ -7342,6 +7354,7 @@
                 if (target.id === 'metis-v2-feature-cols') {
                     var fgCols = Math.max(2, Math.min(4, parseInt(s(target.value || '3'), 10) || 3));
                     sec.content.columns = fgCols;
+                    renderBuilderCanvas();
                     setDirtyAutosave();
                     return;
                 }
@@ -7354,6 +7367,7 @@
                         if (field === 'cta_label') row.cta.label = s(target.value || '');
                         else if (field === 'cta_url') row.cta.url = normalizeEditorLinkUrl(target.value || '');
                         else row[field] = s(target.value || '');
+                        renderBuilderCanvas();
                         setDirtyAutosave();
                     }
                     return;
@@ -7380,8 +7394,21 @@
                     }
                     return;
                 }
-                if (target.id === 'metis-v2-events-source') { sec.content.source = s(target.value || 'calendar') === 'manual' ? 'manual' : 'calendar'; setDirtyAutosave(); return; }
-                if (target.id === 'metis-v2-events-calendar-id') { sec.content.calendar_id = s(target.value || ''); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-events-source') {
+                    sec.content.source = s(target.value || 'calendar') === 'manual' ? 'manual' : 'calendar';
+                    if (sec.content.source === 'calendar' && !s(sec.content.calendar_id || '')) {
+                        sec.content.calendar_id = preferredCalendarId('');
+                    }
+                    renderStep2Editor();
+                    setDirtyAutosave();
+                    return;
+                }
+                if (target.id === 'metis-v2-events-calendar-id') {
+                    sec.content.calendar_id = s(target.value || '');
+                    renderStep2Editor();
+                    setDirtyAutosave();
+                    return;
+                }
                 if (target.id === 'metis-v2-events-view-mode') { sec.content.view_mode = ['card', 'week', 'calendar'].indexOf(s(target.value || 'card')) === -1 ? 'card' : s(target.value || 'card'); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-events-limit') { sec.content.limit = Math.max(1, Math.min(50, parseInt(s(target.value || '5'), 10) || 5)); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-form-submit-label') { sec.content.submit_label = s(target.value || 'Submit') || 'Submit'; renderBuilderCanvas(); setDirtyAutosave(); return; }
@@ -7496,6 +7523,13 @@
                 if (target.id === 'metis-v2-section-background') { sec.settings = normalizeSectionSettings(Object.assign({}, sec.settings || {}, { background: target.value })); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-section-type') { sec.type = availableSectionTypes().indexOf(s(target.value || 'text')) === -1 ? 'text' : s(target.value); sec.content = defaultSectionByType(sec.type).content; renderSectionList(); renderStep2Editor(); setDirtyAutosave(); return; }
                 if (updateColumnModuleField(target, sec)) return;
+                if (target.id === 'metis-v2-feature-cols') {
+                    var featureCols = Math.max(2, Math.min(4, parseInt(s(target.value || '3'), 10) || 3));
+                    sec.content.columns = featureCols;
+                    renderBuilderCanvas();
+                    setDirtyAutosave();
+                    return;
+                }
                 if (target.matches('[data-v2-column-type]')) {
                     var typeColIdx = parseInt(s(target.getAttribute('data-v2-column-type') || '-1'), 10);
                     if (typeColIdx >= 0 && Array.isArray(sec.content.columns) && sec.content.columns[typeColIdx]) {
@@ -7509,6 +7543,27 @@
                         renderBuilderCanvas();
                         setDirtyAutosave();
                     }
+                    return;
+                }
+                if (target.id === 'metis-v2-events-source') {
+                    sec.content.source = s(target.value || 'calendar') === 'manual' ? 'manual' : 'calendar';
+                    if (sec.content.source === 'calendar' && !s(sec.content.calendar_id || '')) {
+                        sec.content.calendar_id = preferredCalendarId('');
+                    }
+                    renderStep2Editor();
+                    setDirtyAutosave();
+                    return;
+                }
+                if (target.id === 'metis-v2-events-calendar-id') {
+                    sec.content.calendar_id = s(target.value || '');
+                    renderStep2Editor();
+                    setDirtyAutosave();
+                    return;
+                }
+                if (target.id === 'metis-v2-events-view-mode') {
+                    sec.content.view_mode = ['card', 'week', 'calendar'].indexOf(s(target.value || 'card')) === -1 ? 'card' : s(target.value || 'card');
+                    renderBuilderCanvas();
+                    setDirtyAutosave();
                     return;
                 }
                 if (target.id === 'metis-v2-form-id') { sec.content.form_id = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }

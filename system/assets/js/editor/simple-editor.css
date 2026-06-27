@@ -1,5 +1,5 @@
-body.metis-shell-editor { --metis-editor-frame-offset: 168px; }
-body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+body.metis-shell-editor { --metis-editor-frame-offset: 168px; overflow: hidden; }
+body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 100vh; height: 100vh; max-height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 #metis-editor-inline-root, #metis-simple-editor-root { min-height: calc(100vh - var(--metis-editor-frame-offset)); height: calc(100vh - var(--metis-editor-frame-offset)); max-height: calc(100vh - var(--metis-editor-frame-offset)); overflow: hidden; display: flex; flex-direction: column; }
 
 .metis-se-shell {
@@ -806,6 +806,11 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     background: var(--metis-primary-dark, #3246a7);
     color: #fff;
 }
+.metis-builder-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+}
 .metis-builder-stage-wrap {
     flex: 1;
     min-height: 0;
@@ -834,6 +839,11 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     display: grid;
     gap: 12px;
     align-content: start;
+}
+.metis-builder-settings-panel {
+    position: sticky;
+    top: 0;
+    max-height: 100%;
 }
 .metis-builder-left-panel[hidden] {
     display: none !important;
@@ -865,6 +875,7 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     min-height: 0;
     height: 100%;
     overflow: auto;
+    overscroll-behavior: contain;
     border: 1px solid var(--metis-border, #e0e2ea);
     border-radius: 10px;
     background: var(--metis-row-even-bg, #f8f9fd);
@@ -1175,9 +1186,9 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     gap: 8px;
     width: 100%;
 }
-.metis-builder-image.is-align-left { justify-items: start; }
-.metis-builder-image.is-align-center { justify-items: center; }
-.metis-builder-image.is-align-right { justify-items: end; }
+.metis-builder-image.is-align-left { justify-items: start; margin-left: 0; margin-right: auto; }
+.metis-builder-image.is-align-center { justify-items: center; margin-left: auto; margin-right: auto; }
+.metis-builder-image.is-align-right { justify-items: end; margin-left: auto; margin-right: 0; }
 .metis-builder-image.is-mode-contained { max-width: min(920px, 100%); }
 .metis-builder-image.is-mode-wide { max-width: min(1120px, 100%); }
 .metis-builder-image.is-mode-full-width {
