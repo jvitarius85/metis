@@ -1085,6 +1085,7 @@
             calendarSources: [],
             media: [],
             templates: [],
+            themeColorBindings: [],
             activeTemplate: { key: '', label: '' },
             defaultTemplateKey: ''
         },
@@ -1142,6 +1143,7 @@
             calendarSources: Array.isArray(initialOptions.calendar_sources) ? initialOptions.calendar_sources : [],
             media: Array.isArray(initialOptions.media) ? initialOptions.media : [],
             templates: Array.isArray(initialOptions.templates) ? initialOptions.templates : [],
+            themeColorBindings: Array.isArray(initialOptions.theme_color_bindings) ? initialOptions.theme_color_bindings : [],
             activeTemplate: initialOptions.active_template && typeof initialOptions.active_template === 'object'
                 ? { key: s(initialOptions.active_template.key || ''), label: s(initialOptions.active_template.label || '') }
                 : { key: '', label: '' },
@@ -1433,6 +1435,7 @@
         var panel = ensureFeatureGridIconPanel();
         featureGridActiveField = fieldRoot;
         panel.innerHTML = '';
+        panel.classList.add('has-tabs');
 
         var toolbar = document.createElement('div');
         toolbar.className = 'metis-menu-icon-toolbar';
@@ -1535,6 +1538,8 @@
         tabs.addEventListener('click', function (event) {
             var tab = event.target.closest('[data-v2-feature-grid-icon-tab]');
             if (!tab) return;
+            event.preventDefault();
+            event.stopPropagation();
             activeCategory = s(tab.getAttribute('data-v2-feature-grid-icon-tab') || 'all');
             renderTabs();
             renderGrid();
@@ -1543,6 +1548,12 @@
         search.addEventListener('input', function () {
             searchTerm = s(search.value || '').trim().toLowerCase();
             renderGrid();
+        });
+
+        window.requestAnimationFrame(function () {
+            if (search && typeof search.focus === 'function') {
+                search.focus({ preventScroll: true });
+            }
         });
     }
 
@@ -3660,7 +3671,7 @@
 
         function sectionTypeLabel(type) {
             if (type === 'section_header') return 'Section Header';
-            if (type === 'feature_grid') return 'Feature Grid';
+            if (type === 'feature_grid') return 'Card Grid';
             if (type === 'card_grid') return 'Card Grid';
             if (type === 'posts_list') return 'Posts List';
             if (type === 'newsletter_signup') return 'Newsletter Signup';
@@ -3685,8 +3696,8 @@
                 button: 'Link button',
                 columns: 'Two to four text columns',
                 hero: 'Lead panel with media and CTA',
-                feature_grid: 'Icon feature cards',
-                card_grid: 'Simple card grid',
+                feature_grid: 'Card grid',
+                card_grid: 'Card grid',
                 html: 'Sanitized embed or HTML',
                 cta: 'Call-to-action panel',
                 events: 'Events listing',
@@ -3766,7 +3777,10 @@
             else if (t === 'hero') base.content = { title: 'Hero Title', subtitle: '', cta_label: 'Learn More', cta_url: '#', image_src: '' };
             else if (t === 'html') base.content = { html: '<div></div>' };
             else if (t === 'columns') base.content = { columns: [{ width: '50%', body: '<p></p>', module: { type: 'text', content: { body: '<p></p>' } } }, { width: '50%', body: '<p></p>', module: { type: 'text', content: { body: '<p></p>' } } }] };
-            else if (t === 'feature_grid') base.content = { columns: 3, items: [{ icon: '', title: 'Feature', text: '', cta: { label: '', url: '#' } }] };
+            else if (t === 'feature_grid') {
+                base.type = 'card_grid';
+                base.content = { columns: 3, items: [{ icon: '', title: 'Card', text: '', cta: { label: '', url: '#' } }] };
+            }
             else if (t === 'card_grid') base.content = { columns: 3, items: [{ icon: '', title: 'Card', text: '', cta: { label: '', url: '#' } }] };
             else if (t === 'cta') base.content = { layout: 'single', items: [{ title: 'Call to Action', text: '', button: { label: 'Learn More', url: '#' } }] };
             else if (t === 'events') base.content = { source: 'calendar', limit: 5, view_mode: 'card' };
@@ -4033,27 +4047,62 @@
         function normalizeSectionSettings(settings) {
             var src = settings && typeof settings === 'object' ? settings : {};
             var bg = s(src.background || 'default');
-            if (['default', 'surface', 'muted', 'primary_tint', 'accent_tint'].indexOf(bg) === -1) bg = 'default';
+            if (bg === 'surface') bg = 'metis_surface';
+            else if (bg === 'muted') bg = 'metis_row_even_bg';
+            else if (bg === 'primary_tint') bg = 'metis_primary';
+            else if (bg === 'accent_tint') bg = 'metis_accent';
+            if (backgroundOptionValues().indexOf(bg) === -1) bg = 'default';
             return { background: bg };
+        }
+
+        function themeBackgroundBindings() {
+            var rows = Array.isArray(state.options && state.options.themeColorBindings) ? state.options.themeColorBindings.slice() : [];
+            if (!rows.length) {
+                rows = [
+                    { value: 'metis_surface', label: 'Surface' },
+                    { value: 'metis_bg', label: 'Background' },
+                    { value: 'metis_row_even_bg', label: 'Muted Surface' },
+                    { value: 'metis_primary', label: 'Primary' },
+                    { value: 'metis_accent', label: 'Accent' }
+                ];
+            }
+            return rows.filter(function (row) {
+                return row && s(row.value || '').trim();
+            });
+        }
+
+        function backgroundOptionValues() {
+            return ['default'].concat(themeBackgroundBindings().map(function (row) {
+                return s(row.value || '').trim();
+            }));
         }
 
         function backgroundOptions(selected) {
             var current = s(selected || 'default');
-            var rows = [
-                ['default', 'Default'],
-                ['surface', 'Surface'],
-                ['muted', 'Muted Surface'],
-                ['primary_tint', 'Primary Tint'],
-                ['accent_tint', 'Accent Tint']
-            ];
+            var rows = [['default', 'Default']].concat(themeBackgroundBindings().map(function (row) {
+                return [s(row.value || ''), s(row.label || row.value || '')];
+            }));
             return rows.map(function (row) {
                 return '<option value="' + esc(row[0]) + '"' + (current === row[0] ? ' selected' : '') + '>' + esc(row[1]) + '</option>';
             }).join('');
         }
 
+        function sectionBackgroundStyle(section) {
+            var settings = normalizeSectionSettings(section && section.settings || {});
+            var bg = s(settings.background || 'default');
+            if (bg === 'default') return '';
+            var cssVar = '--' + bg.replace(/_/g, '-');
+            var textColor = (bg === 'metis_primary' || bg === 'metis_primary_dark' || bg === 'metis_accent' || bg === 'metis_sidebar_bg' || bg === 'metis_text')
+                ? '#ffffff'
+                : '';
+            var style = '--metis-builder-block-custom-bg:var(' + cssVar + ');';
+            if (textColor) style += '--metis-builder-block-custom-text:' + textColor + ';';
+            return style;
+        }
+
         function blockBackgroundClass(section) {
             var settings = normalizeSectionSettings(section && section.settings || {});
-            return settings.background === 'default' ? '' : ' is-bg-' + settings.background.replace('_', '-');
+            return settings.background === 'default' ? '' : ' has-custom-bg';
         }
 
         function blockVariantClass(section) {
@@ -4223,6 +4272,7 @@
                 }
                 out.content.columns = cols;
             } else if (out.type === 'feature_grid' || out.type === 'card_grid') {
+                out.type = 'card_grid';
                 var fgCols = parseInt(s(content.columns || '3'), 10) || 3;
                 if (fgCols < 2) fgCols = 2;
                 if (fgCols > 4) fgCols = 4;
@@ -4237,7 +4287,7 @@
                         cta: { label: repairMojibakeText(cta.label || ''), url: s(cta.url || '#') || '#' }
                     };
                 }).filter(function (_row, i) { return i < 16; });
-                if (!out.content.items.length) out.content.items = [{ icon: '', title: out.type === 'card_grid' ? 'Card' : 'Feature', text: '', cta: { label: '', url: '#' } }];
+                if (!out.content.items.length) out.content.items = [{ icon: '', title: 'Card', text: '', cta: { label: '', url: '#' } }];
             } else if (out.type === 'cta') {
                 var layout = s(content.layout || 'single');
                 if (layout !== 'split') layout = 'single';
@@ -4567,8 +4617,8 @@
         function blockLibraryTypes() {
             var allowed = availableSectionTypes();
             var preferred = isPostContext()
-                ? ['section_header', 'heading', 'text', 'button', 'html', 'transcript', 'form', 'image', 'columns', 'feature_grid', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory']
-                : ['section_header', 'heading', 'text', 'button', 'html', 'form', 'image', 'hero', 'columns', 'feature_grid', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory'];
+                ? ['section_header', 'heading', 'text', 'button', 'html', 'transcript', 'form', 'image', 'columns', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory']
+                : ['section_header', 'heading', 'text', 'button', 'html', 'form', 'image', 'hero', 'columns', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory'];
             return preferred.filter(function (type) {
                 if (type === 'section_header') return allowed.indexOf('heading') !== -1;
                 return allowed.indexOf(type) !== -1;
@@ -4937,7 +4987,7 @@
                 var columns = Math.max(2, Math.min(4, parseInt(s(content.columns || '3'), 10) || 3));
                 body = '<div class="metis-builder-card-grid" style="--metis-builder-cols:' + esc(String(columns)) + ';">' + items.map(function (item, itemIndex) {
                     return '<article class="metis-builder-card-item">' +
-                        (item.icon ? '<div class="metis-builder-card-icon">' + esc(s(item.icon || '')) + '</div>' : '') +
+                        (item.icon ? '<div class="metis-builder-card-icon">' + featureGridIconMarkup(item.icon || '') + '</div>' : '') +
                         '<h3 contenteditable="' + ((state.canEdit || (state.id < 1 && state.canCreate)) ? 'true' : 'false') + '" data-v2-inline-item="' + esc(String(itemIndex)) + '" data-inline-item-field="title" data-inline-index="' + esc(String(index)) + '">' + esc(s(item.title || 'Card')) + '</h3>' +
                         '<p contenteditable="' + ((state.canEdit || (state.id < 1 && state.canCreate)) ? 'true' : 'false') + '" data-v2-inline-item="' + esc(String(itemIndex)) + '" data-inline-item-field="text" data-inline-index="' + esc(String(index)) + '">' + esc(s(item.text || 'Add supporting text.')) + '</p>' +
                     '</article>';
@@ -5001,7 +5051,8 @@
             } else {
                 body = '<div class="metis-builder-richtext">' + s(content.body || '<p>Content block</p>') + '</div>';
             }
-            return '<section class="metis-builder-block' + (selected ? ' is-selected' : '') + blockBackgroundClass(sec) + blockVariantClass(sec) + '" data-builder-block-index="' + esc(String(index)) + '" data-index="' + esc(String(index)) + '" tabindex="0" aria-label="' + esc(sectionTypeLabel(type)) + ' block">' +
+            var blockStyle = sectionBackgroundStyle(sec);
+            return '<section class="metis-builder-block' + (selected ? ' is-selected' : '') + blockBackgroundClass(sec) + blockVariantClass(sec) + '"' + (blockStyle ? ' style="' + esc(blockStyle) + '"' : '') + ' data-builder-block-index="' + esc(String(index)) + '" data-index="' + esc(String(index)) + '" tabindex="0" aria-label="' + esc(sectionTypeLabel(type)) + ' block">' +
                 '<div class="metis-builder-block-chrome"><span class="metis-builder-block-label">' + esc(sectionTypeLabel(type)) + '</span>' + renderCanvasToolbar(index) + '</div>' +
                 renderContextToolbar(sec, index) +
                 '<div class="metis-builder-block-body">' + body + '</div>' +
@@ -5362,9 +5413,9 @@
             } else if (sec.type === 'events') {
                 var calendarField = eventsCalendarFieldState(sec);
                 if (!s(sec.content.calendar_id || '') && calendarField.selected) sec.content.calendar_id = calendarField.selected;
-                html += '<div class="metis-se-field-row"><label>Source</label><select id="metis-v2-events-source" class="metis-se-select"><option value="calendar"' + (s(sec.content.source || 'calendar') === 'calendar' ? ' selected' : '') + '>Public Calendar</option><option value="manual"' + (s(sec.content.source || '') === 'manual' ? ' selected' : '') + '>Manual</option></select></div>';
                 html += '<div class="metis-se-field-row"><label>Calendar</label><select id="metis-v2-events-calendar-id" class="metis-se-select"' + (calendarField.disabled ? ' disabled' : '') + '>' + optionList(state.options.calendarSources, calendarField.selected, calendarField.disabled ? 'Calendar selected automatically' : 'Select calendar') + '</select></div>';
                 html += '<div class="metis-se-field-row"><label>View Mode</label><select id="metis-v2-events-view-mode" class="metis-se-select"><option value="card"' + (s(sec.content.view_mode || 'card') === 'card' ? ' selected' : '') + '>Card View</option><option value="week"' + (s(sec.content.view_mode || '') === 'week' ? ' selected' : '') + '>Week View</option><option value="calendar"' + (s(sec.content.view_mode || '') === 'calendar' ? ' selected' : '') + '>Calendar View</option></select></div>';
+                html += '<div class="metis-se-meta-value">Calendar view automatically switches to a mobile-friendly list on small screens.</div>';
                 html += '<div class="metis-se-field-row"><label>Item Limit</label><input id="metis-v2-events-limit" class="metis-se-input" type="number" min="1" max="50" value="' + esc(String(parseInt(s(sec.content.limit || '5'), 10) || 5)) + '"></div>';
             } else if (sec.type === 'form') {
                 html += '<div class="metis-se-field-row"><label>Form</label><select id="metis-v2-form-id" class="metis-se-select">' + optionList(state.options.forms, sec.content.form_id, 'Select form') + '</select></div>';
@@ -6441,6 +6492,7 @@
             state.options.calendarSources = Array.isArray(resp.calendar_sources) ? resp.calendar_sources : [];
             state.options.media = Array.isArray(resp.media) ? resp.media : [];
             state.options.templates = Array.isArray(resp.templates) ? resp.templates : [];
+            state.options.themeColorBindings = Array.isArray(resp.theme_color_bindings) ? resp.theme_color_bindings : [];
             state.options.activeTemplate = resp.active_template && typeof resp.active_template === 'object'
                 ? { key: s(resp.active_template.key || ''), label: s(resp.active_template.label || '') }
                 : { key: '', label: '' };
@@ -7420,16 +7472,8 @@
                     }
                     return;
                 }
-                if (target.id === 'metis-v2-events-source') {
-                    sec.content.source = s(target.value || 'calendar') === 'manual' ? 'manual' : 'calendar';
-                    if (sec.content.source === 'calendar' && !s(sec.content.calendar_id || '')) {
-                        sec.content.calendar_id = preferredCalendarId('');
-                    }
-                    renderStep2Editor();
-                    setDirtyAutosave();
-                    return;
-                }
                 if (target.id === 'metis-v2-events-calendar-id') {
+                    sec.content.source = 'calendar';
                     sec.content.calendar_id = s(target.value || '');
                     renderStep2Editor();
                     setDirtyAutosave();
@@ -7576,16 +7620,8 @@
                     }
                     return;
                 }
-                if (target.id === 'metis-v2-events-source') {
-                    sec.content.source = s(target.value || 'calendar') === 'manual' ? 'manual' : 'calendar';
-                    if (sec.content.source === 'calendar' && !s(sec.content.calendar_id || '')) {
-                        sec.content.calendar_id = preferredCalendarId('');
-                    }
-                    renderStep2Editor();
-                    setDirtyAutosave();
-                    return;
-                }
                 if (target.id === 'metis-v2-events-calendar-id') {
+                    sec.content.source = 'calendar';
                     sec.content.calendar_id = s(target.value || '');
                     renderStep2Editor();
                     setDirtyAutosave();

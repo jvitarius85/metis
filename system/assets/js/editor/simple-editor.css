@@ -281,6 +281,9 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     flex-direction: column;
     gap: 10px;
 }
+.metis-menu-icon-panel.has-tabs {
+    max-height: min(70vh, 420px);
+}
 .metis-menu-icon-toolbar {
     display: flex;
     align-items: center;
@@ -820,6 +823,7 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     max-height: calc(100vh - var(--metis-editor-frame-offset) - var(--metis-builder-chrome-height));
     min-height: 0;
     overflow: hidden;
+    box-sizing: border-box;
 }
 .metis-builder-stage {
     display: grid;
@@ -888,12 +892,14 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
 }
 .metis-builder-canvas-frame {
     width: min(100%, 960px);
+    max-width: 100%;
     min-height: 0;
     margin: 0 auto;
     background: var(--metis-surface, #fff);
     border: 1px solid var(--metis-border, #e0e2ea);
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+    box-sizing: border-box;
 }
 .metis-builder-canvas-inner {
     display: grid;
@@ -1040,6 +1046,16 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
 }
 .metis-builder-block.is-bg-accent-tint {
     background: color-mix(in srgb, var(--metis-accent, #ff7542) 8%, var(--metis-surface, #fff));
+}
+.metis-builder-block.has-custom-bg {
+    background: var(--metis-builder-block-custom-bg, var(--metis-surface, #fff));
+    color: var(--metis-builder-block-custom-text, inherit);
+}
+.metis-builder-block.has-custom-bg .metis-builder-block-meta,
+.metis-builder-block.has-custom-bg .metis-builder-block-copy,
+.metis-builder-block.has-custom-bg .metis-builder-text-placeholder,
+.metis-builder-block.has-custom-bg .metis-builder-card-item p {
+    color: inherit;
 }
 .metis-builder-block-chrome {
     display: flex;
