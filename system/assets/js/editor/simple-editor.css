@@ -1173,13 +1173,19 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     margin: 0;
     display: grid;
     gap: 8px;
+    width: 100%;
 }
 .metis-builder-image.is-align-left { justify-items: start; }
 .metis-builder-image.is-align-center { justify-items: center; }
 .metis-builder-image.is-align-right { justify-items: end; }
-.metis-builder-image.is-mode-contained img { max-width: min(920px, 100%); }
-.metis-builder-image.is-mode-wide img { max-width: min(1120px, 100%); }
-.metis-builder-image.is-mode-full-width img { max-width: 100%; }
+.metis-builder-image.is-mode-contained { max-width: min(920px, 100%); }
+.metis-builder-image.is-mode-wide { max-width: min(1120px, 100%); }
+.metis-builder-image.is-mode-full-width {
+    width: calc(100% + 96px);
+    max-width: none;
+    margin-left: -48px;
+    margin-right: -48px;
+}
 .metis-builder-image img,
 .metis-builder-hero-media img {
     width: 100%;
@@ -1187,6 +1193,12 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     display: block;
     border-radius: 8px;
 }
+.metis-builder-image figcaption {
+    width: 100%;
+}
+.metis-builder-image.is-align-left figcaption { text-align: left; }
+.metis-builder-image.is-align-center figcaption { text-align: center; }
+.metis-builder-image.is-align-right figcaption { text-align: right; }
 .metis-builder-media-empty,
 .metis-builder-hero-media {
     min-height: 180px;

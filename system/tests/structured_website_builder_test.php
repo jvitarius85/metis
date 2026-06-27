@@ -132,6 +132,31 @@ namespace {
     $assert( ( $newsletterFirstModule['type'] ?? '' ) === 'newsletter_signup', 'Structured builder layout_json must emit newsletter signup blocks from column modules.' );
     $assert( ( $newsletterData['submit_label'] ?? '' ) === 'Join', 'Structured builder layout_json must preserve newsletter signup column settings.' );
 
+    $imageLayout = \Metis\Modules\Website\Services\StructuredWebsiteBuilderService::normalizeLayout(
+        [
+            'editor_meta' => [
+                'structured_builder' => [
+                    'sections' => [
+                        [
+                            'id' => 'section_image',
+                            'type' => 'image',
+                            'content' => [
+                                'src' => '/media/example-token',
+                                'alt' => 'Example image',
+                                'mode' => 'full_width',
+                                'align' => 'right',
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ],
+        [ 'page_type' => 'page', 'is_post' => false ]
+    );
+
+    $assert( ( $imageLayout['sections'][0]['content']['mode'] ?? '' ) === 'full_width', 'Structured builder normalization must preserve image full-width mode.' );
+    $assert( ( $imageLayout['sections'][0]['content']['align'] ?? '' ) === 'right', 'Structured builder normalization must preserve image alignment.' );
+
     if ( $failures !== [] ) {
         fwrite( STDERR, implode( PHP_EOL, $failures ) . PHP_EOL );
         exit( 1 );

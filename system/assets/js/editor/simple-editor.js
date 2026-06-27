@@ -4674,6 +4674,63 @@
             return 'is-align-' + imageAlignValue(content);
         }
 
+        function updateActiveImageField(target, sec) {
+            if (!target || !sec || !sec.content || typeof sec.content !== 'object') return false;
+            if (target.id === 'metis-v2-image-mode') {
+                sec.content.mode = imageModeValue({ mode: target.value || 'contained' });
+                renderBuilderCanvas();
+                setDirtyAutosave();
+                return true;
+            }
+            if (target.id === 'metis-v2-image-align') {
+                sec.content.align = imageAlignValue({ align: target.value || 'center' });
+                renderBuilderCanvas();
+                setDirtyAutosave();
+                return true;
+            }
+            return false;
+        }
+
+        function updateColumnModuleField(target, sec) {
+            if (!target || !target.matches || !target.matches('[data-v2-column-field]')) return false;
+            if (!sec || !Array.isArray(sec.content && sec.content.columns)) return false;
+            var fieldColIdx = parseInt(s(target.getAttribute('data-column-idx') || '-1'), 10);
+            var fieldName = s(target.getAttribute('data-v2-column-field') || '');
+            if (fieldColIdx < 0 || !sec.content.columns[fieldColIdx]) return false;
+            var fieldColumn = sec.content.columns[fieldColIdx];
+            fieldColumn.module = normalizeColumnModule(fieldColumn.module, fieldColumn.body);
+            var fieldContent = fieldColumn.module.content && typeof fieldColumn.module.content === 'object' ? fieldColumn.module.content : {};
+            if (fieldName === 'body') {
+                fieldContent.body = s(target.value || '<p></p>') || '<p></p>';
+                fieldColumn.body = fieldContent.body;
+            } else if (fieldName === 'preset_amounts') {
+                fieldContent.preset_amounts = normalizePresetAmounts(target.value || '');
+            } else if (fieldName === 'limit') {
+                fieldContent.limit = Math.max(1, Math.min(24, parseInt(s(target.value || '6'), 10) || 6));
+                target.value = String(fieldContent.limit);
+            } else if (fieldName === 'width' || fieldName === 'height') {
+                fieldContent[fieldName] = normalizeImageDimension(target.value || '');
+                target.value = fieldContent[fieldName];
+            } else if (fieldName === 'mode') {
+                fieldContent.mode = imageModeValue({ mode: target.value || 'contained' });
+            } else if (fieldName === 'align' && fieldColumn.module.type === 'image') {
+                fieldContent.align = imageAlignValue({ align: target.value || 'center' });
+            } else if (fieldName === 'goal_amount' || fieldName === 'raised_amount') {
+                fieldContent[fieldName] = normalizeDecimalString(target.value || '', 1000000000);
+                target.value = fieldContent[fieldName];
+            } else if (fieldName === 'percent') {
+                fieldContent.percent = normalizePercentString(target.value || '');
+                target.value = fieldContent.percent;
+            } else if (fieldName === 'layout') {
+                fieldContent.layout = ['grid', 'list', 'rotator'].indexOf(s(target.value || 'grid')) === -1 ? 'grid' : s(target.value || 'grid');
+            } else {
+                fieldContent[fieldName] = s(target.value || '');
+            }
+            renderBuilderCanvas();
+            setDirtyAutosave();
+            return true;
+        }
+
         function enhanceEditorSelects(scope) {
             if (!scope || !scope.querySelectorAll) return;
             scope.querySelectorAll('select.metis-se-select').forEach(function (select) {
@@ -7240,8 +7297,7 @@
                 if (target.id === 'metis-v2-image-link-url') { sec.content.link_url = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-alt') { sec.content.alt = s(target.value || ''); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-caption') { sec.content.caption = s(target.value || ''); setDirtyAutosave(); return; }
-                if (target.id === 'metis-v2-image-mode') { sec.content.mode = imageModeValue({ mode: target.value || 'contained' }); renderBuilderCanvas(); setDirtyAutosave(); return; }
-                if (target.id === 'metis-v2-image-align') { sec.content.align = imageAlignValue({ align: target.value || 'center' }); renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (updateActiveImageField(target, sec)) return;
                 if (target.id === 'metis-v2-image-width') { sec.content.width = normalizeImageDimension(target.value || ''); target.value = sec.content.width; renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-height') { sec.content.height = normalizeImageDimension(target.value || ''); target.value = sec.content.height; renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-button-label') { sec.content.label = s(target.value || ''); renderSectionList(); setDirtyAutosave(); return; }
@@ -7282,44 +7338,7 @@
                     setDirtyAutosave();
                     return;
                 }
-                if (target.matches('[data-v2-column-field]')) {
-                    var fieldColIdx = parseInt(s(target.getAttribute('data-column-idx') || '-1'), 10);
-                    var fieldName = s(target.getAttribute('data-v2-column-field') || '');
-                    if (fieldColIdx >= 0 && Array.isArray(sec.content.columns) && sec.content.columns[fieldColIdx]) {
-                        var fieldColumn = sec.content.columns[fieldColIdx];
-                        fieldColumn.module = normalizeColumnModule(fieldColumn.module, fieldColumn.body);
-                        var fieldContent = fieldColumn.module.content && typeof fieldColumn.module.content === 'object' ? fieldColumn.module.content : {};
-                        if (fieldName === 'body') {
-                            fieldContent.body = s(target.value || '<p></p>') || '<p></p>';
-                            fieldColumn.body = fieldContent.body;
-                        } else if (fieldName === 'preset_amounts') {
-                            fieldContent.preset_amounts = normalizePresetAmounts(target.value || '');
-                        } else if (fieldName === 'limit') {
-                            fieldContent.limit = Math.max(1, Math.min(24, parseInt(s(target.value || '6'), 10) || 6));
-                            target.value = String(fieldContent.limit);
-                        } else if (fieldName === 'width' || fieldName === 'height') {
-                            fieldContent[fieldName] = normalizeImageDimension(target.value || '');
-                            target.value = fieldContent[fieldName];
-                        } else if (fieldName === 'mode') {
-                            fieldContent.mode = imageModeValue({ mode: target.value || 'contained' });
-                        } else if (fieldName === 'align' && fieldColumn.module.type === 'image') {
-                            fieldContent.align = imageAlignValue({ align: target.value || 'center' });
-                        } else if (fieldName === 'goal_amount' || fieldName === 'raised_amount') {
-                            fieldContent[fieldName] = normalizeDecimalString(target.value || '', 1000000000);
-                            target.value = fieldContent[fieldName];
-                        } else if (fieldName === 'percent') {
-                            fieldContent.percent = normalizePercentString(target.value || '');
-                            target.value = fieldContent.percent;
-                        } else if (fieldName === 'layout') {
-                            fieldContent.layout = ['grid', 'list', 'rotator'].indexOf(s(target.value || 'grid')) === -1 ? 'grid' : s(target.value || 'grid');
-                        } else {
-                            fieldContent[fieldName] = s(target.value || '');
-                        }
-                        renderBuilderCanvas();
-                        setDirtyAutosave();
-                    }
-                    return;
-                }
+                if (updateColumnModuleField(target, sec)) return;
                 if (target.id === 'metis-v2-feature-cols') {
                     var fgCols = Math.max(2, Math.min(4, parseInt(s(target.value || '3'), 10) || 3));
                     sec.content.columns = fgCols;
@@ -7473,8 +7492,10 @@
                 }
                 if (target.id === 'metis-v2-button-popup-id') { sec.content.popup_id = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-button-align') { sec.content.align = ['left', 'center', 'right'].indexOf(s(target.value || 'left')) === -1 ? 'left' : s(target.value || 'left'); renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (updateActiveImageField(target, sec)) return;
                 if (target.id === 'metis-v2-section-background') { sec.settings = normalizeSectionSettings(Object.assign({}, sec.settings || {}, { background: target.value })); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-section-type') { sec.type = availableSectionTypes().indexOf(s(target.value || 'text')) === -1 ? 'text' : s(target.value); sec.content = defaultSectionByType(sec.type).content; renderSectionList(); renderStep2Editor(); setDirtyAutosave(); return; }
+                if (updateColumnModuleField(target, sec)) return;
                 if (target.matches('[data-v2-column-type]')) {
                     var typeColIdx = parseInt(s(target.getAttribute('data-v2-column-type') || '-1'), 10);
                     if (typeColIdx >= 0 && Array.isArray(sec.content.columns) && sec.content.columns[typeColIdx]) {
