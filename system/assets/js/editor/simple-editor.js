@@ -1325,6 +1325,8 @@
     })();
     var featureGridIconPanel = null;
     var featureGridActiveField = null;
+    var featureGridActiveSectionIndex = -1;
+    var featureGridActiveItemIndex = -1;
 
     function iconUrl(slug) {
         if (window.Metis && Metis.ui && Metis.ui.richText && typeof Metis.ui.richText.iconUrl === 'function') {
@@ -1391,14 +1393,18 @@
             event.stopPropagation();
             var optionValue = s(option.getAttribute('data-v2-feature-grid-icon-option') || '');
             var optionInput = featureGridActiveField.querySelector('[data-v2-feature-grid-icon-input]');
-            var optionIndex = parseInt(s(featureGridActiveField.getAttribute('data-item-idx') || '-1'), 10);
-            var optionSection = activeSection();
+            var optionIndex = featureGridActiveItemIndex;
+            var optionSection = featureGridActiveSectionIndex >= 0 && featureGridActiveSectionIndex < state.sections.length
+                ? state.sections[featureGridActiveSectionIndex]
+                : activeSection();
             if (optionInput) optionInput.value = optionValue;
             if (optionSection && Array.isArray(optionSection.content.items) && optionIndex >= 0 && optionSection.content.items[optionIndex]) {
                 optionSection.content.items[optionIndex].icon = optionValue;
-                featureGridApplyIconFieldState(featureGridActiveField);
+                featureGridCloseIconPanel();
+                renderStep2Editor();
                 renderBuilderCanvas();
                 setDirtyAutosave();
+                return;
             }
             featureGridCloseIconPanel();
         });
@@ -1411,6 +1417,8 @@
         panel.hidden = true;
         panel.innerHTML = '';
         featureGridActiveField = null;
+        featureGridActiveSectionIndex = -1;
+        featureGridActiveItemIndex = -1;
     }
 
     function featureGridApplyIconFieldState(scope) {
@@ -1434,6 +1442,8 @@
     function featureGridOpenIconPanel(fieldRoot, anchorButton) {
         var panel = ensureFeatureGridIconPanel();
         featureGridActiveField = fieldRoot;
+        featureGridActiveSectionIndex = state.activeSection;
+        featureGridActiveItemIndex = parseInt(s(fieldRoot && fieldRoot.getAttribute('data-item-idx') || '-1'), 10);
         panel.innerHTML = '';
         panel.classList.add('has-tabs');
 
@@ -6682,13 +6692,17 @@
                     var featureGridClearField = featureGridIconClear.closest('[data-v2-feature-grid-icon-field]');
                     var featureGridClearInput = featureGridClearField && featureGridClearField.querySelector('[data-v2-feature-grid-icon-input]');
                     var featureGridClearIndex = parseInt(s(featureGridClearField && featureGridClearField.getAttribute('data-item-idx') || '-1'), 10);
-                    var featureGridClearSection = activeSection();
+                    var featureGridClearSection = state.activeSection >= 0 && state.activeSection < state.sections.length
+                        ? state.sections[state.activeSection]
+                        : activeSection();
                     if (featureGridClearInput) featureGridClearInput.value = '';
                     if (featureGridClearSection && Array.isArray(featureGridClearSection.content.items) && featureGridClearIndex >= 0 && featureGridClearSection.content.items[featureGridClearIndex]) {
                         featureGridClearSection.content.items[featureGridClearIndex].icon = '';
-                        featureGridApplyIconFieldState(featureGridClearField);
+                        featureGridCloseIconPanel();
+                        renderStep2Editor();
                         renderBuilderCanvas();
                         setDirtyAutosave();
+                        return;
                     }
                     featureGridCloseIconPanel();
                     return;
@@ -6697,14 +6711,18 @@
                 if (featureGridIconOption && featureGridActiveField) {
                     var featureGridOptionValue = s(featureGridIconOption.getAttribute('data-v2-feature-grid-icon-option') || '');
                     var featureGridOptionInput = featureGridActiveField.querySelector('[data-v2-feature-grid-icon-input]');
-                    var featureGridOptionIndex = parseInt(s(featureGridActiveField.getAttribute('data-item-idx') || '-1'), 10);
-                    var featureGridOptionSection = activeSection();
+                    var featureGridOptionIndex = featureGridActiveItemIndex;
+                    var featureGridOptionSection = featureGridActiveSectionIndex >= 0 && featureGridActiveSectionIndex < state.sections.length
+                        ? state.sections[featureGridActiveSectionIndex]
+                        : activeSection();
                     if (featureGridOptionInput) featureGridOptionInput.value = featureGridOptionValue;
                     if (featureGridOptionSection && Array.isArray(featureGridOptionSection.content.items) && featureGridOptionIndex >= 0 && featureGridOptionSection.content.items[featureGridOptionIndex]) {
                         featureGridOptionSection.content.items[featureGridOptionIndex].icon = featureGridOptionValue;
-                        featureGridApplyIconFieldState(featureGridActiveField);
+                        featureGridCloseIconPanel();
+                        renderStep2Editor();
                         renderBuilderCanvas();
                         setDirtyAutosave();
+                        return;
                     }
                     featureGridCloseIconPanel();
                     return;
