@@ -132,6 +132,56 @@ namespace {
     $assert( ( $newsletterFirstModule['type'] ?? '' ) === 'newsletter_signup', 'Structured builder layout_json must emit newsletter signup blocks from column modules.' );
     $assert( ( $newsletterData['submit_label'] ?? '' ) === 'Join', 'Structured builder layout_json must preserve newsletter signup column settings.' );
 
+    $cardGrid = \Metis\Modules\Website\Services\StructuredWebsiteBuilderService::normalizeLayout(
+        [
+            'editor_meta' => [
+                'structured_builder' => [
+                    'sections' => [
+                        [
+                            'id' => 'section_card_grid',
+                            'type' => 'card_grid',
+                            'content' => [
+                                'columns' => 3,
+                                'items' => [
+                                    [
+                                        'icon' => 'shield-cross',
+                                        'title' => 'Access',
+                                        'text' => 'Support for the community.',
+                                        'cta' => [
+                                            'label' => 'Learn More',
+                                            'url' => '/access',
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ],
+        [ 'page_type' => 'page', 'is_post' => false ]
+    );
+
+    $cardGridLayout = json_decode( (string) ( $cardGrid['layout_json'] ?? '' ), true );
+    $cardGridSections = is_array( $cardGridLayout['sections'] ?? null ) ? $cardGridLayout['sections'] : [];
+    $cardGridFirstSection = is_array( $cardGridSections[0] ?? null ) ? $cardGridSections[0] : [];
+    $cardGridColumns = is_array( $cardGridFirstSection['columns'] ?? null ) ? $cardGridFirstSection['columns'] : [];
+    $cardGridFirstColumn = is_array( $cardGridColumns[0] ?? null ) ? $cardGridColumns[0] : [];
+    $cardGridModules = is_array( $cardGridFirstColumn['modules'] ?? null ) ? $cardGridFirstColumn['modules'] : [];
+    $cardGridLayoutModule = is_array( $cardGridModules[0] ?? null ) ? $cardGridModules[0] : [];
+    $cardGridColumnBlocks = is_array( $cardGridLayoutModule['data']['col_blocks'] ?? null ) ? $cardGridLayoutModule['data']['col_blocks'] : [];
+    $cardGridFirstItemBlocks = is_array( $cardGridColumnBlocks[0] ?? null ) ? $cardGridColumnBlocks[0] : [];
+    $cardGridModuleTypes = array_map(
+        static fn ( $module ): string => is_array( $module ) ? (string) ( $module['type'] ?? '' ) : '',
+        $cardGridFirstItemBlocks
+    );
+    $cardGridCtaModule = is_array( $cardGridFirstItemBlocks[3] ?? null ) ? $cardGridFirstItemBlocks[3] : [];
+    $cardGridCtaData = is_array( $cardGridCtaModule['data'] ?? null ) ? $cardGridCtaModule['data'] : [];
+
+    $assert( ! in_array( 'html', $cardGridModuleTypes, true ), 'Structured builder layout_json must not emit unsupported html modules for card grid icons.' );
+    $assert( in_array( 'button_group', $cardGridModuleTypes, true ), 'Structured builder layout_json must emit a supported CTA module for card grids.' );
+    $assert( ( $cardGridCtaData['align'] ?? '' ) === 'center', 'Structured builder layout_json must center card grid CTA controls.' );
+
     $imageLayout = \Metis\Modules\Website\Services\StructuredWebsiteBuilderService::normalizeLayout(
         [
             'editor_meta' => [
