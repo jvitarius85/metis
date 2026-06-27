@@ -1,9 +1,0 @@
-{
-  "type": "object",
-  "properties": {
-    "title": { "type": "string", "default": "Call to Action" },
-    "content": { "type": "string", "default": "" },
-    "button_label": { "type": "string", "default": "Get Started" },
-    "button_url": { "type": "string", "default": "#" }
-  }
-}
