@@ -1382,6 +1382,22 @@
         featureGridIconPanel = document.createElement('div');
         featureGridIconPanel.className = 'metis-menu-icon-panel';
         featureGridIconPanel.hidden = true;
+        featureGridIconPanel.addEventListener('click', function (event) {
+            var option = event.target.closest('[data-v2-feature-grid-icon-option]');
+            if (!option || !featureGridActiveField) return;
+            var optionValue = s(option.getAttribute('data-v2-feature-grid-icon-option') || '');
+            var optionInput = featureGridActiveField.querySelector('[data-v2-feature-grid-icon-input]');
+            var optionIndex = parseInt(s(featureGridActiveField.getAttribute('data-item-idx') || '-1'), 10);
+            var optionSection = activeSection();
+            if (optionInput) optionInput.value = optionValue;
+            if (optionSection && Array.isArray(optionSection.content.items) && optionIndex >= 0 && optionSection.content.items[optionIndex]) {
+                optionSection.content.items[optionIndex].icon = optionValue;
+                featureGridApplyIconFieldState(featureGridActiveField);
+                renderBuilderCanvas();
+                setDirtyAutosave();
+            }
+            featureGridCloseIconPanel();
+        });
         document.body.appendChild(featureGridIconPanel);
         return featureGridIconPanel;
     }

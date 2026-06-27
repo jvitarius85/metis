@@ -14,6 +14,9 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     position: relative;
     overflow: hidden;
 }
+.metis-builder-shell {
+    --metis-builder-chrome-height: 84px;
+}
 .metis-se-shell.is-loading { overflow: hidden; }
 .metis-nl-body {
     display: grid;
@@ -813,6 +816,8 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
 }
 .metis-builder-stage-wrap {
     flex: 1;
+    height: calc(100vh - var(--metis-editor-frame-offset) - var(--metis-builder-chrome-height));
+    max-height: calc(100vh - var(--metis-editor-frame-offset) - var(--metis-builder-chrome-height));
     min-height: 0;
     overflow: hidden;
 }
@@ -1192,10 +1197,15 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
 .metis-builder-image.is-mode-contained { max-width: min(920px, 100%); }
 .metis-builder-image.is-mode-wide { max-width: min(1120px, 100%); }
 .metis-builder-image.is-mode-full-width {
-    width: calc(100% + 96px);
+    width: calc(100% + 28px);
     max-width: none;
-    margin-left: -48px;
-    margin-right: -48px;
+    margin-left: -14px;
+    margin-right: -14px;
+}
+.metis-builder-image.is-mode-full-width img {
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
 }
 .metis-builder-image img,
 .metis-builder-hero-media img {
@@ -1487,12 +1497,12 @@ body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 10
     }
     .metis-builder-stage {
         grid-template-columns: 1fr;
-        overflow: auto;
+        overflow: hidden;
     }
     .metis-builder-left-panel,
     .metis-builder-settings-panel,
     .metis-builder-canvas {
-        overflow: visible;
+        overflow: auto;
     }
     .metis-content-compare-values {
         grid-template-columns: 1fr;
