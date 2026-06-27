@@ -1381,33 +1381,39 @@
         return '<img src="' + esc(iconUrl(slug)) + '" data-icon-fallback="' + esc(iconFallbackUrl(slug)) + '" alt="' + esc(slug) + '" loading="lazy" decoding="async">';
     }
 
+    function featureGridResolveIconTarget(fieldRoot) {
+        var sourceField = fieldRoot && fieldRoot.querySelectorAll ? fieldRoot : featureGridActiveField;
+        if (!sourceField) return null;
+        var itemIndex = parseInt(s(sourceField.getAttribute('data-item-idx') || String(featureGridActiveItemIndex)), 10);
+        var sectionIndex = parseInt(s(sourceField.getAttribute('data-section-idx') || String(featureGridActiveSectionIndex)), 10);
+        if (!(sectionIndex >= 0 && sectionIndex < state.sections.length)) return null;
+        var section = state.sections[sectionIndex];
+        if (!section || !section.content || !Array.isArray(section.content.items)) return null;
+        if (!(itemIndex >= 0 && itemIndex < section.content.items.length)) return null;
+        return {
+            fieldRoot: sourceField,
+            section: section,
+            sectionIndex: sectionIndex,
+            itemIndex: itemIndex,
+            item: section.content.items[itemIndex]
+        };
+    }
+
+    function featureGridCommitIconValue(fieldRoot, value) {
+        var target = featureGridResolveIconTarget(fieldRoot);
+        if (!target) return false;
+        var nextValue = s(value || '').trim().replace(/_/g, '-');
+        var input = target.fieldRoot.querySelector('[data-v2-feature-grid-icon-input]');
+        if (input) input.value = nextValue;
+        target.item.icon = nextValue;
+        return true;
+    }
+
     function ensureFeatureGridIconPanel() {
         if (featureGridIconPanel) return featureGridIconPanel;
         featureGridIconPanel = document.createElement('div');
         featureGridIconPanel.className = 'metis-menu-icon-panel';
         featureGridIconPanel.hidden = true;
-        featureGridIconPanel.addEventListener('pointerdown', function (event) {
-            var option = event.target.closest('[data-v2-feature-grid-icon-option]');
-            if (!option || !featureGridActiveField) return;
-            event.preventDefault();
-            event.stopPropagation();
-            var optionValue = s(option.getAttribute('data-v2-feature-grid-icon-option') || '');
-            var optionInput = featureGridActiveField.querySelector('[data-v2-feature-grid-icon-input]');
-            var optionIndex = featureGridActiveItemIndex;
-            var optionSection = featureGridActiveSectionIndex >= 0 && featureGridActiveSectionIndex < state.sections.length
-                ? state.sections[featureGridActiveSectionIndex]
-                : activeSection();
-            if (optionInput) optionInput.value = optionValue;
-            if (optionSection && Array.isArray(optionSection.content.items) && optionIndex >= 0 && optionSection.content.items[optionIndex]) {
-                optionSection.content.items[optionIndex].icon = optionValue;
-                featureGridCloseIconPanel();
-                renderStep2Editor();
-                renderBuilderCanvas();
-                setDirtyAutosave();
-                return;
-            }
-            featureGridCloseIconPanel();
-        });
         document.body.appendChild(featureGridIconPanel);
         return featureGridIconPanel;
     }
@@ -5224,6 +5230,16 @@
             var publishBtn = document.getElementById('metis-v2-publish');
             var shell = root.querySelector('.metis-builder-shell');
             var topbar = root.querySelector('.metis-builder-topbar');
+            var inlineRoot = document.getElementById('metis-editor-inline-root') || root;
+            var inlineRect = inlineRoot && typeof inlineRoot.getBoundingClientRect === 'function' ? inlineRoot.getBoundingClientRect() : null;
+            var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+            if (inlineRect && viewportHeight > 0) {
+                var availableHeight = Math.max(320, Math.floor(viewportHeight - Math.max(0, inlineRect.top) - 12));
+                root.style.setProperty('--metis-editor-available-height', String(availableHeight) + 'px');
+                if (inlineRoot && inlineRoot !== root && inlineRoot.style) {
+                    inlineRoot.style.setProperty('--metis-editor-available-height', String(availableHeight) + 'px');
+                }
+            }
             if (shell && topbar) {
                 var chromeHeight = Math.ceil(topbar.getBoundingClientRect().height || topbar.offsetHeight || 0);
                 if (chromeHeight > 0) {
@@ -5400,7 +5416,7 @@
                 items.forEach(function (item, i) {
                     var cta = item.cta && typeof item.cta === 'object' ? item.cta : {};
                     html += '<div class="metis-se-card"><div class="metis-se-field-grid">' +
-                        '<div class="metis-se-field-row" data-v2-feature-grid-icon-field data-item-idx="' + i + '"><label>Icon</label><input type="hidden" data-v2-feature-grid-icon-input value="' + esc(s(item.icon || '')) + '"><div class="metis-menu-icon-picker-row"><div class="metis-menu-icon-preview" data-v2-feature-grid-icon-preview></div><button type="button" class="metis-se-nav-btn" data-v2-feature-grid-icon-pick>Choose Icon</button><button type="button" class="metis-se-nav-btn" data-v2-feature-grid-icon-clear>Clear</button><span class="metis-menu-icon-token" data-v2-feature-grid-icon-token></span></div></div>' +
+                        '<div class="metis-se-field-row" data-v2-feature-grid-icon-field data-section-idx="' + esc(String(state.activeSection)) + '" data-item-idx="' + i + '"><label>Icon</label><input type="hidden" data-v2-feature-grid-icon-input value="' + esc(s(item.icon || '')) + '"><div class="metis-menu-icon-picker-row"><div class="metis-menu-icon-preview" data-v2-feature-grid-icon-preview></div><button type="button" class="metis-se-nav-btn" data-v2-feature-grid-icon-pick>Choose Icon</button><button type="button" class="metis-se-nav-btn" data-v2-feature-grid-icon-clear>Clear</button><span class="metis-menu-icon-token" data-v2-feature-grid-icon-token></span></div></div>' +
                         '<div class="metis-se-field-row"><label>Title</label><input class="metis-se-input" data-v2-item="card_grid" data-item-idx="' + i + '" data-item-field="title" value="' + esc(s(item.title || '')) + '"></div>' +
                         '<div class="metis-se-field-row"><label>Text</label><textarea class="metis-se-input" data-v2-item="card_grid" data-item-idx="' + i + '" data-item-field="text">' + esc(s(item.text || '')) + '</textarea></div>' +
                         '<div class="metis-se-field-row"><label>CTA Label</label><input class="metis-se-input" data-v2-item="card_grid" data-item-idx="' + i + '" data-item-field="cta_label" value="' + esc(s(cta.label || '')) + '"></div>' +
@@ -6690,14 +6706,7 @@
                 var featureGridIconClear = e.target.closest('[data-v2-feature-grid-icon-clear]');
                 if (featureGridIconClear) {
                     var featureGridClearField = featureGridIconClear.closest('[data-v2-feature-grid-icon-field]');
-                    var featureGridClearInput = featureGridClearField && featureGridClearField.querySelector('[data-v2-feature-grid-icon-input]');
-                    var featureGridClearIndex = parseInt(s(featureGridClearField && featureGridClearField.getAttribute('data-item-idx') || '-1'), 10);
-                    var featureGridClearSection = state.activeSection >= 0 && state.activeSection < state.sections.length
-                        ? state.sections[state.activeSection]
-                        : activeSection();
-                    if (featureGridClearInput) featureGridClearInput.value = '';
-                    if (featureGridClearSection && Array.isArray(featureGridClearSection.content.items) && featureGridClearIndex >= 0 && featureGridClearSection.content.items[featureGridClearIndex]) {
-                        featureGridClearSection.content.items[featureGridClearIndex].icon = '';
+                    if (featureGridCommitIconValue(featureGridClearField, '')) {
                         featureGridCloseIconPanel();
                         renderStep2Editor();
                         renderBuilderCanvas();
@@ -6709,22 +6718,6 @@
                 }
                 var featureGridIconOption = e.target.closest('[data-v2-feature-grid-icon-option]');
                 if (featureGridIconOption && featureGridActiveField) {
-                    var featureGridOptionValue = s(featureGridIconOption.getAttribute('data-v2-feature-grid-icon-option') || '');
-                    var featureGridOptionInput = featureGridActiveField.querySelector('[data-v2-feature-grid-icon-input]');
-                    var featureGridOptionIndex = featureGridActiveItemIndex;
-                    var featureGridOptionSection = featureGridActiveSectionIndex >= 0 && featureGridActiveSectionIndex < state.sections.length
-                        ? state.sections[featureGridActiveSectionIndex]
-                        : activeSection();
-                    if (featureGridOptionInput) featureGridOptionInput.value = featureGridOptionValue;
-                    if (featureGridOptionSection && Array.isArray(featureGridOptionSection.content.items) && featureGridOptionIndex >= 0 && featureGridOptionSection.content.items[featureGridOptionIndex]) {
-                        featureGridOptionSection.content.items[featureGridOptionIndex].icon = featureGridOptionValue;
-                        featureGridCloseIconPanel();
-                        renderStep2Editor();
-                        renderBuilderCanvas();
-                        setDirtyAutosave();
-                        return;
-                    }
-                    featureGridCloseIconPanel();
                     return;
                 }
                 var publishBtn = e.target.closest('#metis-v2-publish');
@@ -7538,10 +7531,22 @@
             document.addEventListener('click', function (event) {
                 if (!featureGridIconPanel || featureGridIconPanel.hidden) return;
                 if (event.target.closest('[data-v2-feature-grid-icon-pick]')) return;
+                var option = event.target.closest('[data-v2-feature-grid-icon-option]');
+                if (option) {
+                    var optionValue = s(option.getAttribute('data-v2-feature-grid-icon-option') || '');
+                    if (featureGridCommitIconValue(featureGridActiveField, optionValue)) {
+                        renderStep2Editor();
+                        renderBuilderCanvas();
+                        setDirtyAutosave();
+                    }
+                    featureGridCloseIconPanel();
+                    return;
+                }
                 if (event.target.closest('.metis-menu-icon-panel')) return;
                 featureGridCloseIconPanel();
             });
             window.addEventListener('resize', syncBuilderChrome);
+            window.addEventListener('scroll', syncBuilderChrome, { passive: true });
             var builderTopbar = root.querySelector('.metis-builder-topbar');
             if (builderTopbar && typeof ResizeObserver === 'function') {
                 new ResizeObserver(syncBuilderChrome).observe(builderTopbar);

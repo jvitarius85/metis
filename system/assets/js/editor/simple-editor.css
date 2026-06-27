@@ -1,11 +1,11 @@
-body.metis-shell-editor { --metis-editor-frame-offset: 168px; overflow: hidden; }
-body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: calc(100vh - var(--metis-editor-frame-offset)); height: calc(100vh - var(--metis-editor-frame-offset)); max-height: calc(100vh - var(--metis-editor-frame-offset)); overflow: hidden; display: flex; flex-direction: column; }
-#metis-editor-inline-root, #metis-simple-editor-root { min-height: calc(100vh - var(--metis-editor-frame-offset)); height: calc(100vh - var(--metis-editor-frame-offset)); max-height: calc(100vh - var(--metis-editor-frame-offset)); overflow: hidden; display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
+body.metis-shell-editor { --metis-editor-frame-offset: 168px; --metis-editor-available-height: calc(100vh - var(--metis-editor-frame-offset)); overflow: hidden; }
+body.metis-shell-editor .metis-main { margin-left: 0; padding: 0; min-height: 0; height: auto; max-height: none; overflow: visible; display: flex; flex-direction: column; }
+#metis-editor-inline-root, #metis-simple-editor-root { min-height: var(--metis-editor-available-height); height: var(--metis-editor-available-height); max-height: var(--metis-editor-available-height); overflow: hidden; display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
 
 .metis-se-shell {
-    min-height: calc(100vh - var(--metis-editor-frame-offset));
-    height: calc(100vh - var(--metis-editor-frame-offset));
-    max-height: calc(100vh - var(--metis-editor-frame-offset));
+    min-height: var(--metis-editor-available-height);
+    height: var(--metis-editor-available-height);
+    max-height: var(--metis-editor-available-height);
     background: var(--metis-bg, #f5f6fa);
     display: flex;
     flex-direction: column;
