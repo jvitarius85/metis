@@ -4039,6 +4039,15 @@
             return match ? s(match.label || value) : (fallback || '');
         }
 
+        function authorOptionsHtml(selected, fallbackLabel) {
+            var selectedValue = s(selected || '');
+            var html = optionList(state.options.authors || [], selectedValue, 'Select author');
+            if (selectedValue && !optionLabel(state.options.authors || [], selectedValue, '')) {
+                html += '<option value="' + esc(selectedValue) + '" selected>' + esc(s(fallbackLabel || selectedValue)) + '</option>';
+            }
+            return html;
+        }
+
         function repairMojibakeText(value) {
             var current = s(value || '');
             if (!current) return '';
@@ -6348,6 +6357,7 @@
             var excerptEl = document.getElementById('metis-v2-excerpt');
             var featuredImageEl = document.getElementById('metis-v2-featured-image-id');
             var featuredImageCaptionEl = document.getElementById('metis-v2-featured-image-caption');
+            var authorSelectEl = document.getElementById('metis-v2-author-id');
             var title = s(titleEl && titleEl.value || '').trim();
             var slug = slugifyValue(s(slugEl && slugEl.value || '').trim().replace(/^\/+|\/+$/g, ''));
             if (slugEl) slugEl.value = slug;
@@ -6389,6 +6399,7 @@
                 payload.post_category_ids = categoryIds;
                 payload.post_category_id = categoryIds.length ? categoryIds[0] : 0;
                 payload.post_tags = postTagsRaw;
+                payload.author_id = parseInt(s(authorSelectEl && authorSelectEl.value || '0'), 10) || 0;
                 payload.parent_page_id = parseInt(s(parentEl && parentEl.value || '0'), 10) || 0;
                 if ((payload.status === 'published' || payload.status === 'scheduled') && !payload.post_category_ids.length) {
                     setStatus('Published or scheduled posts must have a category.', 'error');
@@ -6473,7 +6484,9 @@
                                         (isPostContext() ? '<div class="metis-se-field-row"><label>Featured Image</label><input id="metis-v2-featured-image-id" type="hidden" value=""><div class="metis-featured-image-actions"><button type="button" id="metis-v2-featured-image-open" class="metis-se-nav-btn">Choose Image</button><button type="button" id="metis-v2-featured-image-clear" class="metis-se-nav-btn">Remove</button></div><div id="metis-v2-featured-image-preview" class="metis-media-grid metis-featured-image-preview"></div></div>' : '') +
                                         (isPostContext() ? '<div class="metis-se-field-row" id="metis-v2-featured-image-caption-row" style="display:none;"><label for="metis-v2-featured-image-caption">Featured Image Caption</label><textarea id="metis-v2-featured-image-caption" class="metis-se-textarea" rows="2" placeholder="Optional caption shown under the featured image."></textarea></div>' : '') +
                                         (isPostContext() ? '<div class="metis-se-field-row"><label for="metis-v2-excerpt">Excerpt</label><textarea id="metis-v2-excerpt" class="metis-se-textarea" rows="3" placeholder="Optional summary for cards and SEO."></textarea></div>' : '') +
-                                        '<div class="metis-se-field-row"><label>Author</label><div id="metis-v2-author-name" class="metis-se-meta-value">-</div></div>' +
+                                        (isPostContext()
+                                            ? '<div class="metis-se-field-row"><label for="metis-v2-author-id">Author</label><select id="metis-v2-author-id" class="metis-se-select"><option value="">Select author</option></select></div>'
+                                            : '<div class="metis-se-field-row"><label>Author</label><div id="metis-v2-author-name" class="metis-se-meta-value">-</div></div>') +
                                         '<div class="metis-se-field-row" id="metis-v2-last-edit-row"><label>Last Edit</label><div id="metis-v2-last-edit" class="metis-se-meta-value">-</div></div>' +
                                         '<div class="metis-se-field-row"><label for="metis-v2-published-date">Published Date</label><input id="metis-v2-published-date" class="metis-se-input" type="datetime-local"></div>' +
                                         (isPageContext() ? '<div class="metis-se-field-row"><label class="metis-se-check-label" for="metis-v2-homepage"><input id="metis-v2-homepage" type="checkbox"> Set as homepage</label></div>' : '') +
@@ -6525,6 +6538,7 @@
             var featuredImageEl = document.getElementById('metis-v2-featured-image-id');
             var featuredImageCaptionEl = document.getElementById('metis-v2-featured-image-caption');
             var excerptEl = document.getElementById('metis-v2-excerpt');
+            var authorSelectEl = document.getElementById('metis-v2-author-id');
             var authorEl = document.getElementById('metis-v2-author-name');
             var lastEditEl = document.getElementById('metis-v2-last-edit');
             var lastEditRow = document.getElementById('metis-v2-last-edit-row');
@@ -6548,6 +6562,10 @@
             if (featuredImageEl) featuredImageEl.value = s(data.featured_image_id || '');
             if (featuredImageCaptionEl) featuredImageCaptionEl.value = s(data.featured_image_caption || '');
             if (excerptEl) excerptEl.value = s(data.excerpt || '');
+            if (authorSelectEl) {
+                authorSelectEl.innerHTML = authorOptionsHtml(data.author_id || '', data.author_name || '');
+                authorSelectEl.value = s(data.author_id || '');
+            }
             if (authorEl) authorEl.textContent = s(data.author_name || '') || '—';
             if (lastEditEl) lastEditEl.textContent = formatLastEditValue(s(data.last_edit || data.updated_at || ''));
             if (lastEditRow) lastEditRow.style.display = (state.id > 0 || state.key) ? '' : 'none';
@@ -6587,6 +6605,10 @@
                     pHtml += '<option value="' + esc(s(row.value || '')) + '">' + esc(s(row.label || row.value || '')) + '</option>';
                 });
                 parentEl.innerHTML = pHtml;
+            }
+            var authorEl = document.getElementById('metis-v2-author-id');
+            if (authorEl) {
+                authorEl.innerHTML = authorOptionsHtml(state.entity && state.entity.author_id || '', state.entity && state.entity.author_name || '');
             }
             var categoryHost = document.getElementById('metis-v2-category-chip-host');
             if (categoryHost) {
