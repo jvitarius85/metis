@@ -179,7 +179,12 @@
 }
 
 .metis-module-action-group--single {
-    min-width: 84px;
+    min-width: 0;
+}
+
+.metis-module-action-group--single .metis-module-action {
+    border-right: 0;
+    border-radius: 999px;
 }
 
 .metis-module-refresh {
@@ -305,13 +310,6 @@
     box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
 }
 
-.metis-module-action--placeholder {
-    border-right: 0;
-    background: #fff1f2;
-    opacity: 0.38;
-    pointer-events: none;
-}
-
 .metis-module-action--icon {
     min-width: 42px;
     padding: 0 12px;
@@ -427,12 +425,17 @@
 
 .metis-settings-version-flow {
     display: inline-flex;
-    align-items: center;
-    gap: 8px;
+    align-items: baseline;
+    gap: 6px;
     flex-wrap: nowrap;
     white-space: nowrap;
-    line-height: 1;
+    line-height: 1.1;
     vertical-align: middle;
+}
+
+.metis-settings-version-flow > span:not(.metis-settings-version-flow__icon) {
+    display: inline-flex;
+    align-items: baseline;
 }
 
 .metis-settings-version-flow__icon {
@@ -442,6 +445,8 @@
     color: #667085;
     flex: 0 0 auto;
     line-height: 0;
+    align-self: center;
+    margin-top: 1px;
 }
 
 .metis-settings-version-flow__icon svg {

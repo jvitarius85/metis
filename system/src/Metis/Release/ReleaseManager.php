@@ -1297,6 +1297,23 @@ final class ReleaseManager {
             ];
         }
 
+        try {
+            $this->progress( 'runtime_refresh', 'Refreshing runtime caches and module registry.', 92 );
+            $this->refreshRuntimeState();
+        } catch ( \Throwable $exception ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'runtime_refresh_failed',
+                'target_tag' => $tag,
+                'target_version' => (string) ( $release['version'] ?? '' ),
+                'message' => $exception->getMessage(),
+            ] );
+            return [
+                'ok' => false,
+                'status' => 'runtime_refresh_failed',
+                'message' => $exception->getMessage(),
+            ];
+        }
+
         $state = $this->readState();
         $installed_commit = (string) ( $release['commit'] ?? '' );
 
@@ -1343,7 +1360,24 @@ final class ReleaseManager {
             'trigger' => $trigger,
         ] );
 
-        $cleanup = $this->cleanupReleaseArtifacts( $trigger . '_post_release' );
+        try {
+            $this->progress( 'verify_release', 'Verifying installed release state.', 96 );
+            $verification = $this->verifyInstalledReleaseState( $tag, $release, 'archive' );
+            $this->progress( 'cleanup', 'Cleaning release artifacts.', 98 );
+            $cleanup = $this->cleanupReleaseArtifacts( $trigger . '_post_release' );
+        } catch ( \Throwable $exception ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'postflight_verification_failed',
+                'target_tag' => $tag,
+                'target_version' => (string) ( $release['version'] ?? '' ),
+                'message' => $exception->getMessage(),
+            ] );
+            return [
+                'ok' => false,
+                'status' => 'postflight_verification_failed',
+                'message' => $exception->getMessage(),
+            ];
+        }
         $this->progress( 'complete', 'Release update completed.', 100 );
 
         return [
@@ -1359,6 +1393,7 @@ final class ReleaseManager {
             ],
             'baseline_built' => $baseline_built,
             'baseline_signed' => $baseline_signed,
+            'verification' => $verification,
             'cleanup' => $cleanup,
         ];
     }
@@ -1432,6 +1467,23 @@ final class ReleaseManager {
             ];
         }
 
+        try {
+            $this->progress( 'runtime_refresh', 'Refreshing runtime caches and module registry.', 88 );
+            $this->refreshRuntimeState();
+        } catch ( \Throwable $exception ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'runtime_refresh_failed',
+                'target_tag' => $tag,
+                'target_version' => (string) ( $release['version'] ?? '' ),
+                'message' => $exception->getMessage(),
+            ] );
+            return [
+                'ok' => false,
+                'status' => 'runtime_refresh_failed',
+                'message' => $exception->getMessage(),
+            ];
+        }
+
         $repository = $this->repositoryState( true );
         $state = $this->readState();
         $installed_commit = (string) ( $repository['commit'] ?? ( $release['commit'] ?? '' ) );
@@ -1479,7 +1531,24 @@ final class ReleaseManager {
             'trigger' => $trigger,
         ] );
 
-        $cleanup = $this->cleanupReleaseArtifacts( $trigger . '_post_release' );
+        try {
+            $this->progress( 'verify_release', 'Verifying installed release state.', 95 );
+            $verification = $this->verifyInstalledReleaseState( $tag, $release, 'git', $repository );
+            $this->progress( 'cleanup', 'Cleaning release artifacts.', 98 );
+            $cleanup = $this->cleanupReleaseArtifacts( $trigger . '_post_release' );
+        } catch ( \Throwable $exception ) {
+            $this->clearPendingReleaseTransaction( [
+                'status' => 'postflight_verification_failed',
+                'target_tag' => $tag,
+                'target_version' => (string) ( $release['version'] ?? '' ),
+                'message' => $exception->getMessage(),
+            ] );
+            return [
+                'ok' => false,
+                'status' => 'postflight_verification_failed',
+                'message' => $exception->getMessage(),
+            ];
+        }
 
         return [
             'ok' => true,
@@ -1490,7 +1559,68 @@ final class ReleaseManager {
             'repository' => $repository,
             'baseline_built' => $baseline_built,
             'baseline_signed' => $baseline_signed,
+            'verification' => $verification,
             'cleanup' => $cleanup,
+        ];
+    }
+
+    private function refreshRuntimeState(): void {
+        CacheService::forget( 'updates.core' );
+        CacheService::forget( 'updates.modules' );
+        CacheService::clearGroup( 'modules' );
+        CacheService::clearGroup( 'fragments' );
+        CacheService::clearGroup( 'release' );
+
+        if ( Application::has_service( 'modules' ) ) {
+            $modules = Application::service( 'modules' );
+            if ( is_object( $modules ) && method_exists( $modules, 'reload' ) ) {
+                $modules->reload();
+            }
+        }
+
+        $this->invalidateConfigCache();
+        ModulePathRegistry::retireLegacySourceModuleTree();
+        CacheService::rebuildSystemCaches();
+    }
+
+    private function verifyInstalledReleaseState( string $tag, array $release, string $mode, ?array $repository = null ): array {
+        $expectedVersion = (string) ( $release['version'] ?? $this->versionFromTag( $tag ) );
+        $state = $this->readState();
+        $installedTag = trim( (string) ( $state['installed_tag'] ?? '' ) );
+        $installedVersion = trim( (string) ( $state['installed_version'] ?? '' ) );
+
+        if ( $installedTag !== $tag ) {
+            throw new \RuntimeException(
+                sprintf( 'Release update reported success, but installed tag [%s] does not match [%s].', $installedTag, $tag )
+            );
+        }
+
+        if ( $expectedVersion !== '' && $installedVersion !== '' && version_compare( $installedVersion, $expectedVersion, '!=' ) ) {
+            throw new \RuntimeException(
+                sprintf( 'Release update reported success, but installed version [%s] does not match [%s].', $installedVersion, $expectedVersion )
+            );
+        }
+
+        $resolvedRepository = $repository;
+        if ( $mode === 'git' && ! is_array( $resolvedRepository ) ) {
+            $resolvedRepository = $this->repositoryState( true );
+        }
+
+        if ( $mode === 'git' ) {
+            $resolvedTag = trim( (string) ( $resolvedRepository['exact_tag'] ?? '' ) );
+            if ( $resolvedTag !== $tag ) {
+                throw new \RuntimeException(
+                    sprintf( 'Release checkout completed, but git is still on [%s] instead of [%s].', $resolvedTag, $tag )
+                );
+            }
+        }
+
+        return [
+            'mode' => $mode,
+            'installed_tag' => $installedTag,
+            'installed_version' => $installedVersion,
+            'repository_tag' => $mode === 'git' ? trim( (string) ( $resolvedRepository['exact_tag'] ?? '' ) ) : '',
+            'repository_commit' => $mode === 'git' ? trim( (string) ( $resolvedRepository['commit'] ?? '' ) ) : (string) ( $release['commit'] ?? '' ),
         ];
     }
 

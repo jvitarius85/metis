@@ -186,8 +186,6 @@ $module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
                                                 <span class="metis-module-action__icon" aria-hidden="true"><?php echo $module_uninstall_icon; ?></span>
                                                 <span class="metis-module-action__spinner" aria-hidden="true"><?php echo $module_loading_icon; ?></span>
                                             </button>
-                                        <?php else : ?>
-                                            <span class="metis-module-action metis-module-action--placeholder" aria-hidden="true"></span>
                                         <?php endif; ?>
                                         </div>
                                 </div>

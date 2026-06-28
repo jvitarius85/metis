@@ -1095,14 +1095,16 @@ metis_ajax_register_handler( 'metis_module_install_all_updates', function () {
     $success_count = 0;
     $failure_count = 0;
     $target_total = count( $target_ids );
+    $progress_start = 10;
+    $progress_end = 92;
+    $progress_span = max( 1, $progress_end - $progress_start );
 
     foreach ( $target_ids as $index => $module_id ) {
         $module_name = $target_labels[ $module_id ] ?? $module_id;
-        $percent = 10 + (int) floor( ( ( $index ) / max( 1, $target_total ) ) * 80 );
         $write_progress( [
-            'stage' => 'running',
-            'message' => sprintf( 'Installing %s...', $module_name ),
-            'percent' => $percent,
+            'stage' => 'queue_module',
+            'message' => sprintf( 'Preparing %s update.', $module_name ),
+            'percent' => $progress_start + (int) floor( ( $index / max( 1, $target_total ) ) * $progress_span ),
             'context' => [
                 'module' => $module_id,
                 'module_name' => $module_name,
@@ -1111,7 +1113,29 @@ metis_ajax_register_handler( 'metis_module_install_all_updates', function () {
             ],
             'done' => false,
         ] );
-        $result = metis_module_install_service()->installLatest( $module_id, true );
+        $result = metis_module_install_service()->installLatest(
+            $module_id,
+            true,
+            static function ( array $progress ) use ( $write_progress, $index, $target_total, $progress_start, $progress_span, $module_id, $module_name ): void {
+                $module_percent = max( 0, min( 100, (int) ( $progress['percent'] ?? 0 ) ) );
+                $start = $progress_start + ( $index * ( $progress_span / max( 1, $target_total ) ) );
+                $width = $progress_span / max( 1, $target_total );
+                $overall_percent = (int) floor( $start + ( $width * ( $module_percent / 100 ) ) );
+                $context = is_array( $progress['context'] ?? null ) ? $progress['context'] : [];
+                $context['module'] = $module_id;
+                $context['module_name'] = $module_name;
+                $context['current'] = $index + 1;
+                $context['total'] = $target_total;
+
+                $write_progress( [
+                    'stage' => (string) ( $progress['stage'] ?? 'running' ),
+                    'message' => (string) ( $progress['message'] ?? sprintf( 'Updating %s...', $module_name ) ),
+                    'percent' => $overall_percent,
+                    'context' => $context,
+                    'done' => false,
+                ] );
+            }
+        );
         $results[ $module_id ] = $result;
         if ( ! empty( $result['ok'] ) ) {
             $success_count++;
@@ -1120,6 +1144,17 @@ metis_ajax_register_handler( 'metis_module_install_all_updates', function () {
         }
     }
 
+    $write_progress( [
+        'stage' => 'refresh_updates',
+        'message' => 'Refreshing module update status and final verification.',
+        'percent' => 96,
+        'context' => [
+            'total' => $target_total,
+            'success_count' => $success_count,
+            'failure_count' => $failure_count,
+        ],
+        'done' => false,
+    ] );
     $final_summary = metis_update_service()->refreshUpdateState( true, 'module_install_all_complete' );
     $message = $failure_count > 0
         ? sprintf( 'Updated %d module%s. %d failed.', $success_count, $success_count === 1 ? '' : 's', $failure_count )

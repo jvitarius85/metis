@@ -12,6 +12,12 @@ use Metis\Core\Version;
 
 final class ModuleInstallService {
     private const SEMVER_PATTERN = '/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/';
+    private const RUNTIME_WARNING_STATUSES = [
+        'source_backed_entry',
+        'missing_entry',
+        'unreadable_entry',
+        'unknown_entry_contract',
+    ];
 
     public function __construct(
         private readonly GitHubUpdateService $githubUpdates,
@@ -20,12 +26,15 @@ final class ModuleInstallService {
         private readonly LoggerService $logger = new LoggerService()
     ) {}
 
-    public function installLatest(string $moduleId, bool $forceRefresh = true): array {
+    public function installLatest(string $moduleId, bool $forceRefresh = true, ?callable $progressReporter = null): array {
         $moduleId = metis_key_clean($moduleId);
         if ($moduleId === '') {
             return $this->failure('invalid_module', 'A valid module ID is required.');
         }
 
+        $this->emitProgress($progressReporter, 'registry', 'Loading module registry metadata.', 4, [
+            'module' => $moduleId,
+        ]);
         $registry = $this->githubUpdates->moduleRegistry($forceRefresh);
         if (($registry['status'] ?? '') !== 'ready') {
             return $this->failure(
@@ -71,20 +80,37 @@ final class ModuleInstallService {
         $extractPath = $workspace . '/extract';
 
         try {
+            $this->emitProgress($progressReporter, 'download', sprintf('Downloading %s %s.', $moduleName, $latestVersion), 12, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+                'latest' => $latestVersion,
+            ]);
             $this->githubUpdates->downloadModuleArchive($downloadUrl, $archivePath);
             if ($sha256 !== '') {
+                $this->emitProgress($progressReporter, 'checksum', sprintf('Verifying package integrity for %s.', $moduleName), 22, [
+                    'module' => $moduleId,
+                    'module_name' => $moduleName,
+                ]);
                 $archiveHash = strtolower($this->files->hashFile($archivePath));
                 if (!hash_equals($sha256, $archiveHash)) {
                     throw new \RuntimeException('Downloaded archive checksum did not match the registry sha256.');
                 }
             }
 
+            $this->emitProgress($progressReporter, 'extract', sprintf('Extracting %s package.', $moduleName), 32, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+            ]);
             $this->extractArchive($archivePath, $extractPath);
             $moduleSource = $this->locateModuleSource($extractPath, $moduleId);
             if ($moduleSource === '') {
                 throw new \RuntimeException(sprintf('Unable to locate module.json for [%s] inside the archive.', $moduleId));
             }
 
+            $this->emitProgress($progressReporter, 'validate_manifest', sprintf('Validating %s manifest.', $moduleName), 44, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+            ]);
             $manifest = $this->files->readJson($moduleSource . '/module.json', []);
             $manifestId = metis_key_clean((string) ($manifest['id'] ?? $manifest['slug'] ?? basename($moduleSource)));
             $manifestVersion = trim((string) ($manifest['version'] ?? ''));
@@ -98,6 +124,10 @@ final class ModuleInstallService {
 
             $destination = rtrim(ModulePathRegistry::moduleRootPath(), '/\\') . '/' . $moduleId;
             $stagedDestination = $workspace . '/runtime-module';
+            $this->emitProgress($progressReporter, 'stage_runtime', sprintf('Staging runtime files for %s.', $moduleName), 56, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+            ]);
             $this->copyDirectory($moduleSource, $stagedDestination);
             $this->verifyInstalledRuntimeContract($stagedDestination, $manifest, $moduleId);
 
@@ -114,6 +144,10 @@ final class ModuleInstallService {
                 }
             }
 
+            $this->emitProgress($progressReporter, 'apply_runtime', sprintf('Applying runtime files for %s.', $moduleName), 68, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+            ]);
             try {
                 if (!@rename($stagedDestination, $destination)) {
                     throw new \RuntimeException(sprintf('Unable to promote the staged runtime module [%s] into place.', $moduleId));
@@ -125,16 +159,31 @@ final class ModuleInstallService {
                 throw $exception;
             }
 
+            $this->emitProgress($progressReporter, 'refresh_runtime', sprintf('Refreshing runtime state for %s.', $moduleName), 78, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+            ]);
             $this->refreshRuntimeState();
+            $this->emitProgress($progressReporter, 'refresh_protection', sprintf('Refreshing integrity and recovery state for %s.', $moduleName), 86, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+            ]);
             $protectionRefresh = $this->refreshProtectionState('module_install:' . $moduleId . ':' . $latestVersion);
+            $this->emitProgress($progressReporter, 'refresh_updates', sprintf('Refreshing module update status for %s.', $moduleName), 92, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+            ]);
             $status = $this->moduleUpdates->checkForUpdates(true);
-            $moduleStatus = [];
-            foreach ((array) ($status['modules'] ?? []) as $row) {
-                if (is_array($row) && metis_key_clean((string) ($row['id'] ?? '')) === $moduleId) {
-                    $moduleStatus = $row;
-                    break;
-                }
-            }
+            $this->emitProgress($progressReporter, 'verify_install', sprintf('Verifying installed state for %s.', $moduleName), 97, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+            ]);
+            $verification = $this->verifyInstalledModuleState(
+                $moduleId,
+                $latestVersion,
+                $moduleName,
+                $status
+            );
 
             $result = [
                 'ok' => true,
@@ -146,9 +195,22 @@ final class ModuleInstallService {
                 'latest' => $latestVersion,
                 'minimum_metis' => $minimumMetis,
                 'download_url' => $downloadUrl,
-                'module_status' => $moduleStatus,
+                'module_status' => $verification['module_status'],
                 'protection_refresh' => $protectionRefresh,
+                'verification' => $verification,
+                'postflight_steps' => [
+                    'refresh_runtime',
+                    'refresh_protection',
+                    'refresh_updates',
+                    'verify_install',
+                ],
             ];
+
+            $this->emitProgress($progressReporter, 'complete', sprintf('%s %s is ready.', $moduleName, $latestVersion), 100, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+                'latest' => $latestVersion,
+            ]);
 
             $this->logger->activity('module_install_completed', [
                 'module' => $moduleId,
@@ -159,6 +221,11 @@ final class ModuleInstallService {
 
             return $result;
         } catch (\Throwable $exception) {
+            $this->emitProgress($progressReporter, 'failed', $exception->getMessage(), 100, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+                'latest' => $latestVersion,
+            ]);
             $this->logger->error('module_install_failed', [
                 'module' => $moduleId,
                 'version' => $latestVersion,
@@ -400,6 +467,81 @@ final class ModuleInstallService {
         }
 
         return $result;
+    }
+
+    private function verifyInstalledModuleState(string $moduleId, string $latestVersion, string $moduleName, array $status): array {
+        $installedModules = [];
+        foreach ($this->moduleUpdates->discoverInstalledModules() as $installedModule) {
+            $installedId = metis_key_clean((string) ($installedModule['id'] ?? ''));
+            if ($installedId !== '') {
+                $installedModules[$installedId] = $installedModule;
+            }
+        }
+
+        $installed = is_array($installedModules[$moduleId] ?? null) ? (array) $installedModules[$moduleId] : [];
+        if ($installed === []) {
+            throw new \RuntimeException(sprintf('%s was copied into place, but the runtime module could not be rediscovered.', $moduleName));
+        }
+
+        $installedVersion = trim((string) ($installed['version'] ?? ''));
+        if ($installedVersion === '' || version_compare($installedVersion, $latestVersion, '!=')) {
+            throw new \RuntimeException(sprintf('%s still reports version [%s] after install; expected [%s].', $moduleName, $installedVersion !== '' ? $installedVersion : 'unknown', $latestVersion));
+        }
+
+        $runtimeStatus = trim((string) ($installed['runtime_contract_status'] ?? ''));
+        if (in_array($runtimeStatus, self::RUNTIME_WARNING_STATUSES, true)) {
+            throw new \RuntimeException(sprintf(
+                '%s was installed, but the runtime contract is not healthy: %s',
+                $moduleName,
+                trim((string) ($installed['runtime_contract_note'] ?? $runtimeStatus))
+            ));
+        }
+
+        $moduleStatus = [];
+        foreach ((array) ($status['modules'] ?? []) as $row) {
+            if (is_array($row) && metis_key_clean((string) ($row['id'] ?? '')) === $moduleId) {
+                $moduleStatus = $row;
+                break;
+            }
+        }
+
+        if ($moduleStatus === []) {
+            throw new \RuntimeException(sprintf('%s was installed, but update status could not be refreshed.', $moduleName));
+        }
+
+        if (!empty($moduleStatus['update_available'])) {
+            throw new \RuntimeException(sprintf('%s still shows an available update after install verification.', $moduleName));
+        }
+
+        $moduleUpdateStatus = trim((string) ($moduleStatus['status'] ?? ''));
+        if ($moduleUpdateStatus !== '' && $moduleUpdateStatus !== 'current') {
+            throw new \RuntimeException(sprintf(
+                '%s completed installation, but the refreshed module status is [%s].',
+                $moduleName,
+                $moduleUpdateStatus
+            ));
+        }
+
+        return [
+            'installed' => $installed,
+            'module_status' => $moduleStatus,
+        ];
+    }
+
+    private function emitProgress(?callable $progressReporter, string $stage, string $message, int $percent, array $context = []): void {
+        if (!is_callable($progressReporter)) {
+            return;
+        }
+
+        try {
+            $progressReporter([
+                'stage' => $stage,
+                'message' => $message,
+                'percent' => max(0, min(100, $percent)),
+                'context' => $context,
+            ]);
+        } catch (\Throwable) {
+        }
     }
 
     private function failure(string $status, string $message, array $payload = []): array {
