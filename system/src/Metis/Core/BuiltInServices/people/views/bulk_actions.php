@@ -16,6 +16,8 @@ $stripe_roles = $snapshot['stripe_roles'] ?? [];
 $workspace_groups = $snapshot['workspace_groups'] ?? [];
 $workspace_org_units = $snapshot['workspace_org_units'] ?? [];
 $positions = $snapshot['positions'] ?? [];
+$stripe_available = ! empty( $snapshot['stripe_available'] );
+$workspace_available = ! empty( $snapshot['workspace_available'] );
 ?>
 
 <div class="metis-people-ops">
@@ -81,7 +83,7 @@ $positions = $snapshot['positions'] ?? [];
                 </form>
             </section>
 
-            <?php if ( $can_workspace_manage ) : ?>
+            <?php if ( $can_workspace_manage && $workspace_available ) : ?>
             <section class="metis-premium-wrap metis-people-bulk-rowbox">
                 <form id="metis-bulk-workspace-user-form" class="metis-people-bulk-rowform">
                     <h3 class="metis-people-bulk-rowtitle">Workspace Users</h3>
@@ -128,6 +130,7 @@ $positions = $snapshot['positions'] ?? [];
                 </form>
             </section>
 
+            <?php if ( $stripe_available ) : ?>
             <section class="metis-premium-wrap metis-people-bulk-rowbox">
                 <form id="metis-bulk-stripe-role-form" class="metis-people-bulk-rowform">
                     <h3 class="metis-people-bulk-rowtitle">Stripe Access</h3>
@@ -138,6 +141,7 @@ $positions = $snapshot['positions'] ?? [];
                     <button type="submit" class="metis-btn">Apply</button>
                 </form>
             </section>
+            <?php endif; ?>
 
             <section class="metis-premium-wrap metis-people-bulk-rowbox">
                 <form id="metis-bulk-offboard-form" class="metis-people-bulk-rowform">

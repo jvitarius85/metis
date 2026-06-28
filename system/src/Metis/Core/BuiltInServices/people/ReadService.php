@@ -180,7 +180,11 @@ final class ReadService {
         foreach ($roles_rows as $role_row) {
             $role_id = (int) ($role_row['id'] ?? 0);
             $domain = (string) ($role_row['role_domain'] ?? 'metis');
+            $role_key = (string) ( $role_row['role_key'] ?? '' );
             if (!isset($roles_by_domain[$domain])) {
+                continue;
+            }
+            if ( ! PeopleModule::roleVisible( $domain, $role_key ) ) {
                 continue;
             }
             $role_row['permission_count'] = (int) ($perm_count_by_role[$role_id] ?? 0);
@@ -190,6 +194,8 @@ final class ReadService {
 
         return [
             'roles_by_domain' => $roles_by_domain,
+            'stripe_available' => PeopleModule::isStripeConfigured(),
+            'workspace_available' => PeopleModule::isWorkspaceConfigured(),
         ];
     }
 
@@ -200,14 +206,29 @@ final class ReadService {
         $workspace_groups_table = \Metis_Tables::get('people_workspace_groups');
         $workspace_users_table = \Metis_Tables::get('people_workspace_users');
         $positions_table = \Metis_Tables::get('people_positions');
+        $metis_roles = $db->fetchAll("SELECT role_key, role_name FROM {$roles_table} WHERE role_domain='metis' ORDER BY role_name ASC") ?: [];
+        $metis_roles = array_values(
+            array_filter(
+                $metis_roles,
+                static fn ( array $role_row ): bool => PeopleModule::roleVisible( 'metis', (string) ( $role_row['role_key'] ?? '' ) )
+            )
+        );
 
         return [
             'people' => $db->fetchAll("SELECT pid, display_name, email FROM {$people_table} ORDER BY display_name ASC, email ASC LIMIT 400") ?: [],
-            'roles' => $db->fetchAll("SELECT role_key, role_name FROM {$roles_table} WHERE role_domain='metis' ORDER BY role_name ASC") ?: [],
-            'stripe_roles' => $db->fetchAll("SELECT role_key, role_name FROM {$roles_table} WHERE role_domain='stripe' ORDER BY role_name ASC") ?: [],
-            'workspace_groups' => $db->fetchAll("SELECT group_email, group_name FROM {$workspace_groups_table} ORDER BY group_name ASC, group_email ASC") ?: [],
-            'workspace_org_units' => $db->fetchAll("SELECT org_unit_path FROM {$workspace_users_table} WHERE org_unit_path IS NOT NULL AND org_unit_path <> '' GROUP BY org_unit_path ORDER BY org_unit_path ASC") ?: [],
+            'roles' => $metis_roles,
+            'stripe_roles' => PeopleModule::isStripeConfigured()
+                ? ( $db->fetchAll("SELECT role_key, role_name FROM {$roles_table} WHERE role_domain='stripe' ORDER BY role_name ASC") ?: [] )
+                : [],
+            'workspace_groups' => PeopleModule::isWorkspaceConfigured()
+                ? ( $db->fetchAll("SELECT group_email, group_name FROM {$workspace_groups_table} ORDER BY group_name ASC, group_email ASC") ?: [] )
+                : [],
+            'workspace_org_units' => PeopleModule::isWorkspaceConfigured()
+                ? ( $db->fetchAll("SELECT org_unit_path FROM {$workspace_users_table} WHERE org_unit_path IS NOT NULL AND org_unit_path <> '' GROUP BY org_unit_path ORDER BY org_unit_path ASC") ?: [] )
+                : [],
             'positions' => $db->fetchAll("SELECT group_key, position_label FROM {$positions_table} ORDER BY group_key ASC, sort_order ASC, position_label ASC") ?: [],
+            'stripe_available' => PeopleModule::isStripeConfigured(),
+            'workspace_available' => PeopleModule::isWorkspaceConfigured(),
         ];
     }
 

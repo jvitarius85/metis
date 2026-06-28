@@ -11,6 +11,15 @@ metis_people_seed_permissions_and_roles();
 $can_manage = metis_people_can_manage();
 $snapshot = \Metis\Modules\People\ReadService::rolesListSnapshot();
 $roles_by_domain = $snapshot['roles_by_domain'] ?? [];
+$stripe_available = ! empty( $snapshot['stripe_available'] );
+$workspace_available = ! empty( $snapshot['workspace_available'] );
+$role_domains_label = [ 'Metis' ];
+if ( $stripe_available ) {
+    $role_domains_label[] = 'Stripe';
+}
+if ( $workspace_available ) {
+    $role_domains_label[] = 'Workspace';
+}
 ?>
 
 <div class="metis-people"
@@ -18,7 +27,7 @@ $roles_by_domain = $snapshot['roles_by_domain'] ?? [];
      data-person-base-url="<?php echo metis_escape_url( metis_people_person_url() ); ?>"
      data-role-base-url="<?php echo metis_escape_url( metis_people_role_url() ); ?>">
     <h1 class="metis-page-title"><?php echo metis_escape_html( metis_current_module_view_title( 'Roles' ) ); ?></h1>
-    <p class="metis-subtitle">Manage Metis, Stripe, and Workspace role definitions.</p>
+    <p class="metis-subtitle">Manage <?php echo metis_escape_html( implode( ', ', $role_domains_label ) ); ?> role definitions.</p>
     <div id="metis-people-alert" class="metis-alert" style="display:none;"></div>
 
     <?php metis_render_sidebar_layout([
@@ -49,9 +58,13 @@ $roles_by_domain = $snapshot['roles_by_domain'] ?? [];
             <?php
             $domain_labels = [
                 'metis' => 'Metis Roles',
-                'stripe' => 'Stripe Roles',
-                'workspace' => 'Workspace Roles',
             ];
+            if ( $stripe_available ) {
+                $domain_labels['stripe'] = 'Stripe Roles';
+            }
+            if ( $workspace_available ) {
+                $domain_labels['workspace'] = 'Workspace Roles';
+            }
             foreach ($domain_labels as $domain_key => $domain_label) :
                 $domain_rows = (array) ($roles_by_domain[$domain_key] ?? []);
                 if (empty($domain_rows)) continue;
@@ -109,8 +122,12 @@ $roles_by_domain = $snapshot['roles_by_domain'] ?? [];
                 <label for="metis-role-add-domain">Domain</label>
                 <select id="metis-role-add-domain" class="metis-select">
                     <option value="metis">Metis</option>
-                    <option value="stripe">Stripe</option>
-                    <option value="workspace">Workspace</option>
+                    <?php if ( $stripe_available ) : ?>
+                        <option value="stripe">Stripe</option>
+                    <?php endif; ?>
+                    <?php if ( $workspace_available ) : ?>
+                        <option value="workspace">Workspace</option>
+                    <?php endif; ?>
                 </select>
             </div>
             <div class="metis-field metis-field-full">

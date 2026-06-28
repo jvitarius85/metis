@@ -1264,6 +1264,12 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
         .help { margin-top: 6px; color: var(--muted); font-size: 13px; line-height: 1.45; }
         .checks { display: grid; gap: 8px; }
         .check { display: grid; grid-template-columns: 88px minmax(180px, .8fr) 1fr; gap: 14px; align-items: center; padding: 11px 12px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+        .check.module-option { grid-template-columns: 40px 88px minmax(0, 1fr); align-items: start; }
+        .check.module-option input[type="checkbox"] { width: 20px; height: 20px; margin: 2px 0 0; min-height: 20px; }
+        .check.module-option .badge { margin-top: 0; }
+        .check-copy { min-width: 0; }
+        .check-copy .check-title { display: block; margin-bottom: 6px; }
+        .check-copy .check-msg { display: block; line-height: 1.45; }
         .badge { display: inline-flex; justify-content: center; align-items: center; min-height: 26px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 900; text-transform: uppercase; }
         .badge.pass { background: #eaf7ef; color: var(--ok); }
         .badge.warn { background: #fff7df; color: var(--warn); }
@@ -1668,7 +1674,7 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
 
             modules.forEach(function (module) {
                 const row = document.createElement('label');
-                row.className = 'check';
+                row.className = 'check module-option';
                 const disabled = !module.available;
                 const note = module.requires_newer_metis
                     ? ('Requires Metis ' + (module.minimum_metis || '') + '+.')
@@ -1677,8 +1683,7 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
                         : (module.description || ('Latest version ' + (module.latest || '') + '.')));
                 row.innerHTML = ''
                     + '<span class="badge ' + (disabled ? 'warn' : 'pass') + '">' + (disabled ? 'LOCK' : 'OPT') + '</span>'
-                    + '<span class="check-title"></span>'
-                    + '<span class="check-msg"></span>';
+                    + '<span class="check-copy"><span class="check-title"></span><span class="check-msg"></span></span>';
                 const titleNode = row.querySelector('.check-title');
                 const msgNode = row.querySelector('.check-msg');
                 const checkbox = document.createElement('input');
@@ -1686,7 +1691,6 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
                 checkbox.name = 'module_ids';
                 checkbox.value = module.id || '';
                 checkbox.disabled = disabled;
-                checkbox.style.marginRight = '12px';
                 titleNode.textContent = (module.name || module.id || '') + (module.latest ? (' (' + module.latest + ')') : '');
                 msgNode.textContent = note;
                 row.insertBefore(checkbox, row.firstChild);

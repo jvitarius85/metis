@@ -130,13 +130,89 @@ if ( ! function_exists( 'metis_portal_normalize_focus_metrics' ) ) {
     }
 }
 
+if ( ! function_exists( 'metis_portal_normalize_focus_card' ) ) {
+    function metis_portal_normalize_focus_card( array $card, string $fallback_key = '' ): ?array {
+        $title = trim( (string) ( $card['title'] ?? '' ) );
+        $url = trim( (string) ( $card['url'] ?? '' ) );
+        if ( $title === '' || $url === '' ) {
+            return null;
+        }
+
+        return [
+            'key' => \metis_key_clean( (string) ( $card['key'] ?? $fallback_key ?: $title ) ),
+            'title' => $title,
+            'desc' => trim( (string) ( $card['desc'] ?? '' ) ),
+            'url' => $url,
+            'metrics' => metis_portal_normalize_focus_metrics( (array) ( $card['metrics'] ?? [] ) ),
+            'updated' => trim( (string) ( $card['updated'] ?? metis_current_datetime()->format( 'M j, g:i a' ) ) ),
+            'priority' => (int) ( $card['priority'] ?? 50 ),
+        ];
+    }
+}
+
+if ( ! function_exists( 'metis_portal_collect_focus_cards' ) ) {
+    function metis_portal_collect_focus_cards( array $modules, callable $can_use_module, array $context ): array {
+        $cards = [];
+
+        foreach ( $modules as $slug => $module ) {
+            $slug = \metis_key_clean( (string) $slug );
+            if ( $slug === '' || ! $can_use_module( $slug ) ) {
+                continue;
+            }
+
+            if ( ! \Metis\Core\Runtime\RuntimeModuleEntryResolver::supportsStatic( $slug, 'dashboardWidgets' ) ) {
+                continue;
+            }
+
+            try {
+                $widget_rows = (array) \Metis\Core\Runtime\RuntimeModuleEntryResolver::callStatic( $slug, 'dashboardWidgets', $context );
+            } catch ( \Throwable ) {
+                continue;
+            }
+
+            foreach ( $widget_rows as $index => $widget_row ) {
+                if ( ! is_array( $widget_row ) ) {
+                    continue;
+                }
+
+                $card = metis_portal_normalize_focus_card( $widget_row, $slug . '_' . $index );
+                if ( $card === null ) {
+                    continue;
+                }
+
+                $cards[] = $card;
+            }
+        }
+
+        usort(
+            $cards,
+            static function ( array $left, array $right ): int {
+                $priorityComparison = ( (int) ( $left['priority'] ?? 50 ) <=> (int) ( $right['priority'] ?? 50 ) );
+                if ( $priorityComparison !== 0 ) {
+                    return $priorityComparison;
+                }
+
+                return strcmp( (string) ( $left['title'] ?? '' ), (string) ( $right['title'] ?? '' ) );
+            }
+        );
+
+        return array_map(
+            static function ( array $card ): array {
+                unset( $card['priority'] );
+                return $card;
+            },
+            $cards
+        );
+    }
+}
+
 if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
     function metis_portal_build_dashboard_view_model( array $args ): array {
-        $can_access_module = $args['can_access_module'];
+        $can_use_module = $args['can_use_module'];
         $format_money = $args['format_money'];
 
         $needs_attention = [];
-        if ( $can_access_module( 'board' ) && (int) ( $args['open_board_actions'] ?? 0 ) > 0 ) {
+        if ( $can_use_module( 'board' ) && (int) ( $args['open_board_actions'] ?? 0 ) > 0 ) {
             $needs_attention[] = [
                 'title' => 'Board action items are pending',
                 'detail' => metis_number_format( (int) $args['open_board_actions'] ) . ' open action items need follow-up.',
@@ -145,7 +221,7 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
                 'severity' => 'critical',
             ];
         }
-        if ( $can_access_module( 'board' ) && (int) ( $args['upcoming_meetings'] ?? 0 ) > 0 ) {
+        if ( $can_use_module( 'board' ) && (int) ( $args['upcoming_meetings'] ?? 0 ) > 0 ) {
             $needs_attention[] = [
                 'title' => 'Board meetings coming up this week',
                 'detail' => metis_number_format( (int) $args['upcoming_meetings'] ) . ' meetings are in the next 7 days.',
@@ -154,7 +230,7 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
                 'severity' => 'soon',
             ];
         }
-        if ( $can_access_module( 'donations' ) && (int) ( $args['open_deposit_count'] ?? 0 ) > 0 ) {
+        if ( $can_use_module( 'donations' ) && (int) ( $args['open_deposit_count'] ?? 0 ) > 0 ) {
             $needs_attention[] = [
                 'title' => 'Deposit batching is waiting',
                 'detail' => metis_number_format( (int) $args['open_deposit_count'] ) . ' gifts are still unbatched (' . $format_money( (float) ( $args['open_deposit_total'] ?? 0 ) ) . ').',
@@ -163,7 +239,7 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
                 'severity' => 'critical',
             ];
         }
-        if ( $can_access_module( 'people' ) && (int) ( $args['pending_requests'] ?? 0 ) > 0 ) {
+        if ( $can_use_module( 'people' ) && (int) ( $args['pending_requests'] ?? 0 ) > 0 ) {
             $needs_attention[] = [
                 'title' => 'Access requests are pending',
                 'detail' => metis_number_format( (int) $args['pending_requests'] ) . ' people are waiting on access approval.',
@@ -172,7 +248,7 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
                 'severity' => 'soon',
             ];
         }
-        if ( $can_access_module( 'newsletter' ) && (int) ( $args['queued_emails'] ?? 0 ) > 0 ) {
+        if ( $can_use_module( 'newsletter' ) && (int) ( $args['queued_emails'] ?? 0 ) > 0 ) {
             $needs_attention[] = [
                 'title' => 'Newsletter send queue is not empty',
                 'detail' => metis_number_format( (int) $args['queued_emails'] ) . ' messages are queued for delivery.',
@@ -181,7 +257,7 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
                 'severity' => 'info',
             ];
         }
-        if ( $can_access_module( 'grandys_stash' ) && (int) ( $args['stash_attention'] ?? 0 ) > 0 ) {
+        if ( $can_use_module( 'grandys_stash' ) && (int) ( $args['stash_attention'] ?? 0 ) > 0 ) {
             $needs_attention[] = [
                 'title' => 'Grandy\'s Stash needs processing',
                 'detail' => metis_number_format( (int) $args['stash_attention'] ) . ' tickets are waiting for action or inventory.',
@@ -190,7 +266,7 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
                 'severity' => 'critical',
             ];
         }
-        if ( $can_access_module( 'calendar' ) && empty( $args['calendar_ready'] ) ) {
+        if ( $can_use_module( 'calendar' ) && empty( $args['calendar_ready'] ) ) {
             $needs_attention[] = [
                 'title' => 'Calendar workspace is not configured',
                 'detail' => 'Calendar setup still needs to be completed.',
@@ -199,7 +275,7 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
                 'severity' => 'info',
             ];
         }
-        if ( $can_access_module( 'drive' ) && empty( $args['drive_home_ready'] ) ) {
+        if ( $can_use_module( 'drive' ) && empty( $args['drive_home_ready'] ) ) {
             $needs_attention[] = [
                 'title' => 'Drive user home is not enabled',
                 'detail' => 'People folders cannot be auto-managed until a home drive is configured.',
@@ -208,7 +284,7 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
                 'severity' => 'info',
             ];
         }
-        if ( $can_access_module( 'settings' ) && (int) ( $args['failed_jobs_count'] ?? 0 ) > 0 ) {
+        if ( $can_use_module( 'settings' ) && (int) ( $args['failed_jobs_count'] ?? 0 ) > 0 ) {
             $needs_attention[] = [
                 'title' => 'Background jobs are failing',
                 'detail' => metis_number_format( (int) $args['failed_jobs_count'] ) . ' failed jobs are in the queue.',
@@ -219,7 +295,7 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
         }
 
         $today_priority = [];
-        if ( $can_access_module( 'board' ) ) {
+        if ( $can_use_module( 'board' ) ) {
             $today_priority[] = [
                 'title' => 'Overdue',
                 'count' => (int) ( $args['board_action_counts']['overdue'] ?? 0 ),
@@ -247,91 +323,47 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
                 'note'  => 'Role-scoped critical items',
             ],
             [
-                'label' => 'Open Board Actions',
-                'value' => metis_number_format( (int) ( $args['open_board_actions'] ?? 0 ) ),
-                'note'  => 'Outstanding governance tasks',
-            ],
-            [
-                'label' => 'Upcoming Meetings (7d)',
-                'value' => metis_number_format( (int) ( $args['upcoming_meetings'] ?? 0 ) ),
-                'note'  => 'Scheduled or draft meetings',
-            ],
-            [
                 'label' => 'Queued Jobs',
                 'value' => metis_number_format( (int) ( $args['pending_jobs_count'] ?? 0 ) ),
                 'note'  => 'Background queue waiting',
             ],
         ];
 
-        $focus_updated_label = metis_current_datetime()->format( 'M j, g:i a' );
-        $focus_cards_by_key = [];
-        if ( $can_access_module( 'board' ) ) {
-            $focus_cards_by_key['board'] = [
-                'title' => 'Board',
-                'desc'  => 'Meetings, decisions, attendance, and open actions.',
-                'url'   => metis_portal_url( 'board', 'dashboard' ),
-                'metrics' => metis_portal_normalize_focus_metrics( (array) ( $args['board_metrics'] ?? [] ) ),
-                'updated' => $focus_updated_label,
+        if ( $can_use_module( 'board' ) ) {
+            $today_stats[] = [
+                'label' => 'Open Board Actions',
+                'value' => metis_number_format( (int) ( $args['open_board_actions'] ?? 0 ) ),
+                'note'  => 'Outstanding governance tasks',
             ];
-        }
-        if ( $can_access_module( 'people' ) ) {
-            $focus_cards_by_key['people'] = [
-                'title' => 'People',
-                'desc'  => 'Profiles, access approvals, and workspace links.',
-                'url'   => metis_portal_url( 'people', 'dashboard' ),
-                'metrics' => metis_portal_normalize_focus_metrics( (array) ( $args['people_metrics'] ?? [] ) ),
-                'updated' => $focus_updated_label,
+            $today_stats[] = [
+                'label' => 'Upcoming Meetings (7d)',
+                'value' => metis_number_format( (int) ( $args['upcoming_meetings'] ?? 0 ) ),
+                'note'  => 'Scheduled or draft meetings',
             ];
-        }
-        if ( $can_access_module( 'grandys_stash' ) ) {
-            $focus_cards_by_key['grandys_stash'] = [
-                'title' => 'Grandy\'s Stash',
-                'desc'  => 'Request queue, waitlist pressure, and fulfillment.',
-                'url'   => metis_portal_url( 'grandys_stash', 'dashboard' ),
-                'metrics' => metis_portal_normalize_focus_metrics( (array) ( $args['grandys_metrics'] ?? [] ) ),
-                'updated' => $focus_updated_label,
-            ];
-        }
-        if ( $can_access_module( 'donations' ) || $can_access_module( 'finance' ) ) {
-            $focus_cards_by_key['finance'] = [
-                'title' => 'Finance',
-                'desc'  => 'Revenue, deposits, and reconciliation status.',
-                'url'   => $can_access_module( 'donations' ) ? metis_portal_url( 'donations', 'dashboard' ) : metis_portal_url( 'finance', 'finance' ),
-                'metrics' => metis_portal_normalize_focus_metrics( (array) ( $args['finance_metrics'] ?? [] ) ),
-                'updated' => $focus_updated_label,
-            ];
-        }
-        if ( $can_access_module( 'newsletter' ) ) {
-            $focus_cards_by_key['communications'] = [
-                'title' => 'Communications',
-                'desc'  => 'Newsletter queue and campaign activity.',
-                'url'   => metis_portal_url( 'newsletter', 'dashboard' ),
-                'metrics' => metis_portal_normalize_focus_metrics( (array) ( $args['newsletter_metrics'] ?? [] ) ),
-                'updated' => $focus_updated_label,
+        } elseif ( $can_use_module( 'people' ) ) {
+            $today_stats[] = [
+                'label' => 'Pending Requests',
+                'value' => metis_number_format( (int) ( $args['pending_requests'] ?? 0 ) ),
+                'note'  => 'People awaiting access approval',
             ];
         }
 
-        $role_priority = [];
-        if ( $can_access_module( 'board' ) ) {
-            $role_priority = [ 'board', 'people', 'grandys_stash', 'finance', 'communications' ];
-        } elseif ( $can_access_module( 'donations' ) || $can_access_module( 'finance' ) ) {
-            $role_priority = [ 'finance', 'people', 'communications', 'board', 'grandys_stash' ];
-        } elseif ( $can_access_module( 'newsletter' ) ) {
-            $role_priority = [ 'communications', 'people', 'board', 'finance', 'grandys_stash' ];
-        } elseif ( $can_access_module( 'people' ) ) {
-            $role_priority = [ 'people', 'board', 'finance', 'communications', 'grandys_stash' ];
+        if ( $can_use_module( 'newsletter' ) ) {
+            $today_stats[] = [
+                'label' => 'Queued Emails',
+                'value' => metis_number_format( (int) ( $args['queued_emails'] ?? 0 ) ),
+                'note'  => 'Newsletter deliveries waiting',
+            ];
         }
 
-        $focus_cards = [];
-        foreach ( $role_priority as $key ) {
-            if ( isset( $focus_cards_by_key[ $key ] ) ) {
-                $focus_cards[] = $focus_cards_by_key[ $key ];
-                unset( $focus_cards_by_key[ $key ] );
-            }
-        }
-        foreach ( $focus_cards_by_key as $card ) {
-            $focus_cards[] = $card;
-        }
+        $today_stats[] = [
+            'label' => 'Installed Modules',
+            'value' => metis_number_format( (int) ( $args['module_count'] ?? 0 ) ),
+            'note'  => 'Loaded for this portal',
+        ];
+        $today_stats = array_slice( $today_stats, 0, 4 );
+
+        $focus_cards = array_values( array_filter( (array) ( $args['focus_cards'] ?? [] ), 'is_array' ) );
 
         $system_watch = [
             [
@@ -344,17 +376,22 @@ if ( ! function_exists( 'metis_portal_build_dashboard_view_model' ) ) {
                 'value' => metis_number_format( (int) ( $args['failed_jobs_count'] ?? 0 ) ),
                 'state' => ( (int) ( $args['failed_jobs_count'] ?? 0 ) ) > 0 ? 'alert' : 'ok',
             ],
-            [
+        ];
+
+        if ( $can_use_module( 'calendar' ) ) {
+            $system_watch[] = [
                 'label' => 'Calendar workspace',
                 'value' => ! empty( $args['calendar_ready'] ) ? 'Ready' : 'Needs setup',
                 'state' => ! empty( $args['calendar_ready'] ) ? 'ok' : 'warn',
-            ],
-            [
+            ];
+        }
+        if ( $can_use_module( 'drive' ) ) {
+            $system_watch[] = [
                 'label' => 'Drive user home',
                 'value' => ! empty( $args['drive_home_ready'] ) ? 'Ready' : 'Needs setup',
                 'state' => ! empty( $args['drive_home_ready'] ) ? 'ok' : 'warn',
-            ],
-        ];
+            ];
+        }
 
         return [
             'needs_attention' => $needs_attention,

@@ -4,6 +4,7 @@
 require_once __DIR__ . '/_dashboard_data.php';
 
 $db = metis_db();
+$installed_modules = function_exists( 'metis_get_modules' ) ? (array) metis_get_modules() : [];
 
 $format_money = static function ( float $amount ): string {
     return '$' . metis_number_format( $amount, 2 );
@@ -343,6 +344,13 @@ $can_access_module = static function ( string $module_slug ): bool {
     }
     return true;
 };
+$module_is_installed = static function ( string $module_slug ) use ( $installed_modules ): bool {
+    $module_slug = metis_key_clean( $module_slug );
+    return $module_slug !== '' && isset( $installed_modules[ $module_slug ] );
+};
+$can_use_module = static function ( string $module_slug ) use ( $module_is_installed, $can_access_module ): bool {
+    return $module_is_installed( $module_slug ) && $can_access_module( $module_slug );
+};
 
 $now_mysql          = metis_current_time( 'mysql' );
 $next_week_mysql    = ( clone $now_dt )->modify( '+7 days' )->format( 'Y-m-d H:i:s' );
@@ -395,14 +403,30 @@ $board_action_counts = [
     'blocked' => 0,
 ];
 
-if ( $can_access_module( 'board' ) && $current_person_id > 0 && $table_exists( $board_actions_table ) && $table_exists( $board_meetings_table ) ) {
+if ( $can_use_module( 'board' ) && $current_person_id > 0 && $table_exists( $board_actions_table ) && $table_exists( $board_meetings_table ) ) {
     $my_board_actions = \Metis\Modules\Portal\BoardActionService::fetchForPerson( $current_person_id, $board_action_filter )['actions'] ?? [];
     $board_action_counts = \Metis\Modules\Portal\BoardActionService::dashboardCounts( $current_person_id );
 }
 
+$focus_cards = metis_portal_collect_focus_cards(
+    $installed_modules,
+    $can_use_module,
+    [
+        'board_metrics' => $board_metrics,
+        'people_metrics' => $people_metrics,
+        'grandys_metrics' => $grandys_metrics,
+        'finance_metrics' => $finance_metrics,
+        'newsletter_metrics' => $newsletter_metrics,
+        'contacts_metrics' => $contacts_metrics,
+        'calendar_metrics' => $calendar_metrics,
+        'drive_metrics' => $drive_metrics,
+        'donations_metrics' => $donations_metrics,
+    ]
+);
+
 $dashboard_view = metis_portal_build_dashboard_view_model(
     [
-        'can_access_module' => $can_access_module,
+        'can_use_module' => $can_use_module,
         'format_money' => $format_money,
         'open_board_actions' => $open_board_actions,
         'upcoming_meetings' => $upcoming_meetings,
@@ -416,11 +440,8 @@ $dashboard_view = metis_portal_build_dashboard_view_model(
         'failed_jobs_count' => $failed_jobs_count,
         'pending_jobs_count' => $pending_jobs_count,
         'board_action_counts' => $board_action_counts,
-        'board_metrics' => $board_metrics,
-        'people_metrics' => $people_metrics,
-        'grandys_metrics' => $grandys_metrics,
-        'finance_metrics' => $finance_metrics,
-        'newsletter_metrics' => $newsletter_metrics,
+        'focus_cards' => $focus_cards,
+        'module_count' => count( $installed_modules ),
     ]
 );
 $needs_attention = $dashboard_view['needs_attention'];
@@ -510,7 +531,7 @@ $system_watch = $dashboard_view['system_watch'];
                 </div>
             <?php endif; ?>
 
-            <?php if ( $can_access_module( 'board' ) ) : ?>
+            <?php if ( $can_use_module( 'board' ) ) : ?>
                 <div
                     class="metis-portal-board-actions"
                     data-default-filter="<?php echo metis_escape_attr( $board_action_filter ); ?>"
@@ -571,28 +592,32 @@ $system_watch = $dashboard_view['system_watch'];
                 <h2 id="metis-portal-module-snapshots">Focus Areas</h2>
             </div>
             <div class="metis-portal-focus-list">
-                <?php foreach ( $focus_cards as $card ) : ?>
-                    <article class="metis-portal-focus-card">
-                        <a class="metis-portal-focus-head" href="<?php echo metis_escape_url( (string) $card['url'] ); ?>">
-                            <div>
-                                <h3><?php echo metis_escape_html( $card['title'] ); ?></h3>
-                                <p><?php echo metis_escape_html( $card['desc'] ); ?></p>
-                            </div>
-                            <span class="metis-portal-focus-updated">Updated <?php echo metis_escape_html( (string) $card['updated'] ); ?></span>
-                        </a>
-                        <div class="metis-portal-focus-metrics">
-                            <?php foreach ( $card['metrics'] as $metric ) : ?>
-                                <div class="metis-portal-focus-metric">
-                                    <span class="metis-portal-focus-metric-label"><?php echo metis_escape_html( (string) ( $metric['label'] ?? '' ) ); ?></span>
-                                    <strong class="metis-portal-focus-metric-value"><?php echo metis_escape_html( (string) ( $metric['value'] ?? '' ) ); ?></strong>
+                <?php if ( $focus_cards === [] ) : ?>
+                    <div class="metis-portal-hub-empty">No module widgets are available yet. Install a module or enable an integration to extend this dashboard.</div>
+                <?php else : ?>
+                    <?php foreach ( $focus_cards as $card ) : ?>
+                        <article class="metis-portal-focus-card">
+                            <a class="metis-portal-focus-head" href="<?php echo metis_escape_url( (string) $card['url'] ); ?>">
+                                <div>
+                                    <h3><?php echo metis_escape_html( $card['title'] ); ?></h3>
+                                    <p><?php echo metis_escape_html( $card['desc'] ); ?></p>
                                 </div>
-                            <?php endforeach; ?>
-                        </div>
-                        <?php if ( $card['title'] === 'Board' && $upcoming_meetings === 0 ) : ?>
-                            <div class="metis-portal-hub-empty metis-portal-card-empty">No meetings scheduled. <a href="<?php echo metis_escape_url( metis_portal_url( 'board', 'meeting' ) ); ?>">Create meeting</a>.</div>
-                        <?php endif; ?>
-                    </article>
-                <?php endforeach; ?>
+                                <span class="metis-portal-focus-updated">Updated <?php echo metis_escape_html( (string) $card['updated'] ); ?></span>
+                            </a>
+                            <div class="metis-portal-focus-metrics">
+                                <?php foreach ( $card['metrics'] as $metric ) : ?>
+                                    <div class="metis-portal-focus-metric">
+                                        <span class="metis-portal-focus-metric-label"><?php echo metis_escape_html( (string) ( $metric['label'] ?? '' ) ); ?></span>
+                                        <strong class="metis-portal-focus-metric-value"><?php echo metis_escape_html( (string) ( $metric['value'] ?? '' ) ); ?></strong>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php if ( (string) ( $card['key'] ?? '' ) === 'board' && $upcoming_meetings === 0 ) : ?>
+                                <div class="metis-portal-hub-empty metis-portal-card-empty">No meetings scheduled. <a href="<?php echo metis_escape_url( metis_portal_url( 'board', 'meeting' ) ); ?>">Create meeting</a>.</div>
+                            <?php endif; ?>
+                        </article>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
 
             <div class="metis-portal-hub-section-head metis-portal-system-head">

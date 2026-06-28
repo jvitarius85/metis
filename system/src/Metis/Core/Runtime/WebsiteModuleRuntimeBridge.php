@@ -42,6 +42,10 @@ final class WebsiteModuleRuntimeBridge {
      * @return array<int,mixed>
      */
     public static function publishedHomepagePages( bool $shouldLoad ): array {
+        if ( ! RuntimeModuleEntryResolver::supportsStatic( 'website', 'publishedHomepagePages' ) ) {
+            return [];
+        }
+
         return (array) RuntimeModuleEntryResolver::callStatic( 'website', 'publishedHomepagePages', $shouldLoad );
     }
 }

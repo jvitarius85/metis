@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Metis\Modules\People;
 
 use Metis\Core\Events\Event;
+use Metis\Core\Services\CredentialService;
 
 final class PeopleModule {
     private static bool $booted = false;
@@ -224,4 +225,94 @@ final class PeopleModule {
     public static function getCurrentPersonId(): int { return AccessManager::getCurrentPersonId(); }
     public static function logActivity( ?int $person_id, string $activity_type, string $summary, array $details = [] ): void { ActivityService::logActivity( $person_id, $activity_type, $summary, $details ); }
     public static function runMaintenance(): void { MaintenanceManager::runMaintenance(); }
+
+    public static function isStripeConfigured(): bool {
+        $secret = trim( (string) CredentialService::getBySetting( 'stripe_secret' ) );
+        return $secret !== '' && str_starts_with( $secret, 'sk_' );
+    }
+
+    public static function isWorkspaceConfigured(): bool {
+        $impersonationAdmin = strtolower( trim( (string) \Core_Settings_Service::get( 'workspace_impersonation_admin', '' ) ) );
+        if ( ! \metis_email_is_valid( $impersonationAdmin ) || ! function_exists( 'metis_workspace_service_account_payload' ) ) {
+            return false;
+        }
+
+        $service = \metis_workspace_service_account_payload();
+        if ( ! is_array( $service ) || $service === [] ) {
+            return false;
+        }
+
+        if ( function_exists( 'metis_workspace_service_account_error' ) ) {
+            return trim( (string) \metis_workspace_service_account_error( $service ) ) === '';
+        }
+
+        return true;
+    }
+
+    public static function availableRoleDomains(): array {
+        $domains = [ 'metis' ];
+        if ( self::isStripeConfigured() ) {
+            $domains[] = 'stripe';
+        }
+        if ( self::isWorkspaceConfigured() ) {
+            $domains[] = 'workspace';
+        }
+
+        return $domains;
+    }
+
+    public static function roleVisible( string $roleDomain, string $roleKey = '' ): bool {
+        $roleDomain = \metis_key_clean( $roleDomain );
+        $roleKey = \metis_key_clean( $roleKey );
+
+        if ( $roleDomain === 'stripe' ) {
+            return self::isStripeConfigured();
+        }
+
+        if ( $roleDomain === 'workspace' ) {
+            return self::isWorkspaceConfigured();
+        }
+
+        if ( $roleDomain === 'metis' && $roleKey === 'workspace_manager' ) {
+            return self::isWorkspaceConfigured();
+        }
+
+        return true;
+    }
+
+    public static function dashboardWidgets( array $context = [] ): array {
+        $metrics = (array) ( $context['people_metrics'] ?? [] );
+        if ( $metrics === [] ) {
+            $snapshot = ReadService::dashboardSnapshot();
+            $metrics = [
+                [
+                    'label' => 'People',
+                    'value' => \metis_number_format( (int) ( $snapshot['total_people'] ?? 0 ) ),
+                    'note' => \metis_number_format( (int) ( $snapshot['active_people'] ?? 0 ) ) . ' active',
+                ],
+                [
+                    'label' => 'Staff',
+                    'value' => \metis_number_format( (int) ( $snapshot['staff_count'] ?? 0 ) ),
+                    'note' => \metis_number_format( (int) ( $snapshot['board_count'] ?? 0 ) ) . ' board members',
+                ],
+                [
+                    'label' => 'Workspace',
+                    'value' => \metis_number_format( (int) ( $snapshot['workspace_count'] ?? 0 ) ),
+                    'note' => 'Linked Workspace users',
+                ],
+            ];
+        }
+
+        return [
+            [
+                'key' => 'people',
+                'title' => 'People',
+                'desc' => 'Profiles, access approvals, and workspace links.',
+                'url' => self::baseUrl(),
+                'metrics' => $metrics,
+                'priority' => 20,
+                'updated' => \metis_current_datetime()->format( 'M j, g:i a' ),
+            ],
+        ];
+    }
 }

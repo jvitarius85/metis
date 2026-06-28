@@ -74,6 +74,10 @@ final class AccessManager {
                 continue;
             }
 
+            if ( ! PeopleModule::roleVisible( $role_domain, $role_key ) ) {
+                continue;
+            }
+
             $existing = $db->scalar( "SELECT id FROM {$roles_table} WHERE role_key = %s AND role_domain = %s LIMIT 1", [ $role_key, $role_domain ] );
             if ( $existing ) {
                 continue;

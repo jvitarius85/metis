@@ -38,6 +38,11 @@ final class RuntimeModuleEntryResolver {
         return $moduleClass::$method( ...$arguments );
     }
 
+    public static function supportsStatic( string $slug, string $method ): bool {
+        $moduleClass = self::resolve( $slug );
+        return $moduleClass !== null && method_exists( $moduleClass, $method );
+    }
+
     /**
      * @return class-string|string
      */

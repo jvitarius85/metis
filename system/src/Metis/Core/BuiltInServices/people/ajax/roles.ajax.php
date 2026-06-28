@@ -53,6 +53,10 @@ metis_ajax_register_handler( 'metis_people_save_role', function () {
         $role_domain = 'metis';
     }
 
+    if ( ! \Metis\Modules\People\PeopleModule::roleVisible( $role_domain, $role_key ) ) {
+        metis_runtime_send_json_error('That role domain is not available on this system.', 400);
+    }
+
     $conflict = \Metis\Modules\People\RoleManagementService::roleConflictId($role_key, $role_domain, $role_id);
     if ($conflict > 0) {
         metis_runtime_send_json_error('Role key already exists.', 400);
@@ -120,6 +124,10 @@ metis_ajax_register_handler( 'metis_people_bulk_role_action', function () {
 
 metis_ajax_register_handler( 'metis_people_bulk_stripe_role_action', function () {
     metis_people_workspace_ajax_verify();
+
+    if ( ! \Metis\Modules\People\PeopleModule::isStripeConfigured() ) {
+        metis_runtime_send_json_error('Stripe is not configured on this system.', 400);
+    }
 
     $action_type = isset(metis_request_post()['bulk_action']) ? metis_key_clean(metis_runtime_unslash(metis_request_post()['bulk_action'])) : '';
     $stripe_role = isset(metis_request_post()['stripe_role']) ? metis_key_clean(metis_runtime_unslash(metis_request_post()['stripe_role'])) : '';
