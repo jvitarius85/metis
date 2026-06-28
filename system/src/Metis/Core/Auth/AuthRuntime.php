@@ -1579,6 +1579,26 @@ function metis_auth_render_shell( string $title, string $body, int $status = 200
     exit;
 }
 
+function metis_auth_system_name(): string {
+    $fallback = 'Metis';
+    if ( class_exists( 'Core_Settings_Service' ) ) {
+        $portal_name = trim( (string) Core_Settings_Service::get( 'portal_name', '' ) );
+        if ( $portal_name !== '' ) {
+            return $portal_name;
+        }
+        $login_name = trim( (string) Core_Settings_Service::get( 'login_organization_name', '' ) );
+        if ( $login_name !== '' ) {
+            return $login_name;
+        }
+        $org_name = trim( (string) Core_Settings_Service::get( 'org_name', '' ) );
+        if ( $org_name !== '' ) {
+            return $org_name;
+        }
+    }
+
+    return $fallback;
+}
+
 function metis_auth_passkey_begin_nonce_action(): string {
     return 'metis_auth_passkey_begin';
 }
@@ -1963,7 +1983,8 @@ function metis_auth_handle_request( Metis_Http_Request $request ): bool {
     }
 
     if ( metis_auth_has_users() || metis_auth_legacy_people_without_auth_count() > 0 ) {
-        $body = '<h1>Sign in to Metis</h1>';
+        $system_name = metis_auth_system_name();
+        $body = '<h1>Sign in to ' . metis_escape_html( $system_name ) . '</h1>';
         if ( $error !== '' ) {
             $body .= '<div class="error">' . metis_escape_html( $error ) . '</div>';
         }
@@ -1984,10 +2005,11 @@ function metis_auth_handle_request( Metis_Http_Request $request ): bool {
         $body .= '<label for="metis-password-input">Password</label><input id="metis-password-input" name="password" type="password" required autocomplete="current-password">';
         $body .= '<button type="submit">Sign In With Password</button></form></div>';
         $body .= '</div>';
-        metis_auth_render_shell( 'Metis Login', $body );
+        metis_auth_render_shell( $system_name . ' Login', $body );
     }
 
-    $body = '<h1>Create the first Metis account</h1>';
+    $system_name = metis_auth_system_name();
+    $body = '<h1>Create the first ' . metis_escape_html( $system_name ) . ' account</h1>';
     if ( $error !== '' ) {
         $body .= '<div class="error">' . metis_escape_html( $error ) . '</div>';
     }
@@ -1999,5 +2021,5 @@ function metis_auth_handle_request( Metis_Http_Request $request ): bool {
     $body .= '<label for="last_name">Last Name</label><input id="last_name" name="last_name">';
     $body .= '<label for="password">Password</label><input id="password" name="password" type="password" minlength="12" required>';
     $body .= '<button type="submit">Create Admin Account</button></form>';
-    metis_auth_render_shell( 'Create Metis Account', $body );
+    metis_auth_render_shell( 'Create ' . $system_name . ' Account', $body );
 }

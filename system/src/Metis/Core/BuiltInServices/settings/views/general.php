@@ -23,7 +23,7 @@ $format_preview = static function ( string $format ): string {
         <div class="metis-settings-header"><h2>Portal</h2></div>
         <div class="metis-settings-body">
             <div class="metis-field">
-                <label for="portal_name">Site Name</label>
+                <label for="portal_name">System Name</label>
                 <input type="text" id="portal_name" name="portal_name" class="metis-input metis-input-wide" value="<?php echo metis_escape_attr( $portal_name ); ?>" placeholder="Metis Portal">
             </div>
             <div class="metis-field">
