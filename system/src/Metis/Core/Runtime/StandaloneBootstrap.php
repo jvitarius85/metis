@@ -121,6 +121,18 @@ function metis_runtime_insecure_app_key_values(): array {
     return [ '', 'metis-local-key', 'changeme', 'change-me', 'default', 'local-key' ];
 }
 
+function metis_runtime_request_is_install_route(): bool {
+    $request_path = (string) parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+    if ( $request_path === '' ) {
+        return false;
+    }
+
+    $script_dir = rtrim( dirname( (string) ( $_SERVER['SCRIPT_NAME'] ?? '' ) ), '/' );
+    $install_path = ( $script_dir === '' || $script_dir === '/' ? '' : $script_dir ) . '/install';
+
+    return rtrim( $request_path, '/' ) === rtrim( $install_path, '/' );
+}
+
 function metis_runtime_is_installer_context(): bool {
     if ( defined( 'METIS_INSTALLER_CONTEXT' ) && METIS_INSTALLER_CONTEXT ) {
         return true;
@@ -134,8 +146,16 @@ function metis_runtime_is_installer_context(): bool {
         ? rtrim( (string) METIS_CONFIG_PATH, '/\\' ) . '/database.php'
         : rtrim( (string) METIS_PATH, '/\\' ) . '/system/config/database.php';
 
-    return ! is_file( rtrim( (string) METIS_PATH, '/\\' ) . '/storage/install.lock' )
-        && ! is_file( $config_path );
+    $install_lock = rtrim( (string) METIS_PATH, '/\\' ) . '/storage/install.lock';
+    if ( is_file( $install_lock ) ) {
+        return false;
+    }
+
+    if ( metis_runtime_request_is_install_route() ) {
+        return true;
+    }
+
+    return ! is_file( $config_path );
 }
 
 function metis_runtime_is_test_context(): bool {

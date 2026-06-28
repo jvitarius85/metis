@@ -31,26 +31,25 @@ $websiteModule = $read( 'modules/website/Module.php' );
 $newsletterModule = $read( 'modules/newsletter/Module.php' );
 
 $assert(
-    str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'contacts', 'ensureRuntimeSchema'" )
-    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'forms', 'ensureRuntimeSchema'" )
-    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'newsletter', 'ensureRuntimeSchema'" )
-    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'board', 'ensureRuntimeSchema'" )
-    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'finance', 'ensureRuntimeSchema'" )
-    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'website', 'ensureRuntimeSchema'" )
-    && str_contains( $moduleSchemaBridge, "RuntimeModuleEntryResolver::callStatic( 'import', 'ensureRuntimeSchema'" ),
-    'Module schema bridge must prefer dynamically resolved module entry classes for store-managed schema bootstrapping.'
+    str_contains( $moduleSchemaBridge, "'people' => static function (): void { \\Metis\\Modules\\People\\SchemaManager::ensureSchema();" )
+    && str_contains( $moduleSchemaBridge, "'hermes' => static function (): void { \\Metis\\Modules\\Hermes\\SchemaManager::ensureSchema();" )
+    && str_contains( $moduleSchemaBridge, "'communications_inbound' => static function (): void { \\Metis\\Modules\\CommunicationsInbound\\SchemaManager::ensureSchema();" )
+    && str_contains( $moduleSchemaBridge, "'recovery' => static function (): void { \\Metis\\Core\\Recovery\\RecoverySchema::ensureSchema();" )
+    && str_contains( $moduleSchemaBridge, "'help_search_store' => static function (): void {" ),
+    'Installer schema bridge must be limited to core-owned and built-in runtime schema installers.'
 );
 
 $assert(
-    ! str_contains( $moduleSchemaBridge, '\\Metis\\Modules\\Contacts\\SchemaManager::ensureSchema();' )
-    && ! str_contains( $moduleSchemaBridge, '\\Metis\\Modules\\Forms\\SchemaManager::ensureSchema();' )
-    && ! str_contains( $moduleSchemaBridge, '\\Metis\\Modules\\Newsletter\\SchemaManager::ensureSchema();' )
-    && ! str_contains( $moduleSchemaBridge, '\\Metis\\Modules\\Board\\SchemaManager::ensureSchema();' )
-    && ! str_contains( $moduleSchemaBridge, '\\Metis\\Modules\\Calendar\\SyncStore::ensureSchema();' )
-    && ! str_contains( $moduleSchemaBridge, '\\Metis\\Modules\\Finance\\SchemaManager::ensureSchema();' )
-    && ! str_contains( $moduleSchemaBridge, '\\Metis\\Modules\\Website\\SchemaManager::ensureSchema();' )
-    && ! str_contains( $moduleSchemaBridge, '\\Metis\\Modules\\Import\\SchemaManager::ensureSchema();' ),
-    'Module schema bridge must not reach directly into store-managed schema internals once module entry facades exist.'
+    ! str_contains( $moduleSchemaBridge, "'contacts' =>" )
+    && ! str_contains( $moduleSchemaBridge, "'forms' =>" )
+    && ! str_contains( $moduleSchemaBridge, "'newsletter' =>" )
+    && ! str_contains( $moduleSchemaBridge, "'board' =>" )
+    && ! str_contains( $moduleSchemaBridge, "'calendar' =>" )
+    && ! str_contains( $moduleSchemaBridge, "'finance' =>" )
+    && ! str_contains( $moduleSchemaBridge, "'website' =>" )
+    && ! str_contains( $moduleSchemaBridge, "'import' =>" )
+    && ! str_contains( $moduleSchemaBridge, "'cms' =>" ),
+    'Installer schema bridge must not directly enumerate store-managed or stale schema steps.'
 );
 
 $assert(

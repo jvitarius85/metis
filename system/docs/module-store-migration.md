@@ -8,6 +8,7 @@ Metis is migrating toward a module-store model where installable feature modules
 - `system/src/Metis/Core/BuiltInServices/` is the source of truth for built-in core services.
 - The retired source-module tree has already been removed. Store-managed behavior now resolves from runtime bundles, while built-in and transitional runtime code stays under core-owned paths.
 - In development, the canonical bundle source currently lives in the sibling private workspace at `../metis-private/modules/` unless `METIS_PRIVATE_MODULES_ROOT` overrides it.
+- Store-managed modules own their own table creation. Runtime entry classes should expose `ensureRuntimeSchema()` or `ensureSchema()`, and module-store installs should call that entrypoint after the bundle is promoted.
 
 ## Current Ownership Model
 

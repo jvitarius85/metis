@@ -26,52 +26,12 @@ function metis_core_db_prefix(): string {
 function metis_install_db(): void {
     $charset_collate = metis_core_db_charset_collate();
 
-    $contacts          = Metis_Tables::get( 'contacts' );
-    $contact_dav_tokens = Metis_Tables::get( 'contact_dav_tokens' );
-    $contact_dav_sync   = Metis_Tables::get( 'contact_dav_sync' );
-    $newsletter_lists  = Metis_Tables::get( 'newsletter_lists' );
-    $newsletter_subs   = Metis_Tables::get( 'newsletter_subs' );
     $settings          = Metis_Tables::get( 'settings' );
     $auth_users        = Metis_Tables::get( 'auth_users' );
     $job_queue         = Metis_Tables::get( 'job_queue' );
     $sync_state        = Metis_Tables::get( 'sync_state' );
     $media_files       = Metis_Tables::get( 'media_files' );
     $navigation_items  = Metis_Tables::get( 'navigation_items' );
-
-    $sql_contacts = "
-        CREATE TABLE IF NOT EXISTS {$contacts} (
-            id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            did        VARCHAR(16)     DEFAULT NULL,
-            email      VARCHAR(180)    NOT NULL,
-            first_name VARCHAR(120)    DEFAULT '',
-            last_name  VARCHAR(120)    DEFAULT '',
-            created_at DATETIME        DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME        DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            UNIQUE KEY email (email),
-            UNIQUE KEY did   (did)
-        ) {$charset_collate};
-    ";
-
-    $sql_newsletter_lists = "
-        CREATE TABLE IF NOT EXISTS {$newsletter_lists} (
-            id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            legacy_lid VARCHAR(50)     NULL,
-            name       VARCHAR(255)    NOT NULL,
-            PRIMARY KEY (id),
-            UNIQUE KEY legacy_lid (legacy_lid)
-        ) {$charset_collate};
-    ";
-
-    $sql_newsletter_subs = "
-        CREATE TABLE IF NOT EXISTS {$newsletter_subs} (
-            id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            contact_id BIGINT UNSIGNED NOT NULL,
-            list_id    BIGINT UNSIGNED NOT NULL,
-            PRIMARY KEY (id),
-            UNIQUE KEY combo (contact_id, list_id)
-        ) {$charset_collate};
-    ";
 
     $sql_settings = "
         CREATE TABLE IF NOT EXISTS {$settings} (
@@ -199,43 +159,6 @@ function metis_install_db(): void {
         ) {$charset_collate};
     ";
 
-    $sql_contact_dav_tokens = "
-        CREATE TABLE IF NOT EXISTS {$contact_dav_tokens} (
-            id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            user_id      BIGINT UNSIGNED NOT NULL,
-            label        VARCHAR(191)    NOT NULL DEFAULT '',
-            token_prefix VARCHAR(32)     NOT NULL DEFAULT '',
-            token_hash   CHAR(64)        NOT NULL,
-            last_used_at DATETIME        DEFAULT NULL,
-            created_at   DATETIME        DEFAULT CURRENT_TIMESTAMP,
-            revoked_at   DATETIME        DEFAULT NULL,
-            PRIMARY KEY (id),
-            UNIQUE KEY token_hash (token_hash),
-            KEY user_id (user_id),
-            KEY token_prefix (token_prefix)
-        ) {$charset_collate};
-    ";
-
-    $sql_contact_dav_sync = "
-        CREATE TABLE IF NOT EXISTS {$contact_dav_sync} (
-            id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            book_slug     VARCHAR(191)    NOT NULL,
-            contact_cid   VARCHAR(64)     NOT NULL,
-            operation     VARCHAR(20)     NOT NULL DEFAULT 'upsert',
-            contact_etag  CHAR(40)        DEFAULT NULL,
-            changed_at    DATETIME        DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            KEY book_slug (book_slug),
-            KEY contact_cid (contact_cid),
-            KEY changed_at (changed_at)
-        ) {$charset_collate};
-    ";
-
-    metis_db_delta( $sql_contacts );
-    metis_db_delta( $sql_contact_dav_tokens );
-    metis_db_delta( $sql_contact_dav_sync );
-    metis_db_delta( $sql_newsletter_lists );
-    metis_db_delta( $sql_newsletter_subs );
     metis_db_delta( $sql_settings );
     metis_db_delta( $sql_auth_users );
     metis_db_delta( $sql_job_queue );
@@ -247,7 +170,7 @@ function metis_install_db(): void {
         metis_entity_id_service()->ensureSchema();
     }
 
-    Metis_Logger::info( 'Core tables ensured' );
+    Metis_Logger::info( 'Core-owned tables ensured' );
 }
 
 // -------------------------------------------------------------------------

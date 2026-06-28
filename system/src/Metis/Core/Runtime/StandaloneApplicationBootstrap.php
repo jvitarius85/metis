@@ -359,22 +359,7 @@ function metis_standalone_install_ensure_directory( string $path ): void {
 }
 
 function metis_standalone_install_ensure_permissions(): void {
-    foreach (
-        [
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage',
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage/backups',
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage/cache',
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage/logs',
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage/media',
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage/public-media',
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage/protected-media',
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage/private-records',
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage/runtime',
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage/tmp',
-            rtrim( (string) METIS_PATH, '/\\' ) . '/storage/uploads',
-            METIS_CONFIG_PATH,
-        ] as $directory
-    ) {
+    foreach ( metis_standalone_install_required_directories() as $directory ) {
         metis_standalone_install_ensure_directory( $directory );
     }
 
@@ -386,20 +371,34 @@ function metis_standalone_install_ensure_permissions(): void {
 }
 
 function metis_standalone_install_required_directories(): array {
-    return [
-        'Storage' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage',
-        'Backups' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage/backups',
-        'Cache' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage/cache',
-        'Logs' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage/logs',
-        'Media' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage/media',
-        'Public Media' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage/public-media',
-        'Protected Media' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage/protected-media',
-        'Private Records' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage/private-records',
-        'Runtime' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage/runtime',
-        'Temporary Files' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage/tmp',
-        'Uploads' => rtrim( (string) METIS_PATH, '/\\' ) . '/storage/uploads',
+    $root = rtrim( (string) METIS_PATH, '/\\' );
+    $directories = [
+        'Storage' => $root . '/storage',
+        'Backups' => $root . '/storage/backups',
+        'Logs' => $root . '/storage/logs',
+        'Runtime' => $root . '/storage/runtime',
+        'Cache' => $root . '/storage/runtime/cache',
         'Configuration' => METIS_CONFIG_PATH,
     ];
+
+    if ( function_exists( 'metis_media_storage_roots' ) ) {
+        $media_roots = (array) metis_media_storage_roots( false );
+        if ( isset( $media_roots['public'] ) && is_string( $media_roots['public'] ) && trim( $media_roots['public'] ) !== '' ) {
+            $directories['Public Media'] = $media_roots['public'];
+        }
+        if ( isset( $media_roots['protected'] ) && is_string( $media_roots['protected'] ) && trim( $media_roots['protected'] ) !== '' ) {
+            $directories['Protected Media'] = $media_roots['protected'];
+        }
+        if ( isset( $media_roots['private'] ) && is_string( $media_roots['private'] ) && trim( $media_roots['private'] ) !== '' ) {
+            $directories['Private Records'] = $media_roots['private'];
+        }
+    } else {
+        $directories['Public Media'] = $root . '/storage/public-media';
+        $directories['Protected Media'] = $root . '/storage/protected-media';
+        $directories['Private Records'] = $root . '/storage/private-records';
+    }
+
+    return $directories;
 }
 
 function metis_standalone_install_precheck_rows(): array {
@@ -914,19 +913,10 @@ function metis_standalone_install_ensure_all_schema(): array {
         }
     }, $created );
 
-    metis_standalone_install_require_module_file( 'drive', 'includes/schema.php' );
-
     $schema_installers = \Metis\Core\Runtime\ModuleSchemaRuntimeBridge::installers();
 
     foreach ( $schema_installers as $label => $installer ) {
         metis_standalone_install_call_schema( $label, $installer, $created );
-    }
-
-    foreach ( [ 'backup_service', 'entity_id_service', 'help_search_store' ] as $label ) {
-        $installer = \Metis\Core\Runtime\ModuleSchemaRuntimeBridge::installer( $label );
-        if ( is_callable( $installer ) ) {
-            metis_standalone_install_call_schema( $label, $installer, $created );
-        }
     }
 
     return $created;
@@ -935,7 +925,7 @@ function metis_standalone_install_ensure_all_schema(): array {
 function metis_standalone_install_config_from_request( array $source ): array {
     $app_key = metis_text_clean( (string) ( $source['app_key'] ?? '' ) );
     if ( $app_key === '' || in_array( strtolower( $app_key ), metis_runtime_insecure_app_key_values(), true ) || strlen( $app_key ) < 32 ) {
-        $app_key = bin2hex( random_bytes( 32 ) );
+        $app_key = metis_runtime_require_app_key( 'installer configuration' );
     }
 
     return [
@@ -954,6 +944,15 @@ function metis_standalone_install_config_from_request( array $source ): array {
         'install_tagline' => metis_text_clean( (string) ( $source['site_tagline'] ?? '' ) ),
         'install_timezone' => metis_text_clean( (string) ( $source['site_timezone'] ?? 'UTC' ) ),
     ];
+}
+
+function metis_standalone_install_form_app_key( array $old ): string {
+    $app_key = trim( (string) ( $old['app_key'] ?? '' ) );
+    if ( $app_key !== '' && ! in_array( strtolower( $app_key ), metis_runtime_insecure_app_key_values(), true ) && strlen( $app_key ) >= 32 ) {
+        return $app_key;
+    }
+
+    return metis_runtime_require_app_key( 'installer branding form' );
 }
 
 function metis_standalone_install_admin_from_request( array $source ): array {
@@ -1069,33 +1068,131 @@ function metis_standalone_install_ensure_first_admin( array $admin ): array {
 
 function metis_standalone_install_schema_steps(): array {
     return [
-        'metis_install_db' => 'Core tables',
+        'metis_install_db' => 'Core-owned tables',
         'metis_audit_ensure_schema' => 'Audit tables',
         'metis_webhook_ensure_schema' => 'Webhook tables',
         'metis_media_ensure_schema' => 'Media tables',
-        'contacts' => 'Contacts module',
-        'people' => 'People module',
-        'forms' => 'Forms module',
-        'newsletter' => 'Newsletter module',
-        'board' => 'Board module',
-        'calendar' => 'Calendar module',
-        'finance' => 'Finance module',
-        'hermes' => 'Hermes module',
-        'website' => 'Website module',
-        'cms' => 'CMS module',
-        'import' => 'Import module',
+        'people' => 'People service tables',
+        'hermes' => 'Hermes service tables',
         'communications_inbound' => 'Communications inbound tables',
-        'grandy_stash' => 'Grandy Stash module',
-        'drive' => 'Drive module',
+        'drive' => 'Drive service tables',
         'recovery' => 'Recovery tables',
-        'backup_service' => 'Backup service tables',
         'entity_id_service' => 'Entity ID tables',
+        'backup_service' => 'Backup service tables',
         'help_search_store' => 'Help search tables',
     ];
 }
 
+function metis_standalone_install_module_registry_snapshot( bool $force_refresh = true ): array {
+    if ( ! function_exists( 'metis_github_update_service' ) ) {
+        return [
+            'status' => 'unavailable',
+            'error' => 'Module store is not available during this install. Finish setup and verify the Metis Modules repository settings before installing modules later.',
+            'modules' => [],
+        ];
+    }
+
+    $registry = (array) metis_github_update_service()->moduleRegistry( $force_refresh );
+    $rows = is_array( $registry['modules'] ?? null ) ? (array) $registry['modules'] : [];
+    $metis_version = class_exists( '\Metis\Core\Version' ) ? (string) \Metis\Core\Version::current() : '';
+    $modules = [];
+
+    foreach ( $rows as $module_id => $row ) {
+        if ( ! is_array( $row ) ) {
+            continue;
+        }
+
+        $module_id = metis_key_clean( (string) $module_id );
+        if ( $module_id === '' ) {
+            continue;
+        }
+
+        $name = trim( (string) ( $row['name'] ?? $row['label'] ?? '' ) );
+        if ( $name === '' ) {
+            $name = ucwords( str_replace( [ '_', '-' ], ' ', $module_id ) );
+        }
+
+        $minimum_metis = trim( (string) ( $row['minimum_metis'] ?? '' ) );
+        $maximum_metis = trim( (string) ( $row['maximum_metis'] ?? '' ) );
+        $requires_newer_metis = $minimum_metis !== '' && $metis_version !== '' && version_compare( $metis_version, $minimum_metis, '<' );
+        $requires_older_metis = $maximum_metis !== '' && $metis_version !== '' && version_compare( $metis_version, $maximum_metis, '>' );
+        $download_url = trim( (string) ( $row['download_url'] ?? '' ) );
+        $available = $download_url !== '' && ! $requires_newer_metis && ! $requires_older_metis;
+
+        $modules[] = [
+            'id' => $module_id,
+            'name' => $name,
+            'description' => trim( (string) ( $row['description'] ?? '' ) ),
+            'latest' => trim( (string) ( $row['latest'] ?? '' ) ),
+            'minimum_metis' => $minimum_metis,
+            'maximum_metis' => $maximum_metis,
+            'release_channel' => trim( (string) ( $row['release_channel'] ?? 'stable' ) ) ?: 'stable',
+            'download_url' => $download_url,
+            'requires_newer_metis' => $requires_newer_metis,
+            'requires_older_metis' => $requires_older_metis,
+            'available' => $available,
+        ];
+    }
+
+    usort( $modules, static fn ( array $left, array $right ): int => strcmp( (string) $left['name'], (string) $right['name'] ) );
+
+    $status = (string) ( $registry['status'] ?? 'unknown' );
+    $error = trim( (string) ( $registry['error'] ?? '' ) );
+    if ( $status !== 'ready' ) {
+        $error = match ( $status ) {
+            'missing' => 'Module store metadata could not be loaded during install. Finish setup and verify the Metis Modules repository name, branch, and published registry.',
+            'unavailable' => 'Module store is temporarily unavailable. Finish setup and retry module installation later from Settings.',
+            'invalid_schema', 'malformed' => 'Module store metadata is invalid. Finish setup and repair the published Metis Modules registry before installing modules.',
+            default => 'Module store is not ready during this install. Finish setup and retry from Settings later.',
+        };
+    }
+
+    return [
+        'status' => $status,
+        'error' => $error,
+        'generated_at' => trim( (string) ( $registry['generated_at'] ?? '' ) ),
+        'modules' => $modules,
+    ];
+}
+
+function metis_standalone_install_selected_module_ids( array $source ): array {
+    $raw = $source['module_ids'] ?? $source['module_ids_json'] ?? [];
+    if ( is_string( $raw ) ) {
+        $decoded = json_decode( $raw, true );
+        $raw = is_array( $decoded ) ? $decoded : [];
+    }
+
+    $selected = [];
+    foreach ( is_array( $raw ) ? $raw : [] as $candidate ) {
+        $module_id = metis_key_clean( (string) $candidate );
+        if ( $module_id !== '' ) {
+            $selected[ $module_id ] = $module_id;
+        }
+    }
+
+    return array_values( $selected );
+}
+
+function metis_standalone_install_module_store_results_message( array $results, int $requested_count ): string {
+    $installed = 0;
+    foreach ( $results as $result ) {
+        if ( is_array( $result ) && ! empty( $result['ok'] ) ) {
+            $installed++;
+        }
+    }
+
+    if ( $requested_count < 1 ) {
+        return 'No optional modules were selected.';
+    }
+
+    if ( $installed === $requested_count ) {
+        return $installed === 1 ? 'Installed 1 optional module.' : sprintf( 'Installed %d optional modules.', $installed );
+    }
+
+    return sprintf( 'Installed %d of %d optional modules.', $installed, $requested_count );
+}
+
 function metis_standalone_install_run_schema_step( string $step ): void {
-    metis_standalone_install_require_module_file( 'drive', 'includes/schema.php' );
     metis_standalone_require_recovery_runtime();
 
     $callbacks = [
@@ -1204,6 +1301,7 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
                 <div class="step" data-step-indicator="branding"><span class="dot">3</span><span>Branding</span></div>
                 <div class="step" data-step-indicator="admin"><span class="dot">4</span><span>Administrator</span></div>
                 <div class="step" data-step-indicator="install"><span class="dot">5</span><span>Install</span></div>
+                <div class="step" data-step-indicator="modules"><span class="dot">6</span><span>Modules</span></div>
             </div>
         </aside>
         <section class="panel">
@@ -1304,7 +1402,7 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
                         </div>
                         <div class="full">
                             <label for="app_key">Application Key</label>
-                            <input id="app_key" name="app_key" value="<?php echo metis_esc_attr( (string) ( $old['app_key'] ?? bin2hex( random_bytes( 24 ) ) ) ); ?>" required>
+                            <input id="app_key" name="app_key" value="<?php echo metis_esc_attr( metis_standalone_install_form_app_key( $old ) ); ?>" required>
                             <div class="help">Used for signed platform tokens and protected runtime operations.</div>
                         </div>
                         <div class="full">
@@ -1358,7 +1456,7 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
                     <div class="section-head">
                         <div>
                             <h2>Install Metis</h2>
-                            <p class="section-copy">The installer will create schema one module at a time, seed platform settings, enable protections, and open the admin portal.</p>
+                            <p class="section-copy">The installer will create the core and built-in service schema, seed platform settings, and prepare the first administrator. After that you can optionally pull modules from the store before the portal opens.</p>
                         </div>
                     </div>
 	                    <div class="actions">
@@ -1369,6 +1467,20 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
                         <div class="progress-bar"><div id="metis-progress-fill" class="progress-fill"></div></div>
                         <div class="progress-meta"><span id="metis-progress-title">Preparing</span><span id="metis-progress-percent">0%</span></div>
                         <div id="metis-progress-detail" class="progress-detail">Waiting to begin.</div>
+                    </div>
+                </section>
+                <section class="section installer-page" data-installer-page="modules">
+                    <div class="section-head">
+                        <div>
+                            <h2>Optional Modules</h2>
+                            <p class="section-copy">Choose any store modules you want installed before Metis opens. Each selected module is downloaded, validated, installed, and allowed to provision its own schema.</p>
+                        </div>
+                    </div>
+                    <div id="metis-module-store-message" class="help">Loading module store options.</div>
+                    <div id="metis-module-store-list" class="checks"></div>
+                    <div class="actions">
+                        <button type="button" class="secondary" id="metis-modules-skip">Skip and Finish</button>
+                        <button type="button" id="metis-modules-install">Install Selected Modules</button>
                     </div>
                 </section>
             </form>
@@ -1390,6 +1502,10 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
 	        const detail = document.getElementById('metis-progress-detail');
 	        const indicators = Array.from(document.querySelectorAll('[data-step-indicator]'));
 	        const pages = Array.from(document.querySelectorAll('[data-installer-page]'));
+        const moduleStoreList = document.getElementById('metis-module-store-list');
+        const moduleStoreMessage = document.getElementById('metis-module-store-message');
+        const modulesInstallButton = document.getElementById('metis-modules-install');
+        const modulesSkipButton = document.getElementById('metis-modules-skip');
 
         function setAlert(message, type) {
             if (!message) {
@@ -1401,6 +1517,49 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
             alertBox.hidden = false;
             alertBox.className = 'section ' + (type === 'error' ? 'error' : 'notice');
             alertBox.textContent = message;
+        }
+
+        function normalizeInstallerError(error, fallback) {
+            if (!error) {
+                return fallback || 'Installer request failed.';
+            }
+
+            if (typeof error === 'string') {
+                return error;
+            }
+
+            if (error instanceof Error) {
+                return normalizeInstallerError(error.message, fallback);
+            }
+
+            if (Array.isArray(error)) {
+                const parts = error
+                    .map(function (item) { return normalizeInstallerError(item, ''); })
+                    .filter(Boolean);
+                return parts.length > 0 ? parts.join(' | ') : (fallback || 'Installer request failed.');
+            }
+
+            if (typeof error === 'object') {
+                if (typeof error.error === 'string' && error.error) {
+                    return error.error;
+                }
+                if (typeof error.message === 'string' && error.message) {
+                    return error.message;
+                }
+                if (typeof error.detail === 'string' && error.detail) {
+                    return error.detail;
+                }
+                if (typeof error.exception === 'string' && error.exception) {
+                    return error.exception;
+                }
+                try {
+                    return JSON.stringify(error);
+                } catch (jsonError) {
+                    return fallback || 'Installer request failed.';
+                }
+            }
+
+            return String(error || fallback || 'Installer request failed.');
         }
 
 	        function activeStep(key) {
@@ -1449,7 +1608,12 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
             });
             const data = await response.json().catch(function () { return {}; });
             if (!response.ok || !data.ok) {
-                throw new Error(data.error || 'Installer request failed.');
+                throw new Error(
+                    normalizeInstallerError(
+                        data && Object.prototype.hasOwnProperty.call(data, 'error') ? data.error : data,
+                        'Installer request failed.'
+                    )
+                );
             }
             return data;
         }
@@ -1484,6 +1648,64 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
             pct.textContent = value + '%';
             title.textContent = heading;
             detail.textContent = message;
+        }
+
+        function renderModuleRegistry(payload) {
+            const modules = Array.isArray(payload && payload.modules) ? payload.modules : [];
+            const generatedAt = payload && payload.generated_at ? payload.generated_at : '';
+            moduleStoreList.innerHTML = '';
+
+            if (payload && payload.error) {
+                moduleStoreMessage.textContent = payload.error;
+                moduleStoreMessage.style.color = '#b91c1c';
+            } else if (modules.length === 0) {
+                moduleStoreMessage.textContent = 'No optional store modules are currently available.';
+                moduleStoreMessage.style.color = '';
+            } else {
+                moduleStoreMessage.textContent = generatedAt ? ('Store catalog refreshed at ' + generatedAt + '.') : 'Select any optional modules you want installed now.';
+                moduleStoreMessage.style.color = '';
+            }
+
+            modules.forEach(function (module) {
+                const row = document.createElement('label');
+                row.className = 'check';
+                const disabled = !module.available;
+                const note = module.requires_newer_metis
+                    ? ('Requires Metis ' + (module.minimum_metis || '') + '+.')
+                    : (module.requires_older_metis
+                        ? ('Supports Metis up to ' + (module.maximum_metis || '') + '.')
+                        : (module.description || ('Latest version ' + (module.latest || '') + '.')));
+                row.innerHTML = ''
+                    + '<span class="badge ' + (disabled ? 'warn' : 'pass') + '">' + (disabled ? 'LOCK' : 'OPT') + '</span>'
+                    + '<span class="check-title"></span>'
+                    + '<span class="check-msg"></span>';
+                const titleNode = row.querySelector('.check-title');
+                const msgNode = row.querySelector('.check-msg');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.name = 'module_ids';
+                checkbox.value = module.id || '';
+                checkbox.disabled = disabled;
+                checkbox.style.marginRight = '12px';
+                titleNode.textContent = (module.name || module.id || '') + (module.latest ? (' (' + module.latest + ')') : '');
+                msgNode.textContent = note;
+                row.insertBefore(checkbox, row.firstChild);
+                moduleStoreList.appendChild(row);
+            });
+
+            modulesInstallButton.disabled = modules.filter(function (module) { return !!module.available; }).length < 1;
+        }
+
+        function selectedModuleIds() {
+            return Array.from(form.querySelectorAll('input[name="module_ids"]:checked')).map(function (field) {
+                return field.value || '';
+            }).filter(Boolean);
+        }
+
+        async function finishInstall() {
+            setProgress(1, 1, 'Opening Metis', 'Writing the install lock and redirecting to the admin portal.');
+            const result = await post('complete');
+            window.location.href = result.redirect || '<?php echo metis_escape_js( metis_home_url( '/admin/' ) ); ?>';
         }
 
         document.getElementById('metis-run-precheck')?.addEventListener('click', function () {
@@ -1580,13 +1802,57 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
                 await post('create_admin');
                 done++;
 
-                setProgress(done, total, 'Finalizing Metis', 'Enabling protections, cleanup, and install lock.');
+                setProgress(done, total, 'Finalizing core install', 'Seeding defaults and preparing optional module installation.');
                 const result = await post('finalize', { schema_created: JSON.stringify(completed) });
                 done++;
-                setProgress(done, total, 'Complete', 'Opening the admin portal.');
-                window.location.href = result.redirect || '<?php echo metis_escape_js( metis_home_url( '/admin/' ) ); ?>';
+                setProgress(done, total, 'Core install complete', 'Optional modules can be installed before the portal opens.');
+                renderModuleRegistry(result.module_registry || {});
+                submitButton.disabled = false;
+                showPage('modules');
             } catch (error) {
                 setAlert(error.message, 'error');
+                submitButton.disabled = false;
+            }
+        });
+
+        modulesInstallButton?.addEventListener('click', async function () {
+            const moduleIds = selectedModuleIds();
+            if (moduleIds.length < 1) {
+                setAlert('Select at least one module, or use Skip and Finish.', 'error');
+                return;
+            }
+
+            setAlert('', '');
+            modulesInstallButton.disabled = true;
+            modulesSkipButton.disabled = true;
+            submitButton.disabled = true;
+
+            try {
+                setProgress(0, moduleIds.length, 'Installing modules', 'Starting optional module installation.');
+                const result = await post('install_modules', { module_ids_json: JSON.stringify(moduleIds) });
+                const installed = Array.isArray(result.results) ? result.results.length : moduleIds.length;
+                setProgress(installed, Math.max(installed, 1), 'Modules installed', result.message || 'Optional modules finished installing.');
+                await finishInstall();
+            } catch (error) {
+                setAlert(error.message, 'error');
+                modulesInstallButton.disabled = false;
+                modulesSkipButton.disabled = false;
+                submitButton.disabled = false;
+            }
+        });
+
+        modulesSkipButton?.addEventListener('click', async function () {
+            setAlert('', '');
+            modulesInstallButton.disabled = true;
+            modulesSkipButton.disabled = true;
+            submitButton.disabled = true;
+
+            try {
+                await finishInstall();
+            } catch (error) {
+                setAlert(error.message, 'error');
+                modulesInstallButton.disabled = false;
+                modulesSkipButton.disabled = false;
                 submitButton.disabled = false;
             }
         });
@@ -1664,6 +1930,50 @@ function metis_standalone_handle_database_setup(): void {
                 metis_standalone_install_complete_defaults();
                 $schema_created = json_decode( (string) ( metis_request_post()['schema_created'] ?? '[]' ), true );
                 Core_Settings_Service::set( 'metis_install_schema_installers', is_array( $schema_created ) ? array_values( array_map( 'strval', $schema_created ) ) : [], false );
+                Core_Settings_Service::set( 'metis_install_first_admin_user_id', (int) $admin_result['id'], false );
+                metis_standalone_install_json( [
+                    'ok' => true,
+                    'module_registry' => metis_standalone_install_module_registry_snapshot( true ),
+                ] );
+            }
+
+            if ( $action === 'install_modules' ) {
+                metis_standalone_install_validate_config_and_admin( $config, $admin, false );
+                metis_standalone_install_boot_database_context( $config );
+                $module_ids = metis_standalone_install_selected_module_ids( metis_request_post() );
+                $results = [];
+                $failures = [];
+
+                foreach ( $module_ids as $module_id ) {
+                    $result = \Metis\Core\Application::has_service( 'module_installer' )
+                        ? \Metis\Core\Application::service( 'module_installer' )->installLatest( $module_id, true )
+                        : [ 'ok' => false, 'message' => 'Module installer is not available.', 'module' => $module_id ];
+                    $results[] = $result;
+                    if ( empty( $result['ok'] ) ) {
+                        $failures[] = trim( (string) ( $result['message'] ?? sprintf( 'Module [%s] failed to install.', $module_id ) ) );
+                    }
+                }
+
+                if ( $failures !== [] ) {
+                    metis_standalone_install_json( [
+                        'ok' => false,
+                        'error' => implode( ' | ', array_values( array_unique( $failures ) ) ),
+                        'results' => $results,
+                    ], 422 );
+                }
+
+                metis_standalone_install_json( [
+                    'ok' => true,
+                    'message' => metis_standalone_install_module_store_results_message( $results, count( $module_ids ) ),
+                    'results' => $results,
+                ] );
+            }
+
+            if ( $action === 'complete' ) {
+                metis_standalone_install_validate_config_and_admin( $config, $admin, false );
+                metis_standalone_install_boot_database_context( $config );
+                $admin_result = metis_standalone_install_ensure_first_admin( $admin );
+                metis_standalone_install_complete_defaults();
                 Core_Settings_Service::set( 'metis_install_first_admin_user_id', (int) $admin_result['id'], false );
                 metis_standalone_mark_installed();
                 metis_standalone_install_ensure_permissions();

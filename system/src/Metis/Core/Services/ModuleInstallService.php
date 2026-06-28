@@ -8,6 +8,7 @@ use Metis\Core\Cache\CacheService;
 use Metis\Core\Modules\ModuleValidator;
 use Metis\Core\ModulePathRegistry;
 use Metis\Core\Recovery\RecoveryVerifier;
+use Metis\Core\Runtime\RuntimeModuleEntryResolver;
 use Metis\Core\Version;
 
 final class ModuleInstallService {
@@ -164,6 +165,11 @@ final class ModuleInstallService {
                 'module_name' => $moduleName,
             ]);
             $this->refreshRuntimeState();
+            $this->emitProgress($progressReporter, 'ensure_schema', sprintf('Ensuring schema for %s.', $moduleName), 82, [
+                'module' => $moduleId,
+                'module_name' => $moduleName,
+            ]);
+            $schemaResult = $this->runInstalledModuleSchema($moduleId);
             $this->emitProgress($progressReporter, 'refresh_protection', sprintf('Refreshing integrity and recovery state for %s.', $moduleName), 86, [
                 'module' => $moduleId,
                 'module_name' => $moduleName,
@@ -196,10 +202,12 @@ final class ModuleInstallService {
                 'minimum_metis' => $minimumMetis,
                 'download_url' => $downloadUrl,
                 'module_status' => $verification['module_status'],
+                'schema' => $schemaResult,
                 'protection_refresh' => $protectionRefresh,
                 'verification' => $verification,
                 'postflight_steps' => [
                     'refresh_runtime',
+                    'ensure_schema',
                     'refresh_protection',
                     'refresh_updates',
                     'verify_install',
@@ -416,6 +424,37 @@ final class ModuleInstallService {
         }
 
         CacheService::rebuildSystemCaches();
+    }
+
+    private function runInstalledModuleSchema(string $moduleId): array {
+        $moduleClass = RuntimeModuleEntryResolver::resolve($moduleId);
+        if ($moduleClass === null) {
+            throw new \RuntimeException(sprintf('Installed module [%s] could not resolve a runtime entry class for schema setup.', $moduleId));
+        }
+
+        if (\method_exists($moduleClass, 'ensureRuntimeSchema')) {
+            $moduleClass::ensureRuntimeSchema();
+            return [
+                'status' => 'applied',
+                'method' => 'ensureRuntimeSchema',
+                'module_class' => $moduleClass,
+            ];
+        }
+
+        if (\method_exists($moduleClass, 'ensureSchema')) {
+            $moduleClass::ensureSchema();
+            return [
+                'status' => 'applied',
+                'method' => 'ensureSchema',
+                'module_class' => $moduleClass,
+            ];
+        }
+
+        return [
+            'status' => 'skipped',
+            'method' => '',
+            'module_class' => $moduleClass,
+        ];
     }
 
     private function refreshProtectionState(string $reason): array {

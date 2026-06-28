@@ -4,7 +4,7 @@ return [
         'owner' => 'jvitarius85',
         'repo' => 'metis',
         'metadata_owner' => 'jvitarius85',
-        'metadata_repo' => 'metis-private',
+        'metadata_repo' => 'metis-modules',
         'ref' => 'stable',
         'metadata_ref' => 'main',
         'token' => '',

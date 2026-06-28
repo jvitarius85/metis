@@ -43,10 +43,14 @@ $hermesBlockedFixture = $read( 'tests/_support/hermes_blocked_operations_fixture
 $governance = require $root . '/config/governance.php';
 
 $assert( str_contains( $bootstrap, 'function metis_runtime_require_app_key' ), 'Runtime must expose a central app-key requirement helper.' );
+$assert( str_contains( $bootstrap, 'function metis_runtime_request_is_install_route' ), 'Runtime must expose an install-route detector for installer security flow.' );
 $assert( str_contains( $bootstrap, "metis_runtime_require_app_key( 'nonce generation' )" ), 'Nonce generation must use the central app-key helper.' );
 $assert( str_contains( $bootstrap, "metis_runtime_require_app_key( 'nonce verification' )" ), 'Nonce verification must use the central app-key helper.' );
+$assert( str_contains( $bootstrap, 'if ( metis_runtime_request_is_install_route() ) {' ), 'Installer context must remain active for install-route requests before install.lock exists.' );
 $assert( str_contains( $runtimeBootstrap, 'missing a strong app_key after installation' ), 'Installed runtime must fail closed when app_key is missing or insecure.' );
 $assert( str_contains( $runtimeBootstrap, 'bin2hex( random_bytes( 32 ) )' ), 'Installer path must still generate an explicit app key.' );
+$assert( str_contains( $runtimeBootstrap, "metis_runtime_require_app_key( 'installer configuration' )" ), 'Installer config parsing must fall back to the central installer app-key helper.' );
+$assert( str_contains( $runtimeBootstrap, "metis_runtime_require_app_key( 'installer branding form' )" ), 'Installer branding form must prefill a strong app key from the central helper.' );
 
 $assert( str_contains( $kernel, "storage/public-media" ), 'Kernel must know the public media storage root.' );
 $assert( str_contains( $kernel, "storage/protected-media" ), 'Kernel must know the protected media storage root.' );

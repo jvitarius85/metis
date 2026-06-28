@@ -8,7 +8,8 @@ normal install.
 - PHP 8.1 or newer
 - MariaDB or MySQL with InnoDB
 - Apache with rewrite support, or Nginx with equivalent rewrite/protection rules
-- Writable `storage/` and `system/config/`
+- Writable `storage/`, `storage/runtime/cache/`, `storage/public-media/`,
+  `storage/protected-media/`, `storage/private-records/`, and `system/config/`
 - PHP extensions commonly required by Metis: `mysqli`, `json`, `mbstring`,
   `openssl`, `pdo`, `curl`, `zip`
 - PHP process functions enabled: `proc_open`, `proc_close`,
@@ -47,9 +48,11 @@ Baseline hosting recommendation:
    - enter basic branding
    - create the first administrator
    - begin installation
+   - optionally select store modules to install before first login
 
-5. The installer creates configuration, installs core and module tables, enables
-   protections, writes the install lock, and redirects to `/admin/`.
+5. The installer creates configuration, installs the core and built-in service
+   tables, enables protections, optionally installs selected store modules,
+   writes the install lock, and redirects to `/admin/`.
 
 ## Apache and Nginx
 

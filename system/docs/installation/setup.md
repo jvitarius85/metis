@@ -4,7 +4,9 @@
 
 - PHP 8.1+ with JSON, mbstring, OpenSSL, PDO/MySQLi, and file upload support.
 - MariaDB or MySQL compatible with the schema created through `dbDelta` installers.
-- Writable access for logs and storage paths used by Metis.
+- Writable access for `storage/`, `storage/runtime/`, `storage/runtime/cache/`,
+  `storage/public-media/`, `storage/protected-media/`,
+  `storage/private-records/`, and `system/config/`.
 
 ## Setup
 
@@ -12,6 +14,8 @@
 2. Configure `config/database.php` and environment-specific settings before first boot.
 3. Ensure `src/Metis/Core/DatabaseRuntime.php` runs so core tables and module schema managers can create their tables.
 4. Open the portal, authenticate, and complete initial settings for branding, API keys, workspace integration, help, and scheduling.
+
+Store-managed modules now own their own schema. The standalone installer creates only core-owned and built-in service tables; after the core install finishes it can optionally pull modules from the store, and each selected module must ensure its own tables when it boots or is installed.
 
 ## First Boot
 

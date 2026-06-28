@@ -37,8 +37,9 @@ $installBody = $installStart !== false && $installEnd !== false
 $assert(
     str_contains( $installBody, "\$stagedDestination = \$workspace . '/runtime-module';" )
     && str_contains( $installBody, "\$this->verifyInstalledRuntimeContract(\$stagedDestination, \$manifest, \$moduleId);" )
-    && str_contains( $installBody, '@rename($stagedDestination, $destination)' ),
-    'Module install must stage the extracted bundle and promote it into the runtime root only after staged validation succeeds.'
+    && str_contains( $installBody, '@rename($stagedDestination, $destination)' )
+    && str_contains( $installBody, '$schemaResult = $this->runInstalledModuleSchema($moduleId);' ),
+    'Module install must stage the extracted bundle, promote it into the runtime root, and then run the installed module schema entrypoint.'
 );
 
 $assert(
@@ -53,6 +54,14 @@ $assert(
     && str_contains( $moduleInstall, "missing entry file [%s] after staging." )
     && str_contains( $moduleInstall, "missing bootstrap file [%s] after staging." ),
     'Module install must verify staged runtime contract files before swapping the bundle into system/modules.'
+);
+
+$assert(
+    str_contains( $moduleInstall, 'private function runInstalledModuleSchema(string $moduleId): array' )
+    && str_contains( $moduleInstall, "RuntimeModuleEntryResolver::resolve(\$moduleId)" )
+    && str_contains( $moduleInstall, "if (\\method_exists(\$moduleClass, 'ensureRuntimeSchema'))" )
+    && str_contains( $moduleInstall, "if (\\method_exists(\$moduleClass, 'ensureSchema'))" ),
+    'Module install must resolve the installed module entry class and prefer ensureRuntimeSchema/ensureSchema ownership hooks.'
 );
 
 $assert(
