@@ -6563,8 +6563,9 @@
             if (featuredImageCaptionEl) featuredImageCaptionEl.value = s(data.featured_image_caption || '');
             if (excerptEl) excerptEl.value = s(data.excerpt || '');
             if (authorSelectEl) {
-                authorSelectEl.innerHTML = authorOptionsHtml(data.author_id || '', data.author_name || '');
-                authorSelectEl.value = s(data.author_id || '');
+                var authorSelectedValue = s(data.author_person_id || data.author_id || '');
+                authorSelectEl.innerHTML = authorOptionsHtml(authorSelectedValue, data.author_name || '');
+                authorSelectEl.value = authorSelectedValue;
             }
             if (authorEl) authorEl.textContent = s(data.author_name || '') || '—';
             if (lastEditEl) lastEditEl.textContent = formatLastEditValue(s(data.last_edit || data.updated_at || ''));
@@ -6608,7 +6609,7 @@
             }
             var authorEl = document.getElementById('metis-v2-author-id');
             if (authorEl) {
-                authorEl.innerHTML = authorOptionsHtml(state.entity && state.entity.author_id || '', state.entity && state.entity.author_name || '');
+                authorEl.innerHTML = authorOptionsHtml(state.entity && (state.entity.author_person_id || state.entity.author_id) || '', state.entity && state.entity.author_name || '');
             }
             var categoryHost = document.getElementById('metis-v2-category-chip-host');
             if (categoryHost) {

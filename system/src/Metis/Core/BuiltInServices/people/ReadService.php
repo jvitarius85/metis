@@ -35,108 +35,11 @@ final class ReadService {
     }
 
     public static function peopleListSnapshot(int $page, int $per_page): array {
-        $db = \metis_db();
-        $people_table = \Metis_Tables::get('people');
-        $roles_table = \Metis_Tables::get('people_roles');
-        $user_roles_table = \Metis_Tables::get('people_user_roles');
-
-        $page = max(1, $page);
-        $per_page = max(1, $per_page);
-        $total_people = (int) $db->scalar("SELECT COUNT(*) FROM {$people_table}");
-        $total_pages = max(1, (int) ceil($total_people / $per_page));
-        if ($page > $total_pages) {
-            $page = $total_pages;
-        }
-        $offset = max(0, ($page - 1) * $per_page);
-
-        $people_rows = $db->fetchAll(
-            "SELECT id, pid, auth_provider, email, first_name, last_name, display_name, linked_donor_id, is_workspace_user, workspace_email, stripe_role
-             FROM {$people_table}
-             ORDER BY display_name ASC, email ASC
-             LIMIT %d OFFSET %d",
-            [ $per_page, $offset ]
-        ) ?: [];
-        $roles_rows = $db->fetchAll("SELECT * FROM {$roles_table} WHERE role_domain = 'metis' ORDER BY role_name ASC") ?: [];
-
-        $role_by_id = [];
-        $role_by_key = [];
-        foreach ($roles_rows as $role_row) {
-            $role_id = (int) ($role_row['id'] ?? 0);
-            if ($role_id < 1) {
-                continue;
-            }
-            $role_by_id[$role_id] = $role_row;
-            $role_by_key[(string) ($role_row['role_key'] ?? '')] = $role_row;
-        }
-
-        $person_ids = array_values(array_filter(array_map(static function (array $row): int {
-            return (int) ($row['id'] ?? 0);
-        }, $people_rows), static function (int $id): bool {
-            return $id > 0;
-        }));
-
-        $assign_rows = [];
-        if ($person_ids !== []) {
-            $id_list = implode(',', array_map('intval', $person_ids));
-            $assign_rows = $db->fetchAll(
-                "SELECT ur.person_id, ur.role_id FROM {$user_roles_table} ur WHERE ur.person_id IN ({$id_list})"
-            ) ?: [];
-        }
-
-        $role_ids_by_person = [];
-        foreach ($assign_rows as $assign_row) {
-            $person_id = (int) ($assign_row['person_id'] ?? 0);
-            $role_id = (int) ($assign_row['role_id'] ?? 0);
-            if ($person_id < 1 || $role_id < 1) {
-                continue;
-            }
-            if (!isset($role_ids_by_person[$person_id])) {
-                $role_ids_by_person[$person_id] = [];
-            }
-            $role_ids_by_person[$person_id][] = $role_id;
-        }
-
-        $people = [];
-        foreach ($people_rows as $person_row) {
-            $person_id = (int) ($person_row['id'] ?? 0);
-            if ($person_id < 1) {
-                continue;
-            }
-
-            $role_keys = [];
-            foreach ((array) ($role_ids_by_person[$person_id] ?? []) as $role_id) {
-                if (!empty($role_by_id[$role_id]['role_key'])) {
-                    $role_keys[] = (string) $role_by_id[$role_id]['role_key'];
-                }
-            }
-
-            $full_name = trim((string) ($person_row['first_name'] ?? '') . ' ' . (string) ($person_row['last_name'] ?? ''));
-            if ($full_name === '') {
-                $full_name = (string) ($person_row['display_name'] ?? '');
-            }
-
-            $people[] = [
-                'id' => $person_id,
-                'pid' => (string) ($person_row['pid'] ?? ''),
-                'auth_provider' => (string) ($person_row['auth_provider'] ?? 'metis'),
-                'email' => (string) ($person_row['email'] ?? ''),
-                'full_name' => $full_name,
-                'linked_donor_id' => (string) ($person_row['linked_donor_id'] ?? ''),
-                'is_workspace_user' => !empty($person_row['is_workspace_user']) ? 1 : 0,
-                'workspace_email' => (string) ($person_row['workspace_email'] ?? ''),
-                'stripe_role' => (string) ($person_row['stripe_role'] ?? ''),
-                'roles' => $role_keys,
-            ];
-        }
-
-        return [
+        return PeopleDirectoryService::find([
             'page' => $page,
             'per_page' => $per_page,
-            'total_people' => $total_people,
-            'total_pages' => $total_pages,
-            'people' => $people,
-            'role_by_key' => $role_by_key,
-        ];
+            'sort' => 'display_name_asc',
+        ]);
     }
 
     public static function rolesListSnapshot(): array {
