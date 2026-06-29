@@ -18,6 +18,7 @@ Structured website management for pages, posts, categories, menus, redirects, te
 - `/website/templates` -> `templates.php`
 - `/website/theme` -> `theme.php`
 - `/website/import` -> `import.php`
+- Public SEO routes: `/sitemap.xml`, `/robots.txt`, `/v1/website/theme.css`
 
 ## UI Components
 
@@ -37,7 +38,9 @@ Structured website management for pages, posts, categories, menus, redirects, te
 
 ## APIs
 
-- No dedicated AJAX controller was discovered for this module.
+- Admin AJAX controller: `ajax/website.ajax.php`
+- Public route handlers: `routes/routes.php`
+- Shared SEO service: `modules/website/Services/SeoService.php`
 
 ## Database Tables Used
 
