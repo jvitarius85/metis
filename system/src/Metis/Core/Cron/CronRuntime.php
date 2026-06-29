@@ -127,6 +127,7 @@ final class Metis_Cron_Manager {
                     return [
                         'status' => ! empty( $result['updates_available'] ) ? 'updates_available' : 'current',
                         'message' => 'Core and module updates checked.',
+                        'repositories' => (array) ( $result['repositories'] ?? [] ),
                         'core' => (array) ( $result['core'] ?? [] ),
                         'modules' => (array) ( $result['modules'] ?? [] ),
                     ];

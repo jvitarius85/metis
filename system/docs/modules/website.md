@@ -42,6 +42,13 @@ Structured website management for pages, posts, categories, menus, redirects, te
 - Public route handlers: `routes/routes.php`
 - Shared SEO service: `modules/website/Services/SeoService.php`
 
+## SEO Guarantees
+
+- Shared SEO metadata comes from `SeoService`, not per-page inline templates.
+- Public website routes expose `/sitemap.xml` and `/robots.txt`.
+- Placeholder summaries such as `testing`, `todo`, or `sample` are replaced with fallback descriptions before render.
+- Public rendering is hardened to keep one primary `H1` per page and normalize empty emphasis tags from rich text blocks.
+
 ## Database Tables Used
 
 - `website_banners` (`metis_website_banners`)

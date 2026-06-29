@@ -36,6 +36,19 @@ final class GitHubUpdateService {
             CacheService::forget($cacheKey);
         }
 
+        $manifestLatest = $this->preferredCoreReleaseFromManifest($forceRefresh);
+        if (is_array($manifestLatest)) {
+            CacheService::set($cacheKey, $manifestLatest, self::CACHE_TTL);
+            $normalized = $this->normalizePayload($currentVersion, $manifestLatest);
+            $this->logger->activity('github_update_checked', [
+                'current_version' => $normalized['current_version'],
+                'latest_version' => $normalized['latest_version'],
+                'update_available' => $normalized['update_available'],
+                'source' => 'metadata_manifest',
+            ]);
+            return $normalized;
+        }
+
         $payload = $this->github->latestRelease(
             (string) $settings['owner'],
             (string) $settings['repo'],
@@ -281,6 +294,21 @@ final class GitHubUpdateService {
         throw new \RuntimeException('Module archive download URL is not supported.');
     }
 
+    public function pollConfiguredRepositories(bool $forceRefresh = false): array {
+        $settings = $this->repositoryConfig();
+        $checkedAt = gmdate('c');
+
+        $core = $this->coreRepositoryPollSnapshot($settings, $forceRefresh);
+        $metadata = $this->metadataRepositoryPollSnapshot($settings, $forceRefresh);
+
+        return [
+            'checked_at' => $checkedAt,
+            'ok' => !empty($core['ok']) && !empty($metadata['ok']),
+            'core' => $core,
+            'metadata' => $metadata,
+        ];
+    }
+
     private function repositoryConfig(): array {
         $fileConfig = $this->config->loadFile('config/update.php', []);
         $currentVersion = (string) ($fileConfig['current_version'] ?? '');
@@ -314,8 +342,10 @@ final class GitHubUpdateService {
         return [
             'owner' => $owner,
             'repo' => $repo,
+            'repo_label' => $repo,
             'metadata_owner' => $metadataOwner,
             'metadata_repo' => $metadataRepo,
+            'metadata_repo_label' => $metadataRepo,
             'ref' => $this->repositoryRef($fileConfig),
             'metadata_ref' => $this->repositoryMetadataRef($fileConfig),
             'token' => $this->resolveToken($fileConfig),
@@ -489,6 +519,107 @@ final class GitHubUpdateService {
         return $appKey;
     }
 
+    private function coreRepositoryPollSnapshot(array $settings, bool $forceRefresh): array {
+        $owner = trim((string) ($settings['owner'] ?? ''));
+        $repo = trim((string) ($settings['repo'] ?? ''));
+        $ref = trim((string) ($settings['ref'] ?? ''));
+        $snapshot = [
+            'repository' => $repo,
+            'owner' => $owner,
+            'repo' => $repo,
+            'ref' => $ref,
+            'status' => 'unconfigured',
+            'ok' => false,
+            'release_status' => 'unavailable',
+            'tag_status' => 'unavailable',
+            'latest_version' => '',
+            'latest_tag' => '',
+            'release_count' => 0,
+            'error' => '',
+        ];
+
+        if ($owner === '' || $repo === '') {
+            $snapshot['error'] = 'Core GitHub repository settings are not configured.';
+            return $snapshot;
+        }
+
+        try {
+            $release = $this->checkForUpdates($forceRefresh);
+            $snapshot['release_status'] = 'ready';
+            $snapshot['latest_version'] = trim((string) ($release['latest_version'] ?? ''));
+            $snapshot['latest_tag'] = trim((string) ($release['tag_name'] ?? ''));
+        } catch (\Throwable $exception) {
+            $snapshot['release_status'] = 'failed';
+            $snapshot['error'] = $exception->getMessage();
+        }
+
+        try {
+            $tags = $this->semanticTagReleases($forceRefresh);
+            $snapshot['tag_status'] = 'ready';
+            $snapshot['release_count'] = count($tags);
+            if ($snapshot['latest_tag'] === '' && isset($tags[0]['tag'])) {
+                $snapshot['latest_tag'] = trim((string) $tags[0]['tag']);
+            }
+        } catch (\Throwable $exception) {
+            $snapshot['tag_status'] = 'failed';
+            if ($snapshot['error'] === '') {
+                $snapshot['error'] = $exception->getMessage();
+            }
+        }
+
+        $snapshot['ok'] = $snapshot['release_status'] === 'ready' || $snapshot['tag_status'] === 'ready';
+        $snapshot['status'] = $snapshot['ok'] ? 'ready' : 'failed';
+        return $snapshot;
+    }
+
+    private function metadataRepositoryPollSnapshot(array $settings, bool $forceRefresh): array {
+        $owner = trim((string) ($settings['metadata_owner'] ?? $settings['owner'] ?? ''));
+        $repo = trim((string) ($settings['metadata_repo'] ?? $settings['repo'] ?? ''));
+        $ref = trim((string) ($settings['metadata_ref'] ?? $settings['ref'] ?? ''));
+        $snapshot = [
+            'repository' => $repo,
+            'owner' => $owner,
+            'repo' => $repo,
+            'ref' => $ref,
+            'status' => 'unconfigured',
+            'ok' => false,
+            'registry_status' => 'unavailable',
+            'manifest_status' => 'unavailable',
+            'module_count' => 0,
+            'release_count' => 0,
+            'generated_at' => '',
+            'error' => '',
+        ];
+
+        if ($owner === '' || $repo === '') {
+            $snapshot['error'] = 'Module metadata GitHub repository settings are not configured.';
+            return $snapshot;
+        }
+
+        $registry = $this->moduleRegistry($forceRefresh);
+        $snapshot['registry_status'] = trim((string) ($registry['status'] ?? 'unavailable'));
+        $snapshot['module_count'] = count((array) ($registry['modules'] ?? []));
+        $snapshot['generated_at'] = trim((string) ($registry['generated_at'] ?? ''));
+        if ($snapshot['registry_status'] !== 'ready') {
+            $snapshot['error'] = trim((string) ($registry['error'] ?? ''));
+        }
+
+        try {
+            $manifest = $this->manifestReleases($forceRefresh);
+            $snapshot['manifest_status'] = $manifest !== [] ? 'ready' : 'empty';
+            $snapshot['release_count'] = count($manifest);
+        } catch (\Throwable $exception) {
+            $snapshot['manifest_status'] = 'failed';
+            if ($snapshot['error'] === '') {
+                $snapshot['error'] = $exception->getMessage();
+            }
+        }
+
+        $snapshot['ok'] = $snapshot['registry_status'] === 'ready' || $snapshot['manifest_status'] === 'ready';
+        $snapshot['status'] = $snapshot['ok'] ? 'ready' : 'failed';
+        return $snapshot;
+    }
+
     private function normalizePayload(string $currentVersion, array $payload): array {
         $latestVersion = ltrim((string) ($payload['tag_name'] ?? ''), 'v');
 
@@ -502,6 +633,54 @@ final class GitHubUpdateService {
             'name' => (string) ($payload['name'] ?? ''),
             'tag_name' => (string) ($payload['tag_name'] ?? ''),
         ];
+    }
+
+    private function preferredCoreReleaseFromManifest(bool $forceRefresh): ?array {
+        $releases = $this->manifestReleases($forceRefresh);
+        if (!is_array($releases) || $releases === []) {
+            return null;
+        }
+
+        $latest = $releases[0] ?? null;
+        if (!is_array($latest)) {
+            return null;
+        }
+
+        $tag = trim((string) ($latest['tag'] ?? ''));
+        $version = trim((string) ($latest['version'] ?? ''));
+        if ($tag === '' || $version === '') {
+            return null;
+        }
+
+        $settings = $this->repositoryConfig();
+        return [
+            'tag_name' => $tag,
+            'name' => (string) ($latest['name'] ?? $tag),
+            'body' => (string) ($latest['notes'] ?? $latest['body'] ?? ''),
+            'published_at' => (string) ($latest['published_at'] ?? $latest['released_at'] ?? ''),
+            'zipball_url' => $this->coreRepositoryZipballUrl(
+                (string) ($settings['owner'] ?? ''),
+                (string) ($settings['repo'] ?? ''),
+                $tag
+            ),
+            'source' => 'metadata_manifest',
+        ];
+    }
+
+    private function coreRepositoryZipballUrl(string $owner, string $repo, string $tag): string {
+        $owner = trim($owner);
+        $repo = trim($repo);
+        $tag = trim($tag);
+        if ($owner === '' || $repo === '' || $tag === '') {
+            return '';
+        }
+
+        return sprintf(
+            'https://codeload.github.com/%s/%s/zip/refs/tags/%s',
+            rawurlencode($owner),
+            rawurlencode($repo),
+            rawurlencode($tag)
+        );
     }
 
     private function normalizeModuleCatalog(array $payload): array {

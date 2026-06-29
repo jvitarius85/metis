@@ -43,6 +43,7 @@ final class UpdateService {
 
     public function refreshUpdateState(bool $forceRefresh = false, string $trigger = 'manual'): array {
         $checkedAt = gmdate('c');
+        $repositories = $this->githubUpdates->pollConfiguredRepositories($forceRefresh);
         $core = \function_exists('metis_release_check_for_updates')
             ? \metis_release_check_for_updates($forceRefresh, $trigger)
             : ( Application::has_service('release')
@@ -72,6 +73,7 @@ final class UpdateService {
 
         return [
             'checked_at' => $checkedAt,
+            'repositories' => $repositories,
             'core' => $core,
             'modules' => $modules,
             'updates_available' => !empty($core['update_available']) || !empty($modules['updates_available']),

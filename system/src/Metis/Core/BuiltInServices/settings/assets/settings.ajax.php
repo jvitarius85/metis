@@ -929,6 +929,7 @@ metis_ajax_register_handler( 'metis_release_check_updates', function () {
 
     metis_runtime_send_json_success( [
         'message' => 'Core and module update metadata refreshed.',
+        'repository_poll_status' => (array) ( $summary['repositories'] ?? [] ),
         'release_status' => (array) ( $summary['core'] ?? [] ),
         'module_update_status' => (array) ( $summary['modules'] ?? [] ),
         'module_registry' => $module_registry,
