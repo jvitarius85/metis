@@ -22,6 +22,7 @@ This scaffold provides the first-pass Metis update server implementation:
   - `bootstrap.php` shared app bootstrap
 - `cli/`
   - `install.php` writes config, creates keys, and provisions schema
+  - `trigger-cron.php` signs and dispatches cron triggers to registered installations
   - `install-auth-helper.php` compiles and installs the PAM auth helper
   - `admin-map-system-user.php` maps an admin account to a shell username
   - `admin-link.php` mints a one-time browser login link for a mapped shell user
@@ -194,3 +195,25 @@ gh auth login
 ```
 
 The GitHub release action uploads the already-signed package archive produced by the update server, so the GitHub asset remains the same signed artifact that Metis installs.
+
+## Installation Cron Trigger
+
+The update server can act as the minute-based scheduler for registered Metis installations. It signs each cron request with the update server private key and targets the installation's public `/e/cj` endpoint while binding the signature to Metis's canonical `/api/cron` route.
+
+Trigger every active installation once:
+
+```bash
+php cli/trigger-cron.php
+```
+
+Trigger one installation by UUID:
+
+```bash
+php cli/trigger-cron.php --installation-id=<installation_uuid>
+```
+
+Suggested update-server crontab:
+
+```cron
+* * * * * /usr/bin/php8.4 /var/www/update.vitarius.org/cli/trigger-cron.php >/dev/null 2>&1
+```

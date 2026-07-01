@@ -22,7 +22,7 @@ $finance_schedule_nonce = function_exists( 'metis_runtime_create_nonce' )
     : '';
 ?>
 <h1 class="metis-page-title"><?php echo metis_escape_html( metis_current_module_view_title( 'Settings' ) ); ?></h1>
-<p class="metis-subtitle">Manage the Cloudflare Worker scheduler endpoint and shared secret.</p>
+<p class="metis-subtitle">Manage the scheduler endpoint, native server cron installer, and shared secret.</p>
 <?php metis_settings_render_messages( $saved, $errors ); ?>
 <?php metis_settings_render_section_nav( 'scheduler' ); ?>
 <div class="metis-settings-card" data-scheduler-live-root="1">
@@ -99,6 +99,52 @@ $finance_schedule_nonce = function_exists( 'metis_runtime_create_nonce' )
             <?php endif; ?>
         </div>
     </div>
+
+    <div class="metis-settings-card">
+        <div class="metis-settings-header">
+            <h2>Server Cron Installer</h2>
+            <span class="metis-settings-status <?php echo ! empty( $server_cron_installer_status['installed'] ) ? 'is-ok' : 'is-missing'; ?>">
+                <?php echo ! empty( $server_cron_installer_status['installed'] ) ? 'Installed' : 'Not Installed'; ?>
+            </span>
+        </div>
+        <div class="metis-settings-body">
+            <?php if ( ! empty( $server_cron_installer_status['error'] ) ) : ?>
+                <p class="metis-help" style="color:#b91c1c;"><?php echo metis_escape_html( (string) $server_cron_installer_status['error'] ); ?></p>
+            <?php else : ?>
+                <p class="metis-help">Install a native one-minute server crontab entry that runs Metis internally via CLI instead of calling the public HTTP endpoint.</p>
+            <?php endif; ?>
+            <div class="metis-field">
+                <label>Schedule</label>
+                <div class="metis-shortcode-wrap">
+                    <code class="metis-shortcode" id="metis-server-cron-schedule"><?php echo metis_escape_html( (string) ( $server_cron_installer_status['schedule'] ?? '* * * * *' ) ); ?></code>
+                </div>
+            </div>
+            <div class="metis-field">
+                <label>Installed Command</label>
+                <div class="metis-shortcode-wrap">
+                    <code class="metis-shortcode" id="metis-server-cron-command"><?php echo metis_escape_html( (string) ( $server_cron_installer_status['command'] ?? '' ) ); ?></code>
+                    <button type="button" class="metis-btn metis-btn-xs metis-btn-ghost" data-copy-target="metis-server-cron-command">Copy</button>
+                </div>
+                <p class="metis-help">This uses the local PHP binary and the internal Metis runner script, so it does not pass through Cloudflare or nginx path filters.</p>
+            </div>
+            <div class="metis-field">
+                <label>Runner Script</label>
+                <div class="metis-shortcode-wrap">
+                    <code class="metis-shortcode"><?php echo metis_escape_html( (string) ( $server_cron_installer_status['runner_path'] ?? '' ) ); ?></code>
+                </div>
+            </div>
+            <?php if ( $is_system_admin ) : ?>
+                <div class="metis-settings-actions" style="justify-content:flex-start;">
+                    <button type="submit" class="metis-btn" name="metis_install_server_cron" value="1">Install Server Cron</button>
+                    <?php if ( ! empty( $server_cron_installer_status['installed'] ) ) : ?>
+                        <button type="submit" class="metis-btn metis-btn-ghost" name="metis_remove_server_cron" value="1">Remove Server Cron</button>
+                    <?php endif; ?>
+                </div>
+            <?php else : ?>
+                <p class="metis-help">Only system admins can install or remove the native server crontab entry.</p>
+            <?php endif; ?>
+        </div>
+    </div>
     <?php if ( $is_system_admin ) : ?>
         <div class="metis-settings-actions">
             <button type="submit" class="metis-btn">Save Scheduler Secret</button>
@@ -156,29 +202,36 @@ function resolveCronUrl(originUrl) {
   const origin = new URL(originUrl);
   const path = origin.pathname.replace(/\/+$/, "");
 
-  if (path === "/api/system/cron" || path.endsWith("/api/system/cron")) {
+  if (path === "/e/cj" || path.endsWith("/e/cj")) {
     origin.pathname = path;
+    origin.search = "";
+    origin.hash = "";
+    return origin;
+  }
+
+  if (path === "/api/cron" || path.endsWith("/api/cron")) {
+    origin.pathname = "/e/cj";
     origin.search = "";
     origin.hash = "";
     return origin;
   }
 
   if (path === "/system/cron" || path.endsWith("/system/cron")) {
-    origin.pathname = path;
+    origin.pathname = "/e/cj";
     origin.search = "";
     origin.hash = "";
     return origin;
   }
 
   if (path === "/system/cron.php" || path.endsWith("/system/cron.php")) {
-    origin.pathname = path.slice(0, -4);
+    origin.pathname = "/e/cj";
     origin.search = "";
     origin.hash = "";
     return origin;
   }
 
   const basePath = path === "" ? "/" : path + "/";
-  return new URL("api/system/cron", origin.origin + basePath);
+  return new URL("e/cj", origin.origin + basePath);
 }
 JS
 ); ?></pre>

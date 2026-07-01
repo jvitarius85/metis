@@ -57,17 +57,31 @@ $assert( $ajax['request_uri'] === '/api/ajax?action=metis_example', 'Legacy /sys
 $assert( $ajax['path_info'] === '/api/ajax', 'Legacy /system/ajax must normalize PATH_INFO to the canonical AJAX endpoint.' );
 $assert( (int) $ajax['ajax'] === 1, 'Legacy /system/ajax must seed the AJAX query var for compatibility.' );
 
+$external_ajax = $normalize( '/e/ac', 'action=metis_example' );
+$assert( $external_ajax['request_uri'] === '/api/ajax?action=metis_example', 'External /e/ac must normalize to the canonical AJAX endpoint and preserve query strings.' );
+$assert( $external_ajax['path_info'] === '/api/ajax', 'External /e/ac must normalize PATH_INFO to the canonical AJAX endpoint.' );
+$assert( (int) $external_ajax['ajax'] === 1, 'External /e/ac must seed the AJAX query var for compatibility.' );
+
 $cron = $normalize( '/system/cron' );
-$assert( $cron['request_uri'] === '/api/system/cron', 'Legacy /system/cron must normalize to the canonical API cron endpoint.' );
-$assert( $cron['redirect_url'] === '/api/system/cron', 'Legacy /system/cron must normalize redirect metadata to the canonical API cron endpoint.' );
+$assert( $cron['request_uri'] === '/api/cron', 'Legacy /system/cron must normalize to the canonical API cron endpoint.' );
+$assert( $cron['redirect_url'] === '/api/cron', 'Legacy /system/cron must normalize redirect metadata to the canonical API cron endpoint.' );
+
+$external_cron = $normalize( '/e/cj' );
+$assert( $external_cron['request_uri'] === '/api/cron', 'External /e/cj must normalize to the canonical API cron endpoint.' );
+$assert( $external_cron['redirect_url'] === '/api/cron', 'External /e/cj must normalize redirect metadata to the canonical API cron endpoint.' );
 
 $webhook = $normalize( '/system/webhook/stripe' );
 $assert( $webhook['request_uri'] === '/metis-webhooks/stripe', 'Legacy /system/webhook/{provider} must normalize to the canonical webhook route.' );
 $assert( (string) ( $webhook['attributes']['provider'] ?? '' ) === 'stripe', 'Legacy /system/webhook/{provider} must populate the webhook provider attribute.' );
 $assert( $webhook['provider'] === 'stripe', 'Legacy /system/webhook/{provider} must seed the webhook provider query var for compatibility.' );
 
-$cron_alias = $normalize( '/api/system/cron' );
-$assert( $cron_alias['request_uri'] === '/api/system/cron', 'Canonical API cron endpoint must remain unchanged during normalization.' );
+$external_webhook = $normalize( '/e/wh/stripe' );
+$assert( $external_webhook['request_uri'] === '/metis-webhooks/stripe', 'External /e/wh/{provider} must normalize to the canonical webhook route.' );
+$assert( (string) ( $external_webhook['attributes']['provider'] ?? '' ) === 'stripe', 'External /e/wh/{provider} must populate the webhook provider attribute.' );
+$assert( $external_webhook['provider'] === 'stripe', 'External /e/wh/{provider} must seed the webhook provider query var for compatibility.' );
+
+$cron_alias = $normalize( '/api/cron' );
+$assert( $cron_alias['request_uri'] === '/api/cron', 'Canonical API cron endpoint must remain unchanged during normalization.' );
 
 $untouched = $normalize( '/admin/contacts' );
 $assert( $untouched['request_uri'] === '/admin/contacts', 'Non-wrapper routes must pass through normalization unchanged.' );

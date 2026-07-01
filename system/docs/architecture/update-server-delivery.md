@@ -24,6 +24,8 @@ The identity payload includes:
 - `channel`
 - public/private keypair
 
+That same installation identity can also anchor signed cron triggers initiated by the update server. The update server signs the canonical cron route using its server private key, and the installation verifies the request against its stored `installation_id` plus the configured update-server public key.
+
 The installer registers the installation during the final `complete` action, after core defaults and optional module installation, but before the install lock is written and the browser is redirected to `/admin/`.
 
 ## Provider Seam

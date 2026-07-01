@@ -213,7 +213,7 @@ if ( ! function_exists( 'metis_kernel_normalize_front_controller_request' ) ) {
 
         $path = metis_kernel_request_path();
 
-        if ( preg_match( '#^/system/ajax/?$#i', $path ) === 1 ) {
+        if ( preg_match( '#^/(?:system/ajax|e/ac)/?$#i', $path ) === 1 ) {
             $ajax_path = function_exists( 'metis_ajax_endpoint_path' ) ? metis_ajax_endpoint_path() : '/api/ajax';
             metis_kernel_replace_request_path( $ajax_path );
             if ( function_exists( 'metis_runtime_set_query_var' ) ) {
@@ -222,13 +222,13 @@ if ( ! function_exists( 'metis_kernel_normalize_front_controller_request' ) ) {
             return $attributes;
         }
 
-        if ( preg_match( '#^/system/cron/?$#i', $path ) === 1 ) {
-            $cron_path = class_exists( 'Metis_Cron_Manager' ) ? Metis_Cron_Manager::endpoint_path() : '/api/system/cron';
+        if ( preg_match( '#^/(?:system/cron|e/cj)/?$#i', $path ) === 1 ) {
+            $cron_path = class_exists( 'Metis_Cron_Manager' ) ? Metis_Cron_Manager::endpoint_path() : '/api/cron';
             metis_kernel_replace_request_path( $cron_path );
             return $attributes;
         }
 
-        if ( preg_match( '#^/system/webhooks?/([A-Za-z0-9_-]+)/?$#', $path, $matches ) !== 1 ) {
+        if ( preg_match( '#^/(?:system/webhooks?|e/wh)/([A-Za-z0-9_-]+)/?$#i', $path, $matches ) !== 1 ) {
             return $attributes;
         }
 

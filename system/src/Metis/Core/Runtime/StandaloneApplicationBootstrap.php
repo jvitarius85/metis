@@ -1208,6 +1208,182 @@ function metis_standalone_register_update_server_installation(): array {
     ];
 }
 
+function metis_standalone_install_scheduler_instructions( string $base_url = '', string $cron_command = '' ): array {
+    $instructions = [];
+    $base_url = rtrim( trim( $base_url ), '/' );
+    if ( $base_url !== '' ) {
+        $instructions[] = sprintf( 'Allow the update server to POST to %s/e/cj through your hosting firewall or WAF.', $base_url );
+    } else {
+        $instructions[] = 'Allow the update server to reach the Metis external cron endpoint through your hosting firewall or WAF.';
+    }
+
+    if ( trim( $cron_command ) !== '' ) {
+        $instructions[] = sprintf( 'If remote access cannot be allowed, install this server crontab entry: %s', trim( $cron_command ) );
+    } else {
+        $instructions[] = 'If remote access cannot be allowed, configure a server cron job to run Metis once per minute.';
+    }
+
+    return $instructions;
+}
+
+function metis_standalone_install_local_crontab_status_message( array $remote_probe ): string {
+    $error = trim( (string) ( $remote_probe['error'] ?? '' ) );
+    if ( $error === '' && isset( $remote_probe['result']['error'] ) ) {
+        $error = trim( (string) $remote_probe['result']['error'] );
+    }
+
+    if ( $error !== '' ) {
+        return 'Update-server cron probe failed, so Metis installed a local server crontab entry instead. Last remote error: ' . $error;
+    }
+
+    return 'Metis installed a local server crontab entry for recurring tasks.';
+}
+
+function metis_standalone_install_attempt_local_crontab( array $remote_probe = [] ): array {
+    if ( ! \class_exists( \Metis\Core\Application::class ) || ! \Metis\Core\Application::has_service( 'system_cron_installer' ) ) {
+        return [
+            'ok' => false,
+            'status' => 'unavailable',
+            'message' => 'System crontab installer is not available during install completion.',
+            'command' => '',
+        ];
+    }
+
+    try {
+        $installer = \Metis\Core\Application::service( 'system_cron_installer' );
+        $status = \is_object( $installer ) && \method_exists( $installer, 'install' ) ? (array) $installer->install() : [];
+
+        return [
+            'ok' => ! empty( $status['installed'] ),
+            'status' => ! empty( $status['installed'] ) ? 'installed' : 'unknown',
+            'message' => metis_standalone_install_local_crontab_status_message( $remote_probe ),
+            'command' => (string) ( $status['command'] ?? '' ),
+            'details' => $status,
+        ];
+    } catch ( \Throwable $e ) {
+        $command = '';
+        try {
+            $installer = \Metis\Core\Application::service( 'system_cron_installer' );
+            if ( \is_object( $installer ) && \method_exists( $installer, 'status' ) ) {
+                $status = (array) $installer->status();
+                $command = (string) ( $status['command'] ?? '' );
+            }
+        } catch ( \Throwable ) {
+        }
+
+        return [
+            'ok' => false,
+            'status' => 'failed',
+            'message' => $e->getMessage(),
+            'command' => $command,
+        ];
+    }
+}
+
+function metis_standalone_complete_scheduler_setup(): array {
+    $base_url = rtrim( (string) metis_home_url( '' ), '/' );
+    $remote_probe = [
+        'ok' => false,
+        'status' => 'not_attempted',
+        'message' => 'Update-server cron probe was not attempted.',
+    ];
+    $update_registration = [
+        'ok' => false,
+        'status' => 'unavailable',
+        'message' => 'Update server client is not available during install completion.',
+    ];
+    $cron_command = '';
+
+    if ( \class_exists( \Metis\Core\Application::class ) && \Metis\Core\Application::has_service( 'update_server_client' ) ) {
+        try {
+            $client = \Metis\Core\Application::service( 'update_server_client' );
+            if ( \is_object( $client ) && \method_exists( $client, 'isEnabled' ) && $client->isEnabled() ) {
+                $update_registration = metis_standalone_register_update_server_installation();
+
+                if ( \method_exists( $client, 'requestCronProbe' ) ) {
+                    $probe = (array) $client->requestCronProbe( 'installer_probe' );
+                    $probe_result = is_array( $probe['result'] ?? null ) ? (array) $probe['result'] : [];
+                    $remote_probe = [
+                        'ok' => ! empty( $probe['ok'] ),
+                        'status' => ! empty( $probe['ok'] ) ? 'verified' : 'failed',
+                        'message' => ! empty( $probe['ok'] )
+                            ? 'Update server scheduling verified successfully.'
+                            : ( trim( (string) ( $probe_result['error'] ?? '' ) ) ?: 'Update server cron probe failed.' ),
+                        'trigger' => (string) ( $probe['trigger'] ?? 'installer_probe' ),
+                        'result' => $probe_result,
+                    ];
+
+                    if ( ! empty( $probe['ok'] ) ) {
+                        return [
+                            'ok' => true,
+                            'status' => 'update_server',
+                            'requires_action' => false,
+                            'message' => 'Update server scheduling verified successfully.',
+                            'update_registration' => $update_registration,
+                            'remote_probe' => $remote_probe,
+                            'local_crontab' => null,
+                        ];
+                    }
+                } else {
+                    $remote_probe = [
+                        'ok' => false,
+                        'status' => 'unavailable',
+                        'message' => 'Update server client does not support cron probing.',
+                    ];
+                }
+            } else {
+                $update_registration = [
+                    'ok' => true,
+                    'status' => 'disabled',
+                    'message' => 'Update server registration is disabled for this installation.',
+                ];
+                $remote_probe = [
+                    'ok' => false,
+                    'status' => 'disabled',
+                    'message' => 'Update server scheduling is disabled for this installation.',
+                ];
+            }
+        } catch ( \Throwable $e ) {
+            $update_registration = [
+                'ok' => false,
+                'status' => 'failed',
+                'message' => $e->getMessage(),
+            ];
+            $remote_probe = [
+                'ok' => false,
+                'status' => 'failed',
+                'message' => $e->getMessage(),
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    $local_crontab = metis_standalone_install_attempt_local_crontab( $remote_probe );
+    $cron_command = trim( (string) ( $local_crontab['command'] ?? '' ) );
+    if ( ! empty( $local_crontab['ok'] ) ) {
+        return [
+            'ok' => true,
+            'status' => 'local_crontab',
+            'requires_action' => false,
+            'message' => (string) $local_crontab['message'],
+            'update_registration' => $update_registration,
+            'remote_probe' => $remote_probe,
+            'local_crontab' => $local_crontab,
+        ];
+    }
+
+    return [
+        'ok' => false,
+        'status' => 'action_required',
+        'requires_action' => true,
+        'message' => 'Metis finished installing, but recurring tasks were not scheduled automatically.',
+        'instructions' => metis_standalone_install_scheduler_instructions( $base_url, $cron_command ),
+        'update_registration' => $update_registration,
+        'remote_probe' => $remote_probe,
+        'local_crontab' => $local_crontab,
+    ];
+}
+
 function metis_standalone_install_module_store_results_message( array $results, int $requested_count ): string {
     $installed = 0;
     foreach ( $results as $result ) {
@@ -1744,6 +1920,22 @@ function metis_standalone_render_database_setup( string $error = '', array $old 
         async function finishInstall() {
             setProgress(1, 1, 'Opening Metis', 'Writing the install lock and redirecting to the admin portal.');
             const result = await post('complete');
+            const scheduler = result && result.scheduler_setup && typeof result.scheduler_setup === 'object'
+                ? result.scheduler_setup
+                : null;
+
+            if (scheduler && scheduler.message) {
+                const instructions = Array.isArray(scheduler.instructions) && scheduler.instructions.length > 0
+                    ? (' ' + scheduler.instructions.join(' '))
+                    : '';
+                setAlert(scheduler.message + instructions, scheduler.requires_action ? 'error' : 'notice');
+            }
+
+            if (scheduler && scheduler.requires_action) {
+                setProgress(1, 1, 'Manual Scheduler Setup Required', 'Metis is installed, but recurring tasks still need scheduler setup. Review the message above before opening the admin portal.');
+                return;
+            }
+
             window.location.href = result.redirect || '<?php echo metis_escape_js( metis_home_url( '/admin/' ) ); ?>';
         }
 
@@ -2014,16 +2206,15 @@ function metis_standalone_handle_database_setup(): void {
                 $admin_result = metis_standalone_install_ensure_first_admin( $admin );
                 metis_standalone_install_complete_defaults();
                 Core_Settings_Service::set( 'metis_install_first_admin_user_id', (int) $admin_result['id'], false );
-                $update_registration = metis_standalone_register_update_server_installation();
-                if ( empty( $update_registration['ok'] ) ) {
-                    throw new RuntimeException( (string) ( $update_registration['message'] ?? 'Update server registration failed.' ) );
-                }
+                $scheduler_setup = metis_standalone_complete_scheduler_setup();
+                metis_standalone_boot_log( 'setup_scheduler_complete', $scheduler_setup );
                 metis_standalone_mark_installed();
                 metis_standalone_install_ensure_permissions();
                 metis_standalone_install_json( [
                     'ok' => true,
                     'redirect' => metis_home_url( '/admin/' ),
-                    'update_registration' => $update_registration,
+                    'scheduler_setup' => $scheduler_setup,
+                    'update_registration' => (array) ( $scheduler_setup['update_registration'] ?? [] ),
                 ] );
             }
 

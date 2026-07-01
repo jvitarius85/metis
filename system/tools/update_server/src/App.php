@@ -41,6 +41,14 @@ final class MetisUpdateServerApp {
             return;
         }
 
+        if ( $path === '/api/installations/cron-probe' ) {
+            $this->requireMethod( 'POST' );
+            $payload = $this->readJsonBody();
+            $installation = $this->verifySignedRequest( $path, $payload );
+            $this->probeInstallationCron( $installation, $payload );
+            return;
+        }
+
         if ( str_starts_with( $path, '/admin' ) ) {
             $this->handleAdmin( $path );
             return;
@@ -156,6 +164,51 @@ final class MetisUpdateServerApp {
             'system_username' => $systemUsername,
             'expires_at' => $expiresAt,
             'login_url' => rtrim( (string) $this->config['base_url'], '/' ) . '/admin/login?token=' . rawurlencode( $token ),
+        ];
+    }
+
+    public function triggerInstallationCrons( string $trigger = 'update_server_scheduler', string $installationId = '' ): array {
+        $trigger = trim( $trigger ) !== '' ? trim( $trigger ) : 'update_server_scheduler';
+        $installationId = trim( $installationId );
+
+        $params = [];
+        $sql = 'SELECT installation_uuid, installation_name, base_url, status FROM installations WHERE status = "active"';
+        if ( $installationId !== '' ) {
+            $sql .= ' AND installation_uuid = :installation_uuid';
+            $params['installation_uuid'] = $installationId;
+        }
+        $sql .= ' ORDER BY installation_name ASC, installation_uuid ASC';
+
+        $stmt = $this->pdo()->prepare( $sql );
+        $stmt->execute( $params );
+        $installations = $stmt->fetchAll( PDO::FETCH_ASSOC );
+        if ( ! is_array( $installations ) || $installations === [] ) {
+            if ( $installationId !== '' ) {
+                throw new RuntimeException( 'Active installation not found for cron trigger.' );
+            }
+
+            return [
+                'ok' => true,
+                'trigger' => $trigger,
+                'count' => 0,
+                'results' => [],
+            ];
+        }
+
+        $results = [];
+        $ok = true;
+        foreach ( $installations as $installation ) {
+            $results[] = $this->triggerSingleInstallationCron( $installation, $trigger );
+            if ( empty( $results[ array_key_last( $results ) ]['ok'] ) ) {
+                $ok = false;
+            }
+        }
+
+        return [
+            'ok' => $ok,
+            'trigger' => $trigger,
+            'count' => count( $results ),
+            'results' => $results,
         ];
     }
 
@@ -365,8 +418,8 @@ final class MetisUpdateServerApp {
         }
 
         $insert = $pdo->prepare(
-            'INSERT INTO installations (installation_uuid, installation_name, base_url, channel, metis_version, php_version, machine_uuid, server_fingerprint, public_key_sha256, public_key_pem, status, module_inventory_json, registered_ip, last_seen_ip, last_seen_at)
-             VALUES (:installation_uuid, :installation_name, :base_url, :channel, :metis_version, :php_version, :machine_uuid, :server_fingerprint, :public_key_sha256, :public_key_pem, :status, :module_inventory_json, :registered_ip, :last_seen_ip, :last_seen_at)'
+            'INSERT INTO installations (installation_uuid, installation_name, base_url, channel, metis_version, php_version, machine_uuid, server_fingerprint, public_key_sha256, public_key_pem, status, module_inventory_json, registered_ip, last_seen_ip, contact_name, contact_email, contact_phone, admin_notes, last_seen_at)
+             VALUES (:installation_uuid, :installation_name, :base_url, :channel, :metis_version, :php_version, :machine_uuid, :server_fingerprint, :public_key_sha256, :public_key_pem, :status, :module_inventory_json, :registered_ip, :last_seen_ip, :contact_name, :contact_email, :contact_phone, :admin_notes, :last_seen_at)'
         );
         $insert->execute( [
             'installation_uuid' => $installationUuid,
@@ -383,6 +436,10 @@ final class MetisUpdateServerApp {
             'module_inventory_json' => json_encode( array_values( (array) ( $payload['module_inventory'] ?? [] ) ), JSON_UNESCAPED_SLASHES ),
             'registered_ip' => $remoteIp,
             'last_seen_ip' => $remoteIp,
+            'contact_name' => substr( trim( (string) ( $payload['contact_name'] ?? '' ) ), 0, 190 ),
+            'contact_email' => substr( strtolower( trim( (string) ( $payload['contact_email'] ?? '' ) ) ), 0, 190 ),
+            'contact_phone' => substr( trim( (string) ( $payload['contact_phone'] ?? '' ) ), 0, 64 ),
+            'admin_notes' => trim( (string) ( $payload['admin_notes'] ?? '' ) ),
             'last_seen_at' => gmdate( 'Y-m-d H:i:s' ),
         ] );
 
@@ -2395,7 +2452,7 @@ final class MetisUpdateServerApp {
         }
     }
 
-    private function verifySignedRequest( string $path ): array {
+    private function verifySignedRequest( string $path, ?array $payload = null ): array {
         $body = (string) file_get_contents( 'php://input' );
         $installationId = trim( $this->serverValue( 'HTTP_X_METIS_INSTALLATION_ID' ) );
         $signature = base64_decode( trim( $this->serverValue( 'HTTP_X_METIS_SIGNATURE' ) ), true );
@@ -2418,18 +2475,37 @@ final class MetisUpdateServerApp {
             $this->json( [ 'error' => 'Signed request verification failed.' ], 401 );
         }
 
+        $payload = is_array( $payload ) ? $payload : $this->readJsonBody();
+        $metisVersion = trim( (string) ( $payload['core']['version'] ?? $payload['metis_version'] ?? '' ) );
+        $moduleInventory = [];
+        if ( isset( $payload['modules'] ) && is_array( $payload['modules'] ) ) {
+            $moduleInventory = array_values( $payload['modules'] );
+        } elseif ( isset( $payload['module_inventory'] ) && is_array( $payload['module_inventory'] ) ) {
+            $moduleInventory = array_values( $payload['module_inventory'] );
+        }
+
         $update = $this->pdo()->prepare(
-            'UPDATE installations SET metis_version = :metis_version, module_inventory_json = :module_inventory_json, last_seen_ip = :last_seen_ip, last_seen_at = UTC_TIMESTAMP() WHERE installation_uuid = :installation_uuid'
+            'UPDATE installations SET metis_version = CASE WHEN :metis_version = "" THEN metis_version ELSE :metis_version END, module_inventory_json = CASE WHEN :module_inventory_json = "" THEN module_inventory_json ELSE :module_inventory_json END, last_seen_ip = :last_seen_ip, last_seen_at = UTC_TIMESTAMP() WHERE installation_uuid = :installation_uuid'
         );
-        $payload = $this->readJsonBody();
         $update->execute( [
-            'metis_version' => trim( (string) ( $payload['core']['version'] ?? '' ) ),
-            'module_inventory_json' => json_encode( array_values( (array) ( $payload['modules'] ?? [] ) ), JSON_UNESCAPED_SLASHES ),
+            'metis_version' => $metisVersion,
+            'module_inventory_json' => $moduleInventory !== [] ? ( json_encode( $moduleInventory, JSON_UNESCAPED_SLASHES ) ?: '' ) : '',
             'last_seen_ip' => $this->remoteAddress(),
             'installation_uuid' => $installationId,
         ] );
 
         return $installation;
+    }
+
+    private function probeInstallationCron( array $installation, array $payload ): void {
+        $trigger = trim( (string) ( $payload['trigger'] ?? 'installer_probe' ) ) ?: 'installer_probe';
+        $result = $this->triggerSingleInstallationCron( $installation, $trigger );
+        $status = ! empty( $result['ok'] ) ? 200 : 422;
+        $this->json( [
+            'ok' => ! empty( $result['ok'] ),
+            'trigger' => $trigger,
+            'result' => $result,
+        ], $status );
     }
 
     private function buildDeltaManifest( string $sourceDir, string $fromDir ): array {
@@ -2566,14 +2642,175 @@ final class MetisUpdateServerApp {
         return rtrim( (string) $this->config['base_url'], '/' ) . '/download.php?token=' . rawurlencode( $token );
     }
 
+    private function triggerSingleInstallationCron( array $installation, string $trigger ): array {
+        $installationUuid = trim( (string) ( $installation['installation_uuid'] ?? '' ) );
+        $baseUrl = rtrim( trim( (string) ( $installation['base_url'] ?? '' ) ), '/' );
+        $endpointUrl = $baseUrl !== '' ? $baseUrl . '/e/cj' : '';
+        $canonicalPath = '/api/cron';
+        $body = json_encode( [ 'trigger' => $trigger ], JSON_UNESCAPED_SLASHES );
+        if ( $installationUuid === '' || $endpointUrl === '' || ! is_string( $body ) ) {
+            $result = [
+                'installation_id' => $installationUuid,
+                'installation_name' => (string) ( $installation['installation_name'] ?? '' ),
+                'endpoint_url' => $endpointUrl,
+                'ok' => false,
+                'status' => 0,
+                'error' => 'Installation is missing base URL or id.',
+                'body' => '',
+                'json' => [],
+            ];
+            $this->audit( $installationUuid !== '' ? $installationUuid : null, 'cron_trigger', 500, $result );
+            return $result;
+        }
+
+        $headers = $this->signedInstallationHeaders( $installationUuid, 'POST', $canonicalPath, $body );
+        $response = $this->httpJsonRequest( 'POST', $endpointUrl, $headers + [ 'Content-Type' => 'application/json' ], $body );
+        $status = (int) ( $response['status'] ?? 0 );
+        $json = is_array( $response['json'] ?? null ) ? (array) $response['json'] : [];
+        $bodyText = (string) ( $response['body'] ?? '' );
+        $ok = $status >= 200 && $status < 300;
+
+        $result = [
+            'installation_id' => $installationUuid,
+            'installation_name' => (string) ( $installation['installation_name'] ?? '' ),
+            'endpoint_url' => $endpointUrl,
+            'ok' => $ok,
+            'status' => $status,
+            'error' => $ok ? '' : ( trim( (string) ( $json['error'] ?? '' ) ) !== '' ? trim( (string) ( $json['error'] ?? '' ) ) : trim( $bodyText ) ),
+            'body' => $bodyText,
+            'json' => $json,
+        ];
+
+        $this->audit( $installationUuid, 'cron_trigger', $status > 0 ? $status : 500, $result );
+        return $result;
+    }
+
+    private function signedInstallationHeaders( string $installationUuid, string $method, string $path, string $body ): array {
+        $timestamp = gmdate( 'c' );
+        $nonce = bin2hex( random_bytes( 16 ) );
+        $canonical = strtoupper( trim( $method ) ) . "\n"
+            . trim( $path ) . "\n"
+            . $timestamp . "\n"
+            . $nonce . "\n"
+            . hash( 'sha256', $body );
+        $publicKey = (string) @file_get_contents( $this->config['keys']['public'] );
+
+        return [
+            'X-Metis-Installation-Id' => $installationUuid,
+            'X-Metis-Timestamp' => $timestamp,
+            'X-Metis-Nonce' => $nonce,
+            'X-Metis-Signature' => $this->signPayloadForHeader( $canonical, 'Unable to sign the installation cron request.' ),
+            'X-Metis-Key-Sha256' => $publicKey !== '' ? hash( 'sha256', $publicKey ) : '',
+            'Accept' => 'application/json',
+            'User-Agent' => 'Metis-Update-Server/1.0',
+        ];
+    }
+
+    private function httpJsonRequest( string $method, string $url, array $headers, string $body ): array {
+        $formatted = [];
+        foreach ( $headers as $name => $value ) {
+            if ( trim( (string) $name ) === '' || trim( (string) $value ) === '' ) {
+                continue;
+            }
+            $formatted[] = trim( (string) $name ) . ': ' . trim( (string) $value );
+        }
+
+        if ( function_exists( 'curl_init' ) ) {
+            $ch = curl_init( $url );
+            if ( $ch === false ) {
+                throw new RuntimeException( 'Unable to initialize cron trigger HTTP client.' );
+            }
+
+            curl_setopt_array( $ch, [
+                CURLOPT_CUSTOMREQUEST => strtoupper( $method ),
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_HTTPHEADER => $formatted,
+                CURLOPT_POSTFIELDS => $body,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+            ] );
+
+            $responseBody = curl_exec( $ch );
+            $status = (int) curl_getinfo( $ch, CURLINFO_RESPONSE_CODE );
+            $error = curl_error( $ch );
+            if ( \PHP_VERSION_ID < 80500 ) {
+                curl_close( $ch );
+            }
+
+            if ( $responseBody === false ) {
+                return [
+                    'status' => $status > 0 ? $status : 0,
+                    'body' => '',
+                    'json' => [],
+                    'error' => $error !== '' ? $error : 'HTTP request failed.',
+                ];
+            }
+
+            $responseBody = (string) $responseBody;
+            return [
+                'status' => $status,
+                'body' => $responseBody,
+                'json' => json_decode( $responseBody, true ) ?: [],
+                'error' => '',
+            ];
+        }
+
+        $context = stream_context_create( [
+            'http' => [
+                'method' => strtoupper( $method ),
+                'header' => implode( "\r\n", $formatted ) . "\r\n",
+                'content' => $body,
+                'ignore_errors' => true,
+                'timeout' => 30,
+                'follow_location' => 0,
+                'max_redirects' => 0,
+            ],
+        ] );
+
+        $responseBody = @file_get_contents( $url, false, $context );
+        $meta = $http_response_header ?? [];
+        $status = 0;
+        if ( isset( $meta[0] ) && preg_match( '/\s(\d{3})\s/', (string) $meta[0], $matches ) ) {
+            $status = (int) $matches[1];
+        }
+
+        if ( ! is_string( $responseBody ) ) {
+            return [
+                'status' => $status,
+                'body' => '',
+                'json' => [],
+                'error' => 'HTTP request failed.',
+            ];
+        }
+
+        return [
+            'status' => $status,
+            'body' => $responseBody,
+            'json' => json_decode( $responseBody, true ) ?: [],
+            'error' => '',
+        ];
+    }
+
     private function sign( string $manifestJson ): string {
+        return $this->signPayload( $manifestJson, 'Unable to sign the package manifest.' );
+    }
+
+    private function signPayloadForHeader( string $payload, string $errorMessage ): string {
+        $signature = $this->signPayload( $payload, $errorMessage );
+        return rtrim( strtr( $signature, '+/', '-_' ), '=' );
+    }
+
+    private function signPayload( string $payload, string $errorMessage ): string {
         $privateKey = openssl_pkey_get_private( (string) file_get_contents( $this->config['keys']['private'] ) );
         if ( $privateKey === false ) {
             throw new RuntimeException( 'Server private key is invalid.' );
         }
         $signature = '';
-        if ( ! openssl_sign( $manifestJson, $signature, $privateKey, OPENSSL_ALGO_SHA256 ) || $signature === '' ) {
-            throw new RuntimeException( 'Unable to sign the package manifest.' );
+        if ( ! openssl_sign( $payload, $signature, $privateKey, OPENSSL_ALGO_SHA256 ) || $signature === '' ) {
+            throw new RuntimeException( $errorMessage );
         }
 
         return base64_encode( $signature );

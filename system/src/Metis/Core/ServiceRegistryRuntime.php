@@ -710,6 +710,16 @@ function metis_register_core_services(): void {
         $registry->singleton( 'scheduler', static fn (): \Metis\Core\Services\SchedulerService => new \Metis\Core\Services\SchedulerService() );
     }
 
+    if ( ! $registry->has( 'system_cron_installer' ) ) {
+        $registry->singleton(
+            'system_cron_installer',
+            static fn (): \Metis\Core\Services\SystemCronInstallerService => new \Metis\Core\Services\SystemCronInstallerService(
+                \Metis\Core\Application::service( 'files' ),
+                new \Metis\Core\Services\ProcessRunner()
+            )
+        );
+    }
+
     if ( ! $registry->has( 'passkeys' ) ) {
         $registry->singleton( 'passkeys', static fn (): \Metis\Auth\PasskeyService => new \Metis\Auth\PasskeyService( \Metis\Core\Application::service( 'logger_core' ), \Metis\Core\Application::service( 'files' ), \Metis\Core\Application::service( 'db' ) ) );
     }

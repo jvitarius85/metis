@@ -163,6 +163,44 @@ final class UpdateServerClient {
         return $normalized;
     }
 
+    public function requestCronProbe(string $trigger = 'installer_probe'): array {
+        $settings = $this->settings();
+        if ($settings['base_url'] === '') {
+            throw new \RuntimeException('Update server base URL is not configured.');
+        }
+
+        $body = json_encode([
+            'trigger' => trim($trigger) !== '' ? trim($trigger) : 'installer_probe',
+            'core' => [
+                'version' => Version::current(),
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+        if (!is_string($body)) {
+            throw new \RuntimeException('Unable to encode the update-server cron probe payload.');
+        }
+
+        $path = '/api/installations/cron-probe';
+        $headers = $this->identity->signedHeaders('POST', $path, $body, [
+            'channel' => $settings['channel'],
+        ]);
+        $response = $this->http->request(
+            'POST',
+            $settings['base_url'] . $path,
+            $headers + [ 'Content-Type' => 'application/json' ],
+            $body,
+            [
+                'timeout' => $settings['timeout'],
+                'connect_timeout' => $settings['connect_timeout'],
+            ]
+        );
+        if ((int) ($response['status'] ?? 0) >= 400) {
+            $message = trim((string) (($response['json']['error'] ?? '') ?: ($response['body'] ?? '')));
+            throw new \RuntimeException($message !== '' ? $message : 'Update server cron probe failed.');
+        }
+
+        return is_array($response['json'] ?? null) ? (array) $response['json'] : [];
+    }
+
     public function moduleRegistry(bool $forceRefresh = false, array $moduleInventory = []): array {
         if (!$forceRefresh) {
             $cached = CacheService::get(self::MODULE_CACHE_KEY);

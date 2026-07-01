@@ -4,10 +4,17 @@ if ( ! defined( 'METIS_ROOT' ) ) exit;
 use Metis\Core\Cache\CacheService;
 
 final class Metis_Cron_Manager {
-    private const ENDPOINT_PATH     = '/api/system/cron';
+    private const ENDPOINT_PATH     = '/api/cron';
     private const LEGACY_ENDPOINT_PATH = '/system/cron';
     private const SECRET_HEADER     = 'x-metis-cron-secret';
     private const FALLBACK_HEADER   = 'x-cron-secret';
+    private const SIGNED_INSTALLATION_HEADER = 'x-metis-installation-id';
+    private const SIGNED_SIGNATURE_HEADER = 'x-metis-signature';
+    private const SIGNED_TIMESTAMP_HEADER = 'x-metis-timestamp';
+    private const SIGNED_NONCE_HEADER = 'x-metis-nonce';
+    private const SIGNED_KEY_SHA_HEADER = 'x-metis-key-sha256';
+    private const SIGNED_TIMESTAMP_TTL = 300;
+    private const SIGNED_NONCE_TTL = 600;
     private const OPERATION         = 'system.cron.execute';
     private const LOCK_TTL          = 900;
     private const DEFAULT_INTERVAL  = 300;
@@ -383,17 +390,20 @@ final class Metis_Cron_Manager {
     public static function authorize_request( Metis_Http_Request $request ): array {
         self::register_policy();
 
-        $secret = self::configured_secret();
-        if ( $secret === '' ) {
-            throw new Metis_Security_Enclave_Exception(
-                'System cron secret is not configured.',
-                'cron_secret_missing',
-                503
-            );
+        $context = self::authorize_with_secret( $request );
+        if ( $context === null ) {
+            $context = self::authorize_with_update_server_signature( $request );
         }
 
-        $provided = self::request_secret( $request );
-        if ( $provided === '' || ! hash_equals( $secret, $provided ) ) {
+        if ( $context === null ) {
+            if ( self::configured_secret() === '' && self::expected_update_server_installation_id() === '' ) {
+                throw new Metis_Security_Enclave_Exception(
+                    'System cron secret is not configured.',
+                    'cron_secret_missing',
+                    503
+                );
+            }
+
             throw new Metis_Security_Enclave_Exception(
                 'Invalid cron scheduler secret.',
                 'invalid_cron_secret',
@@ -401,7 +411,6 @@ final class Metis_Cron_Manager {
             );
         }
 
-        $context = self::request_context( $request );
         metis_security_enclave()->execute(
             self::OPERATION,
             $context,
@@ -926,21 +935,98 @@ final class Metis_Cron_Manager {
         return $timestamp !== false ? (int) $timestamp : 0;
     }
 
-    private static function request_context( Metis_Http_Request $request ): array {
+    private static function request_context( Metis_Http_Request $request, string $source = 'shared_secret' ): array {
+        $actor_id = $source === 'update_server' ? 'update-server' : 'cloudflare-worker';
+        $permissions = $source === 'update_server' ? [ 'cron', 'update_server' ] : [ 'cron' ];
+        $installation_id = $source === 'update_server'
+            ? trim( $request->header( self::SIGNED_INSTALLATION_HEADER ) )
+            : '';
+
         return [
             'actor' => [
-                'id'          => 'cloudflare-worker',
+                'id'          => $actor_id,
                 'roles'       => [ 'system' ],
-                'permissions' => [ 'cron' ],
+                'permissions' => $permissions,
                 'session_id'  => '',
             ],
             'meta' => [
                 'ip'         => metis_audit_ip_address(),
                 'user_agent' => metis_audit_user_agent(),
                 'request_id' => metis_audit_request_id(),
+                'auth_source' => $source,
+                'installation_id' => $installation_id,
             ],
             'input' => $request->input(),
         ];
+    }
+
+    private static function authorize_with_secret( Metis_Http_Request $request ): ?array {
+        $secret = self::configured_secret();
+        $provided = self::request_secret( $request );
+
+        if ( $secret === '' || $provided === '' ) {
+            return null;
+        }
+
+        if ( ! hash_equals( $secret, $provided ) ) {
+            return null;
+        }
+
+        return self::request_context( $request, 'shared_secret' );
+    }
+
+    private static function authorize_with_update_server_signature( Metis_Http_Request $request ): ?array {
+        $installation_id = trim( $request->header( self::SIGNED_INSTALLATION_HEADER ) );
+        $signature_base64 = trim( $request->header( self::SIGNED_SIGNATURE_HEADER ) );
+        $timestamp = trim( $request->header( self::SIGNED_TIMESTAMP_HEADER ) );
+        $nonce = trim( $request->header( self::SIGNED_NONCE_HEADER ) );
+        $key_sha = trim( $request->header( self::SIGNED_KEY_SHA_HEADER ) );
+
+        if ( $installation_id === '' || $signature_base64 === '' || $timestamp === '' || $nonce === '' ) {
+            return null;
+        }
+
+        $expected_installation_id = self::expected_update_server_installation_id();
+        $public_key = self::configured_update_server_public_key();
+        if ( $expected_installation_id === '' || $public_key === '' ) {
+            return null;
+        }
+
+        if ( ! hash_equals( $expected_installation_id, $installation_id ) ) {
+            return null;
+        }
+
+        if ( $key_sha !== '' && ! hash_equals( hash( 'sha256', $public_key ), $key_sha ) ) {
+            return null;
+        }
+
+        $timestamp_unix = strtotime( $timestamp );
+        if ( $timestamp_unix === false || abs( time() - (int) $timestamp_unix ) > self::SIGNED_TIMESTAMP_TTL ) {
+            return null;
+        }
+
+        $nonce_key = 'system.cron.update_server_nonce.' . hash( 'sha256', $installation_id . '|' . $nonce );
+        if ( CacheService::get( $nonce_key ) !== null ) {
+            return null;
+        }
+
+        $signature = self::decode_signature_header( $signature_base64 );
+        if ( $signature === false ) {
+            return null;
+        }
+
+        $canonical = strtoupper( trim( (string) $request->method() ) ) . "\n"
+            . self::ENDPOINT_PATH . "\n"
+            . $timestamp . "\n"
+            . $nonce . "\n"
+            . hash( 'sha256', $request->body() );
+        $resource = openssl_pkey_get_public( $public_key );
+        if ( $resource === false || openssl_verify( $canonical, $signature, $resource, OPENSSL_ALGO_SHA256 ) !== 1 ) {
+            return null;
+        }
+
+        CacheService::set( $nonce_key, 1, self::SIGNED_NONCE_TTL );
+        return self::request_context( $request, 'update_server' );
     }
 
     private static function request_secret( Metis_Http_Request $request ): string {
@@ -959,6 +1045,97 @@ final class Metis_Cron_Manager {
 
         $secret = Core_Settings_Service::get( 'system_cron_secret', '' );
         return is_string( $secret ) ? trim( $secret ) : '';
+    }
+
+    private static function decode_signature_header( string $signature ): string|false {
+        $decoded = base64_decode( $signature, true );
+        if ( $decoded !== false ) {
+            return $decoded;
+        }
+
+        $normalized = strtr( trim( $signature ), '-_', '+/' );
+        $padding = strlen( $normalized ) % 4;
+        if ( $padding > 0 ) {
+            $normalized .= str_repeat( '=', 4 - $padding );
+        }
+
+        return base64_decode( $normalized, true );
+    }
+
+    private static function expected_update_server_installation_id(): string {
+        if ( ! class_exists( '\Metis\Core\Application' ) || ! \Metis\Core\Application::has_service( 'update_server_identity' ) ) {
+            return self::direct_update_server_installation_id();
+        }
+
+        try {
+            $identity = \Metis\Core\Application::service( 'update_server_identity' );
+            if ( ! is_object( $identity ) || ! method_exists( $identity, 'state' ) ) {
+                return self::direct_update_server_installation_id();
+            }
+
+            $state = (array) $identity->state();
+            $installation_id = trim( (string) ( $state['installation_id'] ?? '' ) );
+            return $installation_id !== '' ? $installation_id : self::direct_update_server_installation_id();
+        } catch ( \Throwable ) {
+            return self::direct_update_server_installation_id();
+        }
+    }
+
+    private static function configured_update_server_public_key(): string {
+        if ( ! class_exists( '\Metis\Core\Application' ) || ! \Metis\Core\Application::has_service( 'update_server_client' ) ) {
+            return self::direct_update_server_public_key();
+        }
+
+        try {
+            $client = \Metis\Core\Application::service( 'update_server_client' );
+            if ( ! is_object( $client ) || ! method_exists( $client, 'settings' ) ) {
+                return self::direct_update_server_public_key();
+            }
+
+            $settings = (array) $client->settings();
+            $public_key = trim( (string) ( $settings['server_public_key'] ?? '' ) );
+            return $public_key !== '' ? $public_key : self::direct_update_server_public_key();
+        } catch ( \Throwable ) {
+            return self::direct_update_server_public_key();
+        }
+    }
+
+    private static function direct_update_server_installation_id(): string {
+        $path = self::project_root_path() . '/storage/private-records/update-server/identity.json';
+        if ( ! is_file( $path ) || ! is_readable( $path ) ) {
+            return '';
+        }
+
+        $raw = @file_get_contents( $path );
+        if ( ! is_string( $raw ) || trim( $raw ) === '' ) {
+            return '';
+        }
+
+        $decoded = json_decode( $raw, true );
+        return is_array( $decoded ) ? trim( (string) ( $decoded['installation_id'] ?? '' ) ) : '';
+    }
+
+    private static function direct_update_server_public_key(): string {
+        $path = self::system_root_path() . '/config/update.php';
+        if ( ! is_file( $path ) || ! is_readable( $path ) ) {
+            return '';
+        }
+
+        $config = require $path;
+        if ( ! is_array( $config ) ) {
+            return '';
+        }
+
+        $server = is_array( $config['update_server'] ?? null ) ? (array) $config['update_server'] : [];
+        return trim( (string) ( $server['server_public_key'] ?? '' ) );
+    }
+
+    private static function system_root_path(): string {
+        return dirname( __DIR__, 4 );
+    }
+
+    private static function project_root_path(): string {
+        return dirname( __DIR__, 5 );
     }
 
     private static function register_policy(): void {

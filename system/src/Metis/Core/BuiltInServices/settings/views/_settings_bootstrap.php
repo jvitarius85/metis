@@ -3544,6 +3544,26 @@ if ( ! function_exists( 'metis_settings_save_scheduler_section' ) ) {
         Core_Settings_Service::set( 'system_cron_task_intervals', $interval_overrides, false );
         $saved = true;
 
+        if ( ! empty( metis_request_post()['metis_install_server_cron'] ) || ! empty( metis_request_post()['metis_remove_server_cron'] ) ) {
+            if ( ! \Metis\Core\Application::has_service( 'system_cron_installer' ) ) {
+                $errors[] = 'Server cron installer service is unavailable.';
+                return;
+            }
+
+            try {
+                /** @var \Metis\Core\Services\SystemCronInstallerService $installer */
+                $installer = \Metis\Core\Application::service( 'system_cron_installer' );
+                if ( ! empty( metis_request_post()['metis_install_server_cron'] ) ) {
+                    $installer->install();
+                } else {
+                    $installer->uninstall();
+                }
+                $saved = true;
+            } catch ( \Throwable $e ) {
+                $errors[] = $e->getMessage() !== '' ? $e->getMessage() : 'Unable to update the server cron installer.';
+            }
+        }
+
         if ( ! empty( metis_request_post()['metis_generate_cron_secret'] ) ) {
             $secret = bin2hex( random_bytes( 24 ) );
             Core_Settings_Service::set( 'system_cron_secret', $secret, false );
@@ -3858,6 +3878,17 @@ if ( ! function_exists( 'metis_settings_bootstrap' ) ) {
         $system_cron_secret_masked = Metis_Cron_Manager::configured_secret_masked();
         $system_cron_endpoint = Metis_Cron_Manager::endpoint_url();
         $system_cron_header = 'x-metis-cron-secret';
+        $server_cron_installer_status = [
+            'supported' => false,
+            'installed' => false,
+            'schedule' => '* * * * *',
+            'command' => '',
+            'managed_block' => '',
+            'runner_path' => '',
+            'php_binary' => '',
+            'raw_crontab' => '',
+            'error' => '',
+        ];
         $system_cron_tasks = [];
         $queue_summary = [ 'cron' => [], 'operations' => [] ];
         $recent_async_jobs = [];
@@ -3870,6 +3901,16 @@ if ( ! function_exists( 'metis_settings_bootstrap' ) ) {
         $system_version = [ 'metis_version' => '', 'build' => '', 'modules' => [] ];
         $system_cron_task_rows = [];
         if ( metis_settings_should_load_scheduler_snapshot( $section ) ) {
+            if ( \Metis\Core\Application::has_service( 'system_cron_installer' ) ) {
+                try {
+                    /** @var \Metis\Core\Services\SystemCronInstallerService $installer */
+                    $installer = \Metis\Core\Application::service( 'system_cron_installer' );
+                    $server_cron_installer_status = array_merge( $server_cron_installer_status, $installer->status() );
+                } catch ( \Throwable $e ) {
+                    $server_cron_installer_status['error'] = $e->getMessage();
+                }
+            }
+
             $recent_jobs_page = metis_settings_section_matches( $section, [ 'jobs_tasks' ] )
                 ? max( 1, metis_request_id( 'jobs_page', 1, 'get' ) )
                 : 1;
@@ -4121,6 +4162,7 @@ if ( ! function_exists( 'metis_settings_bootstrap' ) ) {
             'system_cron_secret_masked',
             'system_cron_endpoint',
             'system_cron_header',
+            'server_cron_installer_status',
             'system_cron_task_rows',
             'queue_summary',
             'recent_async_jobs',
