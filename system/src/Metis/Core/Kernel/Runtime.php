@@ -223,7 +223,7 @@ if ( ! function_exists( 'metis_kernel_normalize_front_controller_request' ) ) {
         }
 
         if ( preg_match( '#^/system/cron/?$#i', $path ) === 1 ) {
-            $cron_path = class_exists( 'Metis_Cron_Manager' ) ? Metis_Cron_Manager::endpoint_path() : '/system/cron';
+            $cron_path = class_exists( 'Metis_Cron_Manager' ) ? Metis_Cron_Manager::endpoint_path() : '/api/system/cron';
             metis_kernel_replace_request_path( $cron_path );
             return $attributes;
         }

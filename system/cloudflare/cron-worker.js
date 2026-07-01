@@ -64,7 +64,7 @@ function resolveCronUrl(originUrl) {
   const origin = new URL(originUrl);
   const path = origin.pathname.replace(/\/+$/, "");
 
-  if (path === "/system/cron.php" || path.endsWith("/system/cron.php")) {
+  if (path === "/api/system/cron" || path.endsWith("/api/system/cron")) {
     origin.pathname = path;
     origin.search = "";
     origin.hash = "";
@@ -72,12 +72,19 @@ function resolveCronUrl(originUrl) {
   }
 
   if (path === "/system/cron" || path.endsWith("/system/cron")) {
-    origin.pathname = path + ".php";
+    origin.pathname = path;
+    origin.search = "";
+    origin.hash = "";
+    return origin;
+  }
+
+  if (path === "/system/cron.php" || path.endsWith("/system/cron.php")) {
+    origin.pathname = path.slice(0, -4);
     origin.search = "";
     origin.hash = "";
     return origin;
   }
 
   const basePath = path === "" ? "/" : path + "/";
-  return new URL("system/cron.php", origin.origin + basePath);
+  return new URL("api/system/cron", origin.origin + basePath);
 }

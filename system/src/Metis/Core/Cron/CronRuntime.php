@@ -4,7 +4,8 @@ if ( ! defined( 'METIS_ROOT' ) ) exit;
 use Metis\Core\Cache\CacheService;
 
 final class Metis_Cron_Manager {
-    private const ENDPOINT_PATH     = '/system/cron';
+    private const ENDPOINT_PATH     = '/api/system/cron';
+    private const LEGACY_ENDPOINT_PATH = '/system/cron';
     private const SECRET_HEADER     = 'x-metis-cron-secret';
     private const FALLBACK_HEADER   = 'x-cron-secret';
     private const OPERATION         = 'system.cron.execute';
@@ -306,6 +307,10 @@ final class Metis_Cron_Manager {
         return metis_home_url( self::ENDPOINT_PATH );
     }
 
+    public static function legacy_endpoint_path(): string {
+        return self::LEGACY_ENDPOINT_PATH;
+    }
+
     public static function registered_tasks(): array {
         self::init();
 
@@ -357,12 +362,22 @@ final class Metis_Cron_Manager {
             $path = '/';
         }
 
-        if ( $path === self::ENDPOINT_PATH ) {
+        foreach ( [ self::ENDPOINT_PATH, self::LEGACY_ENDPOINT_PATH ] as $endpoint_path ) {
+            if ( $path === $endpoint_path ) {
+                return true;
+            }
+
+            // Temporary compatibility path for misconfigured schedulers that append the endpoint twice.
+            if ( $path === $endpoint_path . $endpoint_path ) {
+                return true;
+            }
+        }
+
+        if ( $path === self::LEGACY_ENDPOINT_PATH . self::ENDPOINT_PATH ) {
             return true;
         }
 
-        // Temporary compatibility path for misconfigured schedulers that append the endpoint twice.
-        return $path === self::ENDPOINT_PATH . self::ENDPOINT_PATH;
+        return false;
     }
 
     public static function authorize_request( Metis_Http_Request $request ): array {

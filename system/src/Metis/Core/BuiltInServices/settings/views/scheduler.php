@@ -134,9 +134,7 @@ async function triggerCron(env, trigger) {
   if (!env.METIS_ORIGIN_URL || !env.METIS_CRON_SECRET) {
     return { status: 500, body: { success: false, error: "Worker environment is missing METIS_ORIGIN_URL or METIS_CRON_SECRET." } };
   }
-  const origin = new URL(env.METIS_ORIGIN_URL);
-  const basePath = origin.pathname.endsWith("/") ? origin.pathname : origin.pathname + "/";
-  const url = new URL("system/cron", origin.origin + basePath);
+  const url = resolveCronUrl(env.METIS_ORIGIN_URL);
   const requestId = crypto.randomUUID();
   const response = await fetch(url.toString(), {
     method: "POST",
@@ -152,6 +150,35 @@ async function triggerCron(env, trigger) {
   try { body = await response.json(); }
   catch { body = { success: false, error: "Cron endpoint returned a non-JSON response." }; }
   return { status: response.status, body };
+}
+
+function resolveCronUrl(originUrl) {
+  const origin = new URL(originUrl);
+  const path = origin.pathname.replace(/\/+$/, "");
+
+  if (path === "/api/system/cron" || path.endsWith("/api/system/cron")) {
+    origin.pathname = path;
+    origin.search = "";
+    origin.hash = "";
+    return origin;
+  }
+
+  if (path === "/system/cron" || path.endsWith("/system/cron")) {
+    origin.pathname = path;
+    origin.search = "";
+    origin.hash = "";
+    return origin;
+  }
+
+  if (path === "/system/cron.php" || path.endsWith("/system/cron.php")) {
+    origin.pathname = path.slice(0, -4);
+    origin.search = "";
+    origin.hash = "";
+    return origin;
+  }
+
+  const basePath = path === "" ? "/" : path + "/";
+  return new URL("api/system/cron", origin.origin + basePath);
 }
 JS
 ); ?></pre>
