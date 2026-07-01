@@ -193,6 +193,62 @@ if ( ! function_exists( 'metis_kernel_force_request_uri' ) ) {
     }
 }
 
+if ( ! function_exists( 'metis_kernel_replace_request_path' ) ) {
+    function metis_kernel_replace_request_path( string $path ): void {
+        $path = '/' . ltrim( $path, '/' );
+        $query = trim( (string) ( $_SERVER['QUERY_STRING'] ?? '' ) );
+
+        $_SERVER['REQUEST_URI'] = $path . ( $query !== '' ? '?' . $query : '' );
+        $_SERVER['PATH_INFO'] = $path;
+        $_SERVER['ORIG_PATH_INFO'] = $path;
+        $_SERVER['REDIRECT_URL'] = $path;
+    }
+}
+
+if ( ! function_exists( 'metis_kernel_normalize_front_controller_request' ) ) {
+    function metis_kernel_normalize_front_controller_request( string $entry, array $attributes = [] ): array {
+        if ( $entry !== 'web' ) {
+            return $attributes;
+        }
+
+        $path = metis_kernel_request_path();
+
+        if ( preg_match( '#^/system/ajax/?$#i', $path ) === 1 ) {
+            $ajax_path = function_exists( 'metis_ajax_endpoint_path' ) ? metis_ajax_endpoint_path() : '/api/ajax';
+            metis_kernel_replace_request_path( $ajax_path );
+            if ( function_exists( 'metis_runtime_set_query_var' ) ) {
+                metis_runtime_set_query_var( 'metis_api_ajax', 1 );
+            }
+            return $attributes;
+        }
+
+        if ( preg_match( '#^/system/cron/?$#i', $path ) === 1 ) {
+            $cron_path = class_exists( 'Metis_Cron_Manager' ) ? Metis_Cron_Manager::endpoint_path() : '/system/cron';
+            metis_kernel_replace_request_path( $cron_path );
+            return $attributes;
+        }
+
+        if ( preg_match( '#^/system/webhooks?/([A-Za-z0-9_-]+)/?$#', $path, $matches ) !== 1 ) {
+            return $attributes;
+        }
+
+        $provider = metis_key_clean( (string) ( $matches[1] ?? '' ) );
+        if ( $provider === '' ) {
+            return $attributes;
+        }
+
+        $webhook_base = function_exists( 'metis_webhook_base_path' ) ? metis_webhook_base_path() : 'metis-webhooks';
+        metis_kernel_replace_request_path( '/' . trim( $webhook_base, '/' ) . '/' . $provider );
+
+        if ( function_exists( 'metis_runtime_set_query_var' ) ) {
+            metis_runtime_set_query_var( 'metis_webhook_provider', $provider );
+        }
+
+        $attributes['provider'] = $provider;
+        return $attributes;
+    }
+}
+
 if ( ! function_exists( 'metis_kernel_prepare_entry' ) ) {
     function metis_kernel_prepare_entry( string $entry, array $attributes = [] ): array {
         switch ( $entry ) {
@@ -602,6 +658,7 @@ if ( ! function_exists( 'metis_kernel_dispatch' ) ) {
 
     function metis_kernel_dispatch( string $entry = 'web', array $attributes = [] ): void {
         $attributes = metis_kernel_prepare_entry( $entry, $attributes );
+        $attributes = metis_kernel_normalize_front_controller_request( $entry, $attributes );
 
         if ( $entry === 'cli' ) {
             $argv    = (array) ( $GLOBALS['argv'] ?? [] );

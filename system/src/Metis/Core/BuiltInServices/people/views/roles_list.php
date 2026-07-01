@@ -52,7 +52,7 @@ if ( $workspace_available ) {
             </div>
             <?php endif; ?>
         <?php },
-        'content' => static function () use ($roles_by_domain, $can_manage) { ?>
+        'content' => static function () use ($roles_by_domain, $can_manage, $stripe_available, $workspace_available) { ?>
     <section class="metis-roles-wrap">
         <div id="metis-role-rows">
             <?php

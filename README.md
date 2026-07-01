@@ -106,7 +106,7 @@ Baseline requirements:
 
 - PHP 8.1 or newer
 - MariaDB or MySQL with InnoDB
-- Apache with rewrite support, or Nginx with equivalent server rules
+- Apache, Nginx, or LiteSpeed with a generic front-controller fallback to `index.php` and equivalent deny rules
 - Writable `storage/` and `system/config/`
 - PHP process functions enabled: `proc_open`, `proc_close`,
   `proc_get_status`, and `proc_terminate`

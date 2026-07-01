@@ -432,6 +432,39 @@ function metis_register_core_services(): void {
         $registry->singleton( 'integrity_service', static fn (): \Metis\Core\Services\IntegrityService => new \Metis\Core\Services\IntegrityService() );
     }
 
+    if ( ! $registry->has( 'update_server_identity' ) ) {
+        $registry->singleton(
+            'update_server_identity',
+            static fn (): \Metis\Core\Services\UpdateServerIdentityService => new \Metis\Core\Services\UpdateServerIdentityService(
+                \Metis\Core\Application::service( 'config_service' ),
+                \Metis\Core\Application::service( 'files' ),
+                \Metis\Core\Application::service( 'logger_core' )
+            )
+        );
+    }
+
+    if ( ! $registry->has( 'update_package_service' ) ) {
+        $registry->singleton(
+            'update_package_service',
+            static fn (): \Metis\Core\Services\UpdatePackageService => new \Metis\Core\Services\UpdatePackageService(
+                \Metis\Core\Application::service( 'files' )
+            )
+        );
+    }
+
+    if ( ! $registry->has( 'update_server_client' ) ) {
+        $registry->singleton(
+            'update_server_client',
+            static fn (): \Metis\Core\Services\UpdateServerClient => new \Metis\Core\Services\UpdateServerClient(
+                \Metis\Core\Application::service( 'http' ),
+                \Metis\Core\Application::service( 'config_service' ),
+                \Metis\Core\Application::service( 'files' ),
+                \Metis\Core\Application::service( 'logger_core' ),
+                \Metis\Core\Application::service( 'update_server_identity' )
+            )
+        );
+    }
+
     if ( ! $registry->has( 'github_update' ) ) {
         $registry->singleton(
             'github_update',
@@ -439,7 +472,8 @@ function metis_register_core_services(): void {
                 \Metis\Core\Application::service( 'github' ),
                 \Metis\Core\Application::service( 'config_service' ),
                 \Metis\Core\Application::service( 'files' ),
-                \Metis\Core\Application::service( 'logger_core' )
+                \Metis\Core\Application::service( 'logger_core' ),
+                \Metis\Core\Application::service( 'update_server_client' )
             )
         );
     }

@@ -12,23 +12,9 @@ ErrorDocument 503 /assets/error-pages/error.php?code=503
 # Preserve Authorization for PHP/FastCGI so CardDAV Basic auth reaches the app.
 RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
-# Canonical service entry wrappers live under /system.
-RewriteRule ^system/ajax/?$ system/ajax.php [L,QSA,NC]
-RewriteRule ^system/cron/?$ system/cron.php [L,QSA,NC]
-RewriteRule ^system/webhook/([A-Za-z0-9_-]+)/?$ system/webhooks.php?provider=$1 [L,QSA,NC]
-
 # Error page templates must stay directly executable because they are used
 # before the normal application boot can be trusted.
 RewriteRule ^assets/error-pages/(.+)$ system/assets/error-pages/$1 [L,QSA,NC]
-
-# Assets are protected by the front controller so asset policy, content type,
-# and cache headers remain consistent across Apache, nginx, and managed hosts.
-RewriteRule ^assets/(?:modules|runtime)(?:/|$) index.php [L,QSA,NC]
-RewriteRule ^assets/(.+)$ index.php [L,QSA,NC]
-
-# Portal-scoped AJAX endpoint must resolve before the front controller fallback.
-RewriteRule ^metis/api/ajax/?$ index.php?metis_api_ajax=1 [L,QSA,NC]
-RewriteRule ^api/ajax/?$ index.php?metis_api_ajax=1 [L,QSA,NC]
 
 # Block direct requests into application internals and non-public storage.
 RewriteRule (^|/)\.(?!well-known/) - [F,L]
@@ -36,7 +22,8 @@ RewriteRule ^(?:includes|logs|\.metis-integrity|system/(?:config|docs|modules|sr
 RewriteRule ^storage(?:/|$) - [F,L,NC]
 RewriteRule ^(?:vendor)(?:/|$) - [F,L,NC]
 
-# Route unknown requests through the front controller.
+# Route unknown requests through the front controller. The kernel classifies
+# portal, AJAX, webhook, asset, and legacy /system wrapper paths from REQUEST_URI.
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [L,QSA]

@@ -1,6 +1,6 @@
 # Web Server Deny Rules
 
-Apache is governed by the repository root `.htaccess`. nginx and LiteSpeed deployments must apply equivalent deny rules.
+Apache is governed by the repository root `.htaccess`. nginx and LiteSpeed deployments must apply equivalent deny rules. Route dispatch itself is handled by the front controller once the server hands the request to `index.php`.
 
 ## Required Denials
 

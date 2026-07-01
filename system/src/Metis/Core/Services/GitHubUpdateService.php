@@ -19,10 +19,15 @@ final class GitHubUpdateService {
         private readonly GitHubClient $github,
         private readonly ConfigService $config = new ConfigService(),
         private readonly FileService $files = new FileService(),
-        private readonly LoggerService $logger = new LoggerService()
+        private readonly LoggerService $logger = new LoggerService(),
+        private readonly ?UpdateServerClient $updateServer = null
     ) {}
 
     public function checkForUpdates(bool $forceRefresh = false): array {
+        if ($this->isUpdateServerProvider()) {
+            return $this->updateServer()->checkForUpdates($forceRefresh, $this->installedModuleInventory());
+        }
+
         $settings = $this->repositoryConfig();
         $currentVersion = (string) ($settings['current_version'] ?? Version::current());
         $cacheKey = 'api.github_release';
@@ -72,6 +77,10 @@ final class GitHubUpdateService {
     }
 
     public function moduleRegistry(bool $forceRefresh = false): array {
+        if ($this->isUpdateServerProvider()) {
+            return $this->updateServer()->moduleRegistry($forceRefresh, $this->installedModuleInventory());
+        }
+
         $settings = $this->repositoryConfig();
         $owner = (string) ($settings['metadata_owner'] ?? $settings['owner'] ?? '');
         $repo = (string) ($settings['metadata_repo'] ?? $settings['repo'] ?? '');
@@ -133,6 +142,10 @@ final class GitHubUpdateService {
     }
 
     public function cachedModuleRegistry(): array {
+        if ($this->isUpdateServerProvider()) {
+            return $this->updateServer()->moduleRegistry(false, $this->installedModuleInventory());
+        }
+
         $settings = $this->repositoryConfig();
         $owner = (string) ($settings['metadata_owner'] ?? $settings['owner'] ?? '');
         $repo = (string) ($settings['metadata_repo'] ?? $settings['repo'] ?? '');
@@ -175,6 +188,10 @@ final class GitHubUpdateService {
     }
 
     public function semanticTagReleases(bool $forceRefresh = false): array {
+        if ($this->isUpdateServerProvider()) {
+            return $this->updateServer()->semanticTagReleases($forceRefresh, $this->installedModuleInventory());
+        }
+
         $settings = $this->repositoryConfig();
         $owner = (string) ($settings['owner'] ?? '');
         $repo = (string) ($settings['repo'] ?? '');
@@ -205,6 +222,10 @@ final class GitHubUpdateService {
     }
 
     public function manifestReleases(bool $forceRefresh = false): array {
+        if ($this->isUpdateServerProvider()) {
+            return $this->updateServer()->manifestReleases($forceRefresh, $this->installedModuleInventory());
+        }
+
         $settings = $this->repositoryConfig();
         $owner = (string) ($settings['metadata_owner'] ?? $settings['owner'] ?? '');
         $repo = (string) ($settings['metadata_repo'] ?? $settings['repo'] ?? '');
@@ -256,6 +277,10 @@ final class GitHubUpdateService {
     }
 
     public function downloadReleaseArchive(string $tag, string $destination): array {
+        if ($this->isUpdateServerProvider()) {
+            return $this->updateServer()->downloadReleaseArchive($tag, $destination, $this->installedModuleInventory());
+        }
+
         $settings = $this->repositoryConfig();
         $owner = (string) ($settings['owner'] ?? '');
         $repo = (string) ($settings['repo'] ?? '');
@@ -273,6 +298,10 @@ final class GitHubUpdateService {
     }
 
     public function downloadModuleArchive(string $downloadUrl, string $destination): array {
+        if ($this->isUpdateServerProvider()) {
+            return $this->updateServer()->downloadModuleArchive($downloadUrl, $destination);
+        }
+
         $settings = $this->repositoryConfig();
         $owner = (string) ($settings['owner'] ?? '');
         $repo = (string) ($settings['repo'] ?? '');
@@ -295,6 +324,10 @@ final class GitHubUpdateService {
     }
 
     public function pollConfiguredRepositories(bool $forceRefresh = false): array {
+        if ($this->isUpdateServerProvider()) {
+            return $this->updateServer()->pollConfiguredRepositories($forceRefresh, $this->installedModuleInventory());
+        }
+
         $settings = $this->repositoryConfig();
         $checkedAt = gmdate('c');
 
@@ -311,6 +344,7 @@ final class GitHubUpdateService {
 
     private function repositoryConfig(): array {
         $fileConfig = $this->config->loadFile('config/update.php', []);
+        $provider = trim((string) ($fileConfig['source'] ?? 'github'));
         $currentVersion = (string) ($fileConfig['current_version'] ?? '');
         if ($currentVersion === '') {
             $currentVersion = Version::current();
@@ -340,6 +374,7 @@ final class GitHubUpdateService {
         }
 
         return [
+            'provider' => $provider !== '' ? $provider : 'github',
             'owner' => $owner,
             'repo' => $repo,
             'repo_label' => $repo,
@@ -351,6 +386,32 @@ final class GitHubUpdateService {
             'token' => $this->resolveToken($fileConfig),
             'current_version' => $currentVersion,
         ];
+    }
+
+    private function isUpdateServerProvider(): bool {
+        $settings = $this->repositoryConfig();
+        return strtolower(trim((string) ($settings['provider'] ?? 'github'))) === 'update_server';
+    }
+
+    private function updateServer(): UpdateServerClient {
+        if (!$this->updateServer instanceof UpdateServerClient) {
+            throw new \RuntimeException('Update server client is not available.');
+        }
+
+        return $this->updateServer;
+    }
+
+    private function installedModuleInventory(): array {
+        if (!\class_exists(\Metis\Core\Application::class) || !\Metis\Core\Application::has_service('module_updates')) {
+            return [];
+        }
+
+        try {
+            $modules = \Metis\Core\Application::service('module_updates')->discoverInstalledModules();
+            return \is_array($modules) ? $modules : [];
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     private function repositoryRef(array $fileConfig): string {

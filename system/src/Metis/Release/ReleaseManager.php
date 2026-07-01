@@ -1021,7 +1021,12 @@ final class ReleaseManager {
         }
 
         $this->progress( 'apply', 'Applying release files.', 76 );
-        $applied = $this->copyArchivePayload( (string) $extracted['source_root'] );
+        $package = is_array( $extracted['package'] ?? null ) ? (array) $extracted['package'] : [];
+        if ( $package !== [] ) {
+            $applied = $this->applyManagedReleasePackage( $package, $release, $previous );
+        } else {
+            $applied = $this->copyArchivePayload( (string) $extracted['source_root'] );
+        }
         if ( empty( $applied['ok'] ) ) {
             $this->clearPendingReleaseTransaction( [
                 'status' => 'archive_apply_failed',
@@ -1146,6 +1151,16 @@ final class ReleaseManager {
             )
         );
         $source_root = isset( $children[0] ) ? $extract_dir . '/' . $children[0] : $extract_dir;
+        $package = $this->updatePackageService()->inspectExtractedPackage( $source_root );
+        if ( $package !== [] ) {
+            return [
+                'ok' => true,
+                'status' => 'extracted',
+                'extract_dir' => $extract_dir,
+                'source_root' => $source_root,
+                'package' => $package,
+            ];
+        }
 
         foreach ( [ 'index.php', 'system/src/Metis/Core/Version.php' ] as $required ) {
             if ( ! \is_file( rtrim( $source_root, '/' ) . '/' . $required ) ) {
@@ -1163,6 +1178,7 @@ final class ReleaseManager {
             'status' => 'extracted',
             'extract_dir' => $extract_dir,
             'source_root' => $source_root,
+            'package' => [],
         ];
     }
 
@@ -1255,6 +1271,79 @@ final class ReleaseManager {
         }
 
         return false;
+    }
+
+    private function applyManagedReleasePackage( array $package, array $release, array $previous ): array {
+        $publicKey = trim( (string) ( $this->updateServerClient()->settings()['server_public_key'] ?? '' ) );
+        if ( $publicKey === '' ) {
+            return [
+                'ok' => false,
+                'status' => 'archive_signature_unconfigured',
+                'message' => 'Update-server public key is not configured for release package verification.',
+            ];
+        }
+
+        $manifest = is_array( $package['manifest'] ?? null ) ? (array) $package['manifest'] : [];
+        try {
+            $this->updatePackageService()->verifyExtractedPackage( $package, $publicKey );
+        } catch ( \Throwable $exception ) {
+            return [
+                'ok' => false,
+                'status' => 'archive_signature_failed',
+                'message' => $exception->getMessage(),
+            ];
+        }
+
+        $packageType = trim( (string) ( $manifest['package_type'] ?? '' ) );
+        if ( ! \in_array( $packageType, [ 'core_delta', 'core_full' ], true ) ) {
+            return [
+                'ok' => false,
+                'status' => 'archive_invalid',
+                'message' => 'Release package type is not supported for core updates.',
+            ];
+        }
+
+        $targetVersion = trim( (string) ( $manifest['target_version'] ?? '' ) );
+        $releaseVersion = trim( (string) ( $release['version'] ?? '' ) );
+        if ( $targetVersion === '' || ( $releaseVersion !== '' && $targetVersion !== $releaseVersion ) ) {
+            return [
+                'ok' => false,
+                'status' => 'archive_invalid',
+                'message' => 'Release package target version does not match the trusted release metadata.',
+            ];
+        }
+
+        if ( $packageType === 'core_delta' ) {
+            $fromVersion = trim( (string) ( $manifest['from_version'] ?? '' ) );
+            $installedVersion = trim( (string) ( $previous['version'] ?? Version::current() ) );
+            if ( $fromVersion === '' || $fromVersion !== $installedVersion ) {
+                return [
+                    'ok' => false,
+                    'status' => 'archive_delta_mismatch',
+                    'message' => sprintf( 'Release delta expects installed version [%s], but Metis is currently [%s].', $fromVersion, $installedVersion ),
+                ];
+            }
+        }
+
+        try {
+            $applied = $this->updatePackageService()->applyPayload(
+                (string) ( $package['payload_root'] ?? '' ),
+                rtrim( str_replace( '\\', '/', (string) \METIS_PATH ), '/' ),
+                $manifest,
+                fn ( string $relative ): bool => ! $this->archivePathIsProtected( $relative )
+            );
+        } catch ( \Throwable $exception ) {
+            return [
+                'ok' => false,
+                'status' => 'archive_apply_failed',
+                'message' => $exception->getMessage(),
+            ];
+        }
+
+        return $applied + [
+            'status' => 'applied',
+            'package_type' => $packageType,
+        ];
     }
 
     private function finalizeArchiveApply( string $tag, array $release, string $trigger, array $backup, array $previous, array $archive_result ): array {
@@ -2056,6 +2145,14 @@ final class ReleaseManager {
 
     private function githubUpdateService(): \Metis\Core\Services\GitHubUpdateService {
         return Application::service( 'github_update' );
+    }
+
+    private function updateServerClient(): \Metis\Core\Services\UpdateServerClient {
+        return Application::service( 'update_server_client' );
+    }
+
+    private function updatePackageService(): \Metis\Core\Services\UpdatePackageService {
+        return Application::service( 'update_package_service' );
     }
 
     private function ensureLocalTagAvailable( string $tag, array $repository ): bool {

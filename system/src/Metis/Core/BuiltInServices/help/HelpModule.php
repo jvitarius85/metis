@@ -56,7 +56,7 @@ final class HelpModule {
             return true;
         }
 
-        $requestUri = trim( (string) ( $_SERVER['REQUEST_URI'] ?? '' ) );
+        $requestUri = trim( self::serverValue( 'REQUEST_URI' ) );
         if ( $requestUri === '' ) {
             return true;
         }
@@ -77,11 +77,34 @@ final class HelpModule {
         }
 
         if ( str_starts_with( $normalized, '/ajax/' ) ) {
-            $action = strtolower( (string) ( $_REQUEST['action'] ?? '' ) );
+            $action = strtolower( self::requestValue( 'action' ) );
             return str_contains( $action, 'help' ) || str_contains( $action, 'remediate' );
         }
 
         return false;
+    }
+
+    private static function serverValue( string $key, string $default = '' ): string {
+        $value = filter_input( INPUT_SERVER, $key, FILTER_UNSAFE_RAW, FILTER_NULL_ON_FAILURE );
+        if ( ! is_string( $value ) || $value === '' ) {
+            return $default;
+        }
+
+        return $value;
+    }
+
+    private static function requestValue( string $key, string $default = '' ): string {
+        $query = filter_input( INPUT_GET, $key, FILTER_UNSAFE_RAW, FILTER_NULL_ON_FAILURE );
+        if ( is_string( $query ) && $query !== '' ) {
+            return $query;
+        }
+
+        $body = filter_input( INPUT_POST, $key, FILTER_UNSAFE_RAW, FILTER_NULL_ON_FAILURE );
+        if ( is_string( $body ) && $body !== '' ) {
+            return $body;
+        }
+
+        return $default;
     }
 
     public static function handleIndexRoute( Request $request ): Response {

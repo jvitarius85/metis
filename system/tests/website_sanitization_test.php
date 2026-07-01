@@ -9,9 +9,7 @@ $root = dirname( __DIR__ );
 require_once __DIR__ . '/_support/module_path_resolver.php';
 $resolve_relative = static fn ( string $relative ): string => metis_test_resolve_relative( $root, $relative );
 
-
-$root = dirname( __DIR__ );
-require_once $root . '/src/Metis/Core/Runtime/SanitizationRuntime.php' );
+require_once $root . '/src/Metis/Core/Runtime/SanitizationRuntime.php';
 require_once $resolve_relative( 'modules/Website/Services/StructuredWebsiteBuilderService.php' );
 
 $failures = [];

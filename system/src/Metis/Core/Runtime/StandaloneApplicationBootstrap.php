@@ -1173,6 +1173,41 @@ function metis_standalone_install_selected_module_ids( array $source ): array {
     return array_values( $selected );
 }
 
+function metis_standalone_register_update_server_installation(): array {
+    if ( ! \class_exists( \Metis\Core\Application::class ) || ! \Metis\Core\Application::has_service( 'update_server_client' ) ) {
+        return [
+            'ok' => false,
+            'status' => 'unavailable',
+            'message' => 'Update server client is not available during install completion.',
+        ];
+    }
+
+    $client = \Metis\Core\Application::service( 'update_server_client' );
+    if ( ! \is_object( $client ) || ! \method_exists( $client, 'isEnabled' ) || ! $client->isEnabled() ) {
+        return [
+            'ok' => true,
+            'status' => 'disabled',
+            'message' => 'Update server registration is disabled for this installation.',
+        ];
+    }
+
+    $modules = \Metis\Core\Application::has_service( 'module_updates' )
+        ? (array) \Metis\Core\Application::service( 'module_updates' )->discoverInstalledModules()
+        : [];
+
+    $result = $client->ensureRegistered( [
+        'channel' => 'stable',
+        'module_inventory' => $modules,
+    ] );
+
+    return [
+        'ok' => true,
+        'status' => 'registered',
+        'installation_id' => (string) ( $result['installation_id'] ?? '' ),
+        'message' => 'Installation registered with the update server.',
+    ];
+}
+
 function metis_standalone_install_module_store_results_message( array $results, int $requested_count ): string {
     $installed = 0;
     foreach ( $results as $result ) {
@@ -1979,9 +2014,17 @@ function metis_standalone_handle_database_setup(): void {
                 $admin_result = metis_standalone_install_ensure_first_admin( $admin );
                 metis_standalone_install_complete_defaults();
                 Core_Settings_Service::set( 'metis_install_first_admin_user_id', (int) $admin_result['id'], false );
+                $update_registration = metis_standalone_register_update_server_installation();
+                if ( empty( $update_registration['ok'] ) ) {
+                    throw new RuntimeException( (string) ( $update_registration['message'] ?? 'Update server registration failed.' ) );
+                }
                 metis_standalone_mark_installed();
                 metis_standalone_install_ensure_permissions();
-                metis_standalone_install_json( [ 'ok' => true, 'redirect' => metis_home_url( '/admin/' ) ] );
+                metis_standalone_install_json( [
+                    'ok' => true,
+                    'redirect' => metis_home_url( '/admin/' ),
+                    'update_registration' => $update_registration,
+                ] );
             }
 
             metis_standalone_install_json( [ 'ok' => false, 'error' => 'Unknown installer action.' ], 400 );

@@ -24,7 +24,8 @@ final class ModuleInstallService {
         private readonly GitHubUpdateService $githubUpdates,
         private readonly ModuleUpdateService $moduleUpdates,
         private readonly FileService $files = new FileService(),
-        private readonly LoggerService $logger = new LoggerService()
+        private readonly LoggerService $logger = new LoggerService(),
+        private readonly ?UpdatePackageService $updatePackages = null
     ) {}
 
     public function installLatest(string $moduleId, bool $forceRefresh = true, ?callable $progressReporter = null): array {
@@ -103,33 +104,38 @@ final class ModuleInstallService {
                 'module_name' => $moduleName,
             ]);
             $this->extractArchive($archivePath, $extractPath);
-            $moduleSource = $this->locateModuleSource($extractPath, $moduleId);
-            if ($moduleSource === '') {
-                throw new \RuntimeException(sprintf('Unable to locate module.json for [%s] inside the archive.', $moduleId));
-            }
-
-            $this->emitProgress($progressReporter, 'validate_manifest', sprintf('Validating %s manifest.', $moduleName), 44, [
-                'module' => $moduleId,
-                'module_name' => $moduleName,
-            ]);
-            $manifest = $this->files->readJson($moduleSource . '/module.json', []);
-            $manifestId = metis_key_clean((string) ($manifest['id'] ?? $manifest['slug'] ?? basename($moduleSource)));
-            $manifestVersion = trim((string) ($manifest['version'] ?? ''));
-            if ($manifestId !== $moduleId) {
-                throw new \RuntimeException(sprintf('Archive manifest ID [%s] does not match requested module [%s].', $manifestId, $moduleId));
-            }
-            if (preg_match(self::SEMVER_PATTERN, $manifestVersion) !== 1 || version_compare($manifestVersion, $latestVersion, '!=')) {
-                throw new \RuntimeException(sprintf('Archive version [%s] does not match registry version [%s].', $manifestVersion, $latestVersion));
-            }
-            $manifest = (new ModuleValidator())->validateModule($moduleSource, $manifest, $moduleId);
 
             $destination = rtrim(ModulePathRegistry::moduleRootPath(), '/\\') . '/' . $moduleId;
-            $stagedDestination = $workspace . '/runtime-module';
+            $stagedDestination = $workspace . '/' . $moduleId;
             $this->emitProgress($progressReporter, 'stage_runtime', sprintf('Staging runtime files for %s.', $moduleName), 56, [
                 'module' => $moduleId,
                 'module_name' => $moduleName,
             ]);
-            $this->copyDirectory($moduleSource, $stagedDestination);
+            $package = $this->updatePackageService()->inspectExtractedPackage($extractPath);
+            if ($package !== []) {
+                $manifest = $this->stageManagedPackage($package, $moduleId, $latestVersion, $currentVersion, $destination, $stagedDestination);
+            } else {
+                $moduleSource = $this->locateModuleSource($extractPath, $moduleId);
+                if ($moduleSource === '') {
+                    throw new \RuntimeException(sprintf('Unable to locate module.json for [%s] inside the archive.', $moduleId));
+                }
+
+                $this->emitProgress($progressReporter, 'validate_manifest', sprintf('Validating %s manifest.', $moduleName), 44, [
+                    'module' => $moduleId,
+                    'module_name' => $moduleName,
+                ]);
+                $manifest = $this->files->readJson($moduleSource . '/module.json', []);
+                $manifestId = metis_key_clean((string) ($manifest['id'] ?? $manifest['slug'] ?? basename($moduleSource)));
+                $manifestVersion = trim((string) ($manifest['version'] ?? ''));
+                if ($manifestId !== $moduleId) {
+                    throw new \RuntimeException(sprintf('Archive manifest ID [%s] does not match requested module [%s].', $manifestId, $moduleId));
+                }
+                if (preg_match(self::SEMVER_PATTERN, $manifestVersion) !== 1 || version_compare($manifestVersion, $latestVersion, '!=')) {
+                    throw new \RuntimeException(sprintf('Archive version [%s] does not match registry version [%s].', $manifestVersion, $latestVersion));
+                }
+                $manifest = (new ModuleValidator())->validateModule($moduleSource, $manifest, $moduleId);
+                $this->copyDirectory($moduleSource, $stagedDestination);
+            }
             $this->verifyInstalledRuntimeContract($stagedDestination, $manifest, $moduleId);
 
             $previousDestination = '';
@@ -390,6 +396,59 @@ final class ModuleInstallService {
         }
     }
 
+    private function stageManagedPackage(
+        array $package,
+        string $moduleId,
+        string $latestVersion,
+        string $currentVersion,
+        string $destination,
+        string $stagedDestination
+    ): array {
+        $publicKey = trim((string) ($this->updateServerClient()->settings()['server_public_key'] ?? ''));
+        if ($publicKey === '') {
+            throw new \RuntimeException('Update-server public key is not configured for module package verification.');
+        }
+
+        $this->updatePackageService()->verifyExtractedPackage($package, $publicKey);
+        $manifest = is_array($package['manifest'] ?? null) ? (array) $package['manifest'] : [];
+        $packageType = trim((string) ($manifest['package_type'] ?? ''));
+        $targetModuleId = metis_key_clean((string) ($manifest['module_id'] ?? ''));
+        $targetVersion = trim((string) ($manifest['target_version'] ?? ''));
+        if ($targetModuleId !== $moduleId) {
+            throw new \RuntimeException(sprintf('Module package targets [%s], not [%s].', $targetModuleId, $moduleId));
+        }
+        if ($targetVersion === '' || version_compare($targetVersion, $latestVersion, '!=')) {
+            throw new \RuntimeException(sprintf('Module package version [%s] does not match registry version [%s].', $targetVersion, $latestVersion));
+        }
+
+        $payloadRoot = rtrim((string) ($package['payload_root'] ?? ''), '/\\');
+        if ($payloadRoot === '' || !is_dir($payloadRoot)) {
+            throw new \RuntimeException('Module package payload is missing.');
+        }
+
+        if ($packageType === 'module_delta') {
+            $fromVersion = trim((string) ($manifest['from_version'] ?? ''));
+            if ($currentVersion === '') {
+                throw new \RuntimeException(sprintf('Module [%s] delta package requires an existing installation.', $moduleId));
+            }
+            if ($fromVersion === '' || version_compare($fromVersion, $currentVersion, '!=')) {
+                throw new \RuntimeException(sprintf('Module delta expects installed version [%s], but [%s] is currently installed.', $fromVersion, $currentVersion));
+            }
+            if (!is_dir($destination)) {
+                throw new \RuntimeException(sprintf('Module [%s] is missing its current runtime bundle for delta application.', $moduleId));
+            }
+            $this->copyDirectory($destination, $stagedDestination);
+            $this->updatePackageService()->applyPayload($payloadRoot, $stagedDestination, $manifest);
+        } elseif ($packageType === 'module_full') {
+            $this->copyDirectory($payloadRoot, $stagedDestination);
+        } else {
+            throw new \RuntimeException('Module package type is not supported.');
+        }
+
+        $stagedManifest = $this->files->readJson($stagedDestination . '/module.json', []);
+        return (new ModuleValidator())->validateModule($stagedDestination, $stagedManifest, $moduleId);
+    }
+
     private function verifyInstalledRuntimeContract(string $modulePath, array $manifest, string $moduleId): void {
         $modulePath = rtrim($modulePath, '/\\');
         if (!is_file($modulePath . '/module.json')) {
@@ -589,5 +648,25 @@ final class ModuleInstallService {
             'status' => $status,
             'message' => $message,
         ], $payload);
+    }
+
+    private function updatePackageService(): UpdatePackageService {
+        if ($this->updatePackages instanceof UpdatePackageService) {
+            return $this->updatePackages;
+        }
+
+        if (Application::has_service('update_package_service')) {
+            return Application::service('update_package_service');
+        }
+
+        return new UpdatePackageService($this->files);
+    }
+
+    private function updateServerClient(): UpdateServerClient {
+        if (!Application::has_service('update_server_client')) {
+            throw new \RuntimeException('Update server client is not available.');
+        }
+
+        return Application::service('update_server_client');
     }
 }

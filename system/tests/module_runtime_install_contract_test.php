@@ -35,7 +35,7 @@ $installBody = $installStart !== false && $installEnd !== false
     : '';
 
 $assert(
-    str_contains( $installBody, "\$stagedDestination = \$workspace . '/runtime-module';" )
+    str_contains( $installBody, "\$stagedDestination = \$workspace . '/' . \$moduleId;" )
     && str_contains( $installBody, "\$this->verifyInstalledRuntimeContract(\$stagedDestination, \$manifest, \$moduleId);" )
     && str_contains( $installBody, '@rename($stagedDestination, $destination)' )
     && str_contains( $installBody, '$schemaResult = $this->runInstalledModuleSchema($moduleId);' ),

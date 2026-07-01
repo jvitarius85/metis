@@ -7,7 +7,7 @@ normal install.
 
 - PHP 8.1 or newer
 - MariaDB or MySQL with InnoDB
-- Apache with rewrite support, or Nginx with equivalent rewrite/protection rules
+- Apache, Nginx, or LiteSpeed with a generic front-controller fallback to `index.php` and equivalent protection rules
 - Writable `storage/`, `storage/runtime/cache/`, `storage/public-media/`,
   `storage/protected-media/`, `storage/private-records/`, and `system/config/`
 - PHP extensions commonly required by Metis: `mysqli`, `json`, `mbstring`,
@@ -56,11 +56,12 @@ Baseline hosting recommendation:
 
 ## Apache and Nginx
 
-Apache installs rely on `.htaccess` rewrite and protection rules. The server must
-allow those rules to run.
+Metis routing is resolved inside the front controller. The web server only needs
+to pass non-file, non-directory requests to `index.php` and enforce the deny
+rules for protected paths.
 
-Nginx does not read `.htaccess`. If Metis is installed on Nginx, equivalent
-server rules must be configured by the server administrator. Metis should not be
+Apache installs can use the repository `.htaccess` for the fallback and deny
+rules. Nginx and other servers must apply equivalent rules. Metis should not be
 allowed to expose private paths such as:
 
 - `system/config/`
