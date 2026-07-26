@@ -207,6 +207,46 @@ namespace {
     $assert( ( $imageLayout['sections'][0]['content']['mode'] ?? '' ) === 'full_width', 'Structured builder normalization must preserve image full-width mode.' );
     $assert( ( $imageLayout['sections'][0]['content']['align'] ?? '' ) === 'right', 'Structured builder normalization must preserve image alignment.' );
 
+    $carouselLayout = \Metis\Modules\Website\Services\StructuredWebsiteBuilderService::normalizeLayout(
+        [
+            'editor_meta' => [
+                'structured_builder' => [
+                    'sections' => [
+                        [
+                            'id' => 'section_carousel',
+                            'type' => 'image_carousel',
+                            'content' => [
+                                'height' => 500,
+                                'transition' => 'fade',
+                                'transition_duration_ms' => 600,
+                                'slides' => [
+                                    [ 'src' => '/media/one', 'alt' => 'First image', 'action_type' => 'url', 'url' => '/learn', 'duration_ms' => 3500 ],
+                                    [ 'src' => '/media/two', 'alt' => 'Second image', 'action_type' => 'popup', 'popup_id' => 42, 'duration_ms' => 4700 ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ],
+        [ 'page_type' => 'page', 'is_post' => false ]
+    );
+    $carouselJson = json_decode( (string) ( $carouselLayout['layout_json'] ?? '' ), true );
+    $carouselModule = $carouselJson['sections'][0]['columns'][0]['modules'][0] ?? [];
+    $carouselData = is_array( $carouselModule['data'] ?? null ) ? $carouselModule['data'] : [];
+    $assert( ( $carouselLayout['sections'][0]['type'] ?? '' ) === 'image_carousel', 'Structured builder must preserve the image carousel section type.' );
+    $assert( ( $carouselModule['type'] ?? '' ) === 'image_carousel', 'Structured builder layout_json must emit an image carousel block.' );
+    $assert( ( $carouselData['transition'] ?? '' ) === 'fade' && ( $carouselData['transition_duration_ms'] ?? 0 ) === 600, 'Image carousel transition settings must survive normalization.' );
+    $assert( ( $carouselData['slides'][1]['action_type'] ?? '' ) === 'popup' && ( $carouselData['slides'][1]['popup_id'] ?? 0 ) === 42, 'Image carousel popup actions must survive normalization.' );
+
+    foreach ( [ 'crossfade', 'ken_burns', 'reveal' ] as $transition ) {
+        $transitionLayout = \Metis\Modules\Website\Services\StructuredWebsiteBuilderService::normalizeLayout(
+            [ 'editor_meta' => [ 'structured_builder' => [ 'sections' => [[ 'type' => 'image_carousel', 'content' => [ 'transition' => $transition, 'slides' => [] ] ]] ] ] ],
+            [ 'page_type' => 'page', 'is_post' => false ]
+        );
+        $assert( ( $transitionLayout['sections'][0]['content']['transition'] ?? '' ) === $transition, 'Structured builder must preserve the ' . $transition . ' carousel transition.' );
+    }
+
     if ( $failures !== [] ) {
         fwrite( STDERR, implode( PHP_EOL, $failures ) . PHP_EOL );
         exit( 1 );

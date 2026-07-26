@@ -3226,8 +3226,8 @@
     }
 
     function bootStructuredEditorV2() {
-        var PAGE_SECTION_TYPES = ['heading', 'text', 'image', 'button', 'columns', 'hero', 'feature_grid', 'card_grid', 'html', 'cta', 'events', 'form', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive'];
-        var POST_SECTION_TYPES = ['heading', 'text', 'image', 'button', 'columns', 'feature_grid', 'card_grid', 'html', 'transcript', 'cta', 'events', 'form', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive'];
+        var PAGE_SECTION_TYPES = ['heading', 'text', 'image', 'image_carousel', 'button', 'columns', 'hero', 'feature_grid', 'card_grid', 'html', 'cta', 'events', 'form', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive'];
+        var POST_SECTION_TYPES = ['heading', 'text', 'image', 'image_carousel', 'button', 'columns', 'feature_grid', 'card_grid', 'html', 'transcript', 'cta', 'events', 'form', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive'];
         var HERO_STYLES = ['split', 'centered', 'overlay'];
 
         state.sections = [];
@@ -3721,6 +3721,7 @@
             if (type === 'posts_list') return 'Posts List';
             if (type === 'newsletter_signup') return 'Newsletter Signup';
             if (type === 'newsletter_archive') return 'Newsletter Archive';
+            if (type === 'image_carousel') return 'Image Carousel';
             if (type === 'transcript') return 'Transcript';
             if (type === 'html') return 'Embed / HTML';
             if (type === 'cta') return 'CTA';
@@ -3738,6 +3739,7 @@
                 heading: 'Page heading or section title',
                 text: 'Rich text content',
                 image: 'Single responsive image',
+                image_carousel: 'Rotating images with links or popup forms',
                 button: 'Link button',
                 columns: 'Two to four text columns',
                 hero: 'Lead panel with media and CTA',
@@ -3818,6 +3820,7 @@
             if (t === 'transcript') base.content = { source: '', rows: [] };
             else if (t === 'heading') base.content = { text: 'Heading', level: 'h2', align: 'left', vertical_align: 'top' };
             else if (t === 'image') base.content = { src: '', media_id: 0, link_url: '', alt: '', caption: '', width: '', height: '', mode: 'contained', align: 'center' };
+            else if (t === 'image_carousel') base.content = { height: 420, transition: 'slide', transition_duration_ms: 450, slides: [{ src: '', media_id: 0, alt: '', action_type: 'url', url: '', popup_id: '', duration_ms: 5000 }] };
             else if (t === 'button') base.content = { label: 'Learn more', url: '#', align: 'left' };
             else if (t === 'hero') base.content = { title: 'Hero Title', subtitle: '', cta_label: 'Learn More', cta_url: '#', image_src: '' };
             else if (t === 'html') base.content = { html: '<div></div>' };
@@ -4031,6 +4034,23 @@
             return html;
         }
 
+        function carouselTimingOptions(selected, presets) {
+            var selectedValue = Math.max(1, parseInt(s(selected || '0'), 10) || 0);
+            var hasSelectedValue = false;
+            var html = '';
+            (Array.isArray(presets) ? presets : []).forEach(function (preset) {
+                var value = Math.max(1, parseInt(s(preset && preset.value || '0'), 10) || 0);
+                if (!value) return;
+                if (value === selectedValue) hasSelectedValue = true;
+                html += '<option value="' + esc(String(value)) + '"' + (value === selectedValue ? ' selected' : '') + '>' + esc(s(preset && preset.label || '')) + '</option>';
+            });
+            if (!hasSelectedValue && selectedValue) {
+                var seconds = Math.round((selectedValue / 1000) * 100) / 100;
+                html += '<option value="' + esc(String(selectedValue)) + '" selected>Current: ' + esc(String(seconds)) + ' seconds</option>';
+            }
+            return html;
+        }
+
         function optionLabel(options, selected, fallback) {
             var value = s(selected || '');
             var match = (Array.isArray(options) ? options : []).filter(function (row) {
@@ -4177,6 +4197,12 @@
             };
         }
 
+        function carouselImageTargetFromId(raw) {
+            var match = s(raw || '').match(/^carousel-image:(\d+):(\d+)$/);
+            if (!match) return null;
+            return { index: parseInt(match[1], 10), slideIndex: parseInt(match[2], 10) };
+        }
+
         function columnImageTargetFromId(raw) {
             var match = s(raw || '').match(/^column-image:(\d+):(\d+):(src)$/);
             if (!match) return null;
@@ -4189,6 +4215,10 @@
 
         function openBlockImagePicker(index, field) {
             openInlineImageModal('block-image:' + String(index) + ':' + s(field || 'src'));
+        }
+
+        function openCarouselImagePicker(index, slideIndex) {
+            openInlineImageModal('carousel-image:' + String(index) + ':' + String(slideIndex));
         }
 
         function openColumnImagePicker(index, columnIndex, field) {
@@ -4311,6 +4341,25 @@
                 out.content.height = normalizeImageDimension(content.height || '');
                 out.content.mode = ['contained', 'wide', 'full_width'].indexOf(s(content.mode || 'contained')) === -1 ? 'contained' : s(content.mode || 'contained');
                 out.content.align = ['left', 'center', 'right'].indexOf(s(content.align || 'center')) === -1 ? 'center' : s(content.align || 'center');
+            } else if (out.type === 'image_carousel') {
+                out.content.height = Math.max(160, Math.min(1200, parseInt(s(content.height || '420'), 10) || 420));
+                var carouselTransition = s(content.transition || 'slide');
+                out.content.transition = ['slide', 'fade', 'crossfade', 'ken_burns', 'reveal', 'cinematic'].indexOf(carouselTransition) === -1 ? 'slide' : carouselTransition;
+                out.content.transition_duration_ms = Math.max(100, Math.min(2000, parseInt(s(content.transition_duration_ms || '450'), 10) || 450));
+                var carouselSlides = Array.isArray(content.slides) ? content.slides : [];
+                out.content.slides = carouselSlides.map(function (slide) {
+                    var row = slide && typeof slide === 'object' ? slide : {};
+                    return {
+                        src: s(row.src || ''),
+                        media_id: Math.max(0, parseInt(s(row.media_id || '0'), 10) || 0),
+                        alt: repairMojibakeText(row.alt || ''),
+                        action_type: s(row.action_type || 'url') === 'popup' ? 'popup' : 'url',
+                        url: s(row.url || ''),
+                        popup_id: s(row.popup_id || ''),
+                        duration_ms: Math.max(1000, Math.min(60000, parseInt(s(row.duration_ms || '5000'), 10) || 5000))
+                    };
+                }).slice(0, 12);
+                if (!out.content.slides.length) out.content.slides = defaultSectionByType('image_carousel').content.slides;
             } else if (out.type === 'button') {
                 out.content.label = repairMojibakeText(content.label || 'Learn more');
                 out.content.action_type = s(content.action_type || 'url') === 'popup' ? 'popup' : 'url';
@@ -4686,8 +4735,8 @@
         function blockLibraryTypes() {
             var allowed = availableSectionTypes();
             var preferred = isPostContext()
-                ? ['section_header', 'heading', 'text', 'button', 'html', 'transcript', 'form', 'image', 'columns', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory']
-                : ['section_header', 'heading', 'text', 'button', 'html', 'form', 'image', 'hero', 'columns', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory'];
+                ? ['section_header', 'heading', 'text', 'button', 'html', 'transcript', 'form', 'image', 'image_carousel', 'columns', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory']
+                : ['section_header', 'heading', 'text', 'button', 'html', 'form', 'image', 'image_carousel', 'hero', 'columns', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory'];
             return preferred.filter(function (type) {
                 if (type === 'section_header') return allowed.indexOf('heading') !== -1;
                 return allowed.indexOf(type) !== -1;
@@ -4696,7 +4745,7 @@
 
         function blockCategory(type) {
             if (type === 'section_header' || type === 'heading' || type === 'text' || type === 'button' || type === 'html' || type === 'transcript') return 'Content';
-            if (type === 'image' || type === 'hero') return 'Media';
+            if (type === 'image' || type === 'image_carousel' || type === 'hero') return 'Media';
             if (type === 'columns' || type === 'card_grid' || type === 'feature_grid' || type === 'cta' || type === 'divider' || type === 'spacer') return 'Layout';
             if (type === 'posts_list' || type === 'newsletter_signup' || type === 'newsletter_archive' || type === 'events' || type === 'form' || type === 'donation_form' || type === 'donation_progress' || type === 'campaign_summary' || type === 'testimonials' || type === 'people_directory') return 'Dynamic';
             return 'Blocks';
@@ -4711,6 +4760,7 @@
                 html: 'code',
                 transcript: 'phrase-sentiment',
                 image: 'image',
+                image_carousel: 'image',
                 hero: 'website',
                 columns: 'distribute-horizontal-center',
                 feature_grid: 'grid',
@@ -5028,6 +5078,12 @@
                     sectionImage +
                     '<figcaption' + editableAttr(index, 'image_caption') + '>' + esc(s(content.caption || '')) + '</figcaption>' +
                 '</figure>';
+            } else if (type === 'image_carousel') {
+                var previewSlides = Array.isArray(content.slides) ? content.slides.filter(function (slide) { return slide && slide.src; }) : [];
+                var previewSlide = previewSlides[0] || {};
+                body = '<div class="metis-builder-carousel-preview" style="height:' + esc(String(Math.max(160, parseInt(s(content.height || '420'), 10) || 420))) + 'px">' +
+                    (previewSlide.src ? '<img src="' + esc(s(previewSlide.src || '')) + '" alt="' + esc(s(previewSlide.alt || '')) + '">' : '<div class="metis-builder-media-empty">Add images in settings.</div>') +
+                    '<span class="metis-builder-carousel-preview__meta">' + esc(String(previewSlides.length)) + ' slide' + (previewSlides.length === 1 ? '' : 's') + ' • ' + esc(s(content.transition || 'slide')) + '</span></div>';
             } else if (type === 'button') {
                 var sectionButtonActionType = s(content.action_type || 'url') === 'popup' ? 'popup' : 'url';
                 var sectionButtonTargetLabel = sectionButtonActionType === 'popup'
@@ -5351,6 +5407,37 @@
                 html += '<div class="metis-se-field-row"><label>Alignment</label><select id="metis-v2-image-align" class="metis-se-select"><option value="left"' + (imageAlignValue(sec.content) === 'left' ? ' selected' : '') + '>Left</option><option value="center"' + (imageAlignValue(sec.content) === 'center' ? ' selected' : '') + '>Center</option><option value="right"' + (imageAlignValue(sec.content) === 'right' ? ' selected' : '') + '>Right</option></select></div>';
                 html += '<div class="metis-se-field-row"><label>Width</label><input id="metis-v2-image-width" class="metis-se-input" inputmode="numeric" pattern="[0-9]*" value="' + esc(s(sec.content.width || '')) + '" placeholder="Auto"></div>';
                 html += '<div class="metis-se-field-row"><label>Height</label><input id="metis-v2-image-height" class="metis-se-input" inputmode="numeric" pattern="[0-9]*" value="' + esc(s(sec.content.height || '')) + '" placeholder="Auto"></div>';
+            } else if (sec.type === 'image_carousel') {
+                var carouselSlides = Array.isArray(sec.content.slides) ? sec.content.slides : [];
+                var transitionTimingPresets = [
+                    { value: 250, label: 'Snappy (0.25 seconds)' },
+                    { value: 450, label: 'Quick (0.45 seconds)' },
+                    { value: 650, label: 'Balanced (0.65 seconds)' },
+                    { value: 900, label: 'Gentle (0.9 seconds)' },
+                    { value: 1200, label: 'Leisurely (1.2 seconds)' }
+                ];
+                var slideTimingPresets = [
+                    { value: 3000, label: '3 seconds' },
+                    { value: 4000, label: '4 seconds' },
+                    { value: 5000, label: '5 seconds' },
+                    { value: 6000, label: '6 seconds' },
+                    { value: 8000, label: '8 seconds' },
+                    { value: 10000, label: '10 seconds' }
+                ];
+                html += '<div class="metis-se-field-row"><div class="metis-se-field-help">Carousel banners automatically use the standard 1983 × 793 responsive ratio.</div></div>';
+                html += '<div class="metis-se-field-row"><label>Transition</label><select id="metis-v2-carousel-transition" class="metis-se-select"><option value="slide"' + (sec.content.transition === 'slide' ? ' selected' : '') + '>Slide</option><option value="fade"' + (sec.content.transition === 'fade' ? ' selected' : '') + '>Fade</option><option value="crossfade"' + (sec.content.transition === 'crossfade' ? ' selected' : '') + '>Crossfade</option><option value="ken_burns"' + (sec.content.transition === 'ken_burns' ? ' selected' : '') + '>Ken Burns</option><option value="reveal"' + (sec.content.transition === 'reveal' ? ' selected' : '') + '>Reveal</option><option value="cinematic"' + (sec.content.transition === 'cinematic' ? ' selected' : '') + '>Cinematic</option></select></div>';
+                html += '<div class="metis-se-field-row"><label>Transition Speed</label><select id="metis-v2-carousel-transition-duration" class="metis-se-select">' + carouselTimingOptions(sec.content.transition_duration_ms || 450, transitionTimingPresets) + '</select></div>';
+                carouselSlides.forEach(function (slide, slideIndex) {
+                    var actionType = s(slide.action_type || 'url') === 'popup' ? 'popup' : 'url';
+                    html += '<div class="metis-se-card metis-carousel-slide-settings"><div class="metis-se-field-grid"><div class="metis-se-field-row"><label>Slide ' + esc(String(slideIndex + 1)) + ' Image</label><div class="metis-featured-image-actions"><button type="button" class="metis-se-nav-btn" data-open-carousel-media="' + esc(String(slideIndex)) + '">Choose from Media</button></div><input class="metis-se-input" data-v2-carousel-field="src" data-slide-idx="' + esc(String(slideIndex)) + '" value="' + esc(s(slide.src || '')) + '" placeholder="https://"></div>';
+                    html += '<div class="metis-se-field-row"><label>Alt Text</label><input class="metis-se-input" data-v2-carousel-field="alt" data-slide-idx="' + esc(String(slideIndex)) + '" value="' + esc(s(slide.alt || '')) + '"></div>';
+                    html += '<div class="metis-se-field-row"><label>Show This Image For</label><select class="metis-se-select" data-v2-carousel-field="duration_ms" data-slide-idx="' + esc(String(slideIndex)) + '">' + carouselTimingOptions(slide.duration_ms || 5000, slideTimingPresets) + '</select></div>';
+                    html += '<div class="metis-se-field-row"><label>Click Action</label><select class="metis-se-select" data-v2-carousel-field="action_type" data-slide-idx="' + esc(String(slideIndex)) + '"><option value="url"' + (actionType === 'url' ? ' selected' : '') + '>Open a link</option><option value="popup"' + (actionType === 'popup' ? ' selected' : '') + '>Open a popup form</option></select></div>';
+                    html += '<div class="metis-se-field-row"' + (actionType !== 'url' ? ' hidden' : '') + '><label>Link URL</label><input class="metis-se-input" data-v2-carousel-field="url" data-slide-idx="' + esc(String(slideIndex)) + '" value="' + esc(s(slide.url || '')) + '" placeholder="https:// or /page"></div>';
+                    html += '<div class="metis-se-field-row"' + (actionType !== 'popup' ? ' hidden' : '') + '><label>Popup Form</label><select class="metis-se-select" data-v2-carousel-field="popup_id" data-slide-idx="' + esc(String(slideIndex)) + '">' + optionList(state.options.popups, slide.popup_id, 'Select popup form') + '</select></div>';
+                    html += '<div class="metis-se-field-row"><button type="button" class="metis-se-nav-btn" data-v2-carousel-remove="' + esc(String(slideIndex)) + '"' + (carouselSlides.length < 2 ? ' disabled' : '') + '>Remove Slide</button></div></div></div>';
+                });
+                html += '<div class="metis-se-field-row"><button type="button" class="metis-se-nav-btn" data-v2-carousel-add>Add Slide</button></div>';
             } else if (sec.type === 'button') {
                 var buttonActionType = s(sec.content.action_type || 'url') === 'popup' ? 'popup' : 'url';
                 html += '<div class="metis-se-field-row"><label>Action</label><select id="metis-v2-button-action-type" class="metis-se-select"><option value="url"' + (buttonActionType === 'url' ? ' selected' : '') + '>Open a link</option><option value="popup"' + (buttonActionType === 'popup' ? ' selected' : '') + '>Open a popup</option></select></div>';
@@ -6161,6 +6248,7 @@
 
             renderInlineImagePickerList();
             var blockTarget = blockImageTargetFromId(state.inlineImageTargetId);
+            var carouselTarget = carouselImageTargetFromId(state.inlineImageTargetId);
             if (blockTarget && state.sections[blockTarget.index]) {
                 var imageSection = state.sections[blockTarget.index];
                 imageSection.content = imageSection.content && typeof imageSection.content === 'object' ? imageSection.content : {};
@@ -6174,6 +6262,18 @@
                 renderSectionList();
                 setDirtyAutosave();
                 return;
+            }
+
+            if (carouselTarget && state.sections[carouselTarget.index]) {
+                var carouselSection = state.sections[carouselTarget.index];
+                var carouselSlides = Array.isArray(carouselSection.content.slides) ? carouselSection.content.slides : [];
+                if (carouselSlides[carouselTarget.slideIndex]) {
+                    carouselSlides[carouselTarget.slideIndex].src = mediaPublicUrlForRow(row);
+                    carouselSlides[carouselTarget.slideIndex].media_id = Math.max(0, parseInt(s(row.id || '0'), 10) || 0);
+                    if (!s(carouselSlides[carouselTarget.slideIndex].alt || '')) carouselSlides[carouselTarget.slideIndex].alt = s(row.label || 'Image');
+                    closeInlineImageModal(); renderStep2Editor(); renderBuilderCanvas(); setDirtyAutosave();
+                    return;
+                }
             }
 
             var inlineTarget = state.inlineImageTargetId ? document.getElementById(state.inlineImageTargetId) : null;
@@ -7164,6 +7264,26 @@
                     if (state.activeSection >= 0) openBlockImagePicker(state.activeSection, mediaField);
                     return;
                 }
+                var openCarouselMedia = e.target.closest('[data-open-carousel-media]');
+                if (openCarouselMedia) {
+                    var carouselMediaIdx = parseInt(s(openCarouselMedia.getAttribute('data-open-carousel-media') || '-1'), 10);
+                    if (state.activeSection >= 0 && carouselMediaIdx >= 0) openCarouselImagePicker(state.activeSection, carouselMediaIdx);
+                    return;
+                }
+                var carouselAdd = e.target.closest('[data-v2-carousel-add]');
+                if (carouselAdd) {
+                    var carouselSection = activeSection();
+                    carouselSection.content.slides = Array.isArray(carouselSection.content.slides) ? carouselSection.content.slides : [];
+                    if (carouselSection.content.slides.length < 12) carouselSection.content.slides.push({ src: '', media_id: 0, alt: '', action_type: 'url', url: '', popup_id: '', duration_ms: 5000 });
+                    renderStep2Editor(); renderBuilderCanvas(); setDirtyAutosave(); return;
+                }
+                var carouselRemove = e.target.closest('[data-v2-carousel-remove]');
+                if (carouselRemove) {
+                    var carouselRemoveIdx = parseInt(s(carouselRemove.getAttribute('data-v2-carousel-remove') || '-1'), 10);
+                    var carouselRemoveSection = activeSection();
+                    if (Array.isArray(carouselRemoveSection.content.slides) && carouselRemoveSection.content.slides.length > 1 && carouselRemoveIdx >= 0) carouselRemoveSection.content.slides.splice(carouselRemoveIdx, 1);
+                    renderStep2Editor(); renderBuilderCanvas(); setDirtyAutosave(); return;
+                }
                 var openColumnMedia = e.target.closest('[data-open-column-media]');
                 if (openColumnMedia) {
                     var columnMediaIdx = parseInt(s(openColumnMedia.getAttribute('data-open-column-media') || '-1'), 10);
@@ -7179,6 +7299,7 @@
                     var inlineRow = featuredImageMediaById(inlineMediaId);
                     var blockTarget = blockImageTargetFromId(state.inlineImageTargetId);
                     var columnTarget = columnImageTargetFromId(state.inlineImageTargetId);
+                    var carouselTarget = carouselImageTargetFromId(state.inlineImageTargetId);
                     if (blockTarget && inlineRow && state.sections[blockTarget.index]) {
                         var imageSection = state.sections[blockTarget.index];
                         imageSection.content = imageSection.content && typeof imageSection.content === 'object' ? imageSection.content : {};
@@ -7192,6 +7313,16 @@
                         renderSectionList();
                         setDirtyAutosave();
                         return;
+                    }
+                    if (carouselTarget && inlineRow && state.sections[carouselTarget.index]) {
+                        var carouselTargetSection = state.sections[carouselTarget.index];
+                        var carouselTargetSlides = Array.isArray(carouselTargetSection.content.slides) ? carouselTargetSection.content.slides : [];
+                        if (carouselTargetSlides[carouselTarget.slideIndex]) {
+                            carouselTargetSlides[carouselTarget.slideIndex].src = mediaPublicUrlForRow(inlineRow);
+                            carouselTargetSlides[carouselTarget.slideIndex].media_id = Math.max(0, parseInt(s(inlineRow.id || '0'), 10) || 0);
+                            if (!s(carouselTargetSlides[carouselTarget.slideIndex].alt || '')) carouselTargetSlides[carouselTarget.slideIndex].alt = s(inlineRow.label || 'Image');
+                            closeInlineImageModal(); renderStep2Editor(); renderBuilderCanvas(); setDirtyAutosave(); return;
+                        }
                     }
                     if (columnTarget && inlineRow && state.sections[columnTarget.index]) {
                         var columnSection = state.sections[columnTarget.index];
@@ -7506,6 +7637,32 @@
                 if (target.id === 'metis-v2-section-background') { sec.settings = normalizeSectionSettings(Object.assign({}, sec.settings || {}, { background: target.value })); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-heading-text') { sec.content.text = s(target.value || ''); renderSectionList(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-src') { sec.content.src = s(target.value || ''); sec.content.media_id = 0; renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (target.matches && target.matches('[data-v2-carousel-field]')) {
+                    var carouselIndex = parseInt(s(target.getAttribute('data-slide-idx') || '-1'), 10);
+                    var carouselField = s(target.getAttribute('data-v2-carousel-field') || '');
+                    var carouselSlides = Array.isArray(sec.content.slides) ? sec.content.slides : [];
+                    if (carouselIndex >= 0 && carouselSlides[carouselIndex] && carouselField) {
+                        if (carouselField === 'duration_ms') carouselSlides[carouselIndex][carouselField] = Math.max(1000, Math.min(60000, parseInt(s(target.value || '5000'), 10) || 5000));
+                        else if (carouselField === 'action_type') carouselSlides[carouselIndex][carouselField] = s(target.value || 'url') === 'popup' ? 'popup' : 'url';
+                        else carouselSlides[carouselIndex][carouselField] = s(target.value || '');
+                        if (carouselField === 'src') carouselSlides[carouselIndex].media_id = 0;
+                        // Only the action selection changes the visible editor controls.
+                        if (carouselField === 'action_type') renderStep2Editor();
+                        renderBuilderCanvas();
+                        setDirtyAutosave();
+                    }
+                    return;
+                }
+                if (target.id === 'metis-v2-carousel-height') {
+                    var carouselHeight = parseInt(s(target.value || ''), 10);
+                    // Let users complete a multi-digit value before applying the height bounds.
+                    if (carouselHeight >= 160 && carouselHeight <= 1200) {
+                        sec.content.height = carouselHeight;
+                        renderBuilderCanvas();
+                    }
+                    setDirtyAutosave();
+                    return;
+                }
                 if (target.id === 'metis-v2-image-link-url') { sec.content.link_url = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-alt') { sec.content.alt = s(target.value || ''); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-caption') { sec.content.caption = s(target.value || ''); setDirtyAutosave(); return; }
@@ -7672,6 +7829,26 @@
                     return;
                 }
                 var sec = activeSection();
+                if (target.matches && target.matches('[data-v2-carousel-field]')) {
+                    var carouselIndex = parseInt(s(target.getAttribute('data-slide-idx') || '-1'), 10);
+                    var carouselField = s(target.getAttribute('data-v2-carousel-field') || '');
+                    var carouselSlides = sec && Array.isArray(sec.content.slides) ? sec.content.slides : [];
+                    if (carouselIndex >= 0 && carouselSlides[carouselIndex] && carouselField) {
+                        if (carouselField === 'action_type') {
+                            carouselSlides[carouselIndex].action_type = s(target.value || 'url') === 'popup' ? 'popup' : 'url';
+                            renderStep2Editor();
+                        } else if (carouselField === 'popup_id') {
+                            carouselSlides[carouselIndex].popup_id = s(target.value || '');
+                        } else if (carouselField === 'duration_ms') {
+                            carouselSlides[carouselIndex].duration_ms = Math.max(1000, Math.min(60000, parseInt(s(target.value || '5000'), 10) || 5000));
+                        } else {
+                            carouselSlides[carouselIndex][carouselField] = s(target.value || '');
+                        }
+                        renderBuilderCanvas();
+                        setDirtyAutosave();
+                    }
+                    return;
+                }
                 if (target.id === 'metis-v2-featured-image-mime') {
                     renderFeaturedImagePickerList();
                     return;
@@ -7724,6 +7901,15 @@
                         sec.content.popup_id = '';
                     }
                     renderStep2Editor();
+                    renderBuilderCanvas();
+                    setDirtyAutosave();
+                    return;
+                }
+                if (target.id === 'metis-v2-carousel-transition') { var carouselTransition = s(target.value || 'slide'); sec.content.transition = ['slide', 'fade', 'crossfade', 'ken_burns', 'reveal', 'cinematic'].indexOf(carouselTransition) === -1 ? 'slide' : carouselTransition; renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-carousel-transition-duration') { sec.content.transition_duration_ms = Math.max(100, Math.min(2000, parseInt(s(target.value || '450'), 10) || 450)); renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-carousel-height') {
+                    sec.content.height = Math.max(160, Math.min(1200, parseInt(s(target.value || ''), 10) || 420));
+                    target.value = sec.content.height;
                     renderBuilderCanvas();
                     setDirtyAutosave();
                     return;
