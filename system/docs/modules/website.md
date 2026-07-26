@@ -72,3 +72,4 @@ Structured website management for pages, posts, categories, menus, redirects, te
 
 - CSS: `website.css`, `theme-admin.css`
 - JS: `website.js`
+- Image Carousel block: supports up to 12 images, slide or fade transitions, a per-image display duration, and either a link or an existing Website popup action. Configure popup forms in Website → Popups, then select that popup for the image action.
