@@ -13,18 +13,10 @@ metis_people_seed_permissions_and_roles();
 
 $can_manage = metis_people_can_manage();
 $is_new = isset( metis_request_get()['new'] ) && (string) metis_runtime_unslash( metis_request_get()['new'] ) === '1';
-$pid = isset( metis_request_get()['pid'] ) ? metis_text_clean( metis_runtime_unslash( metis_request_get()['pid'] ) ) : '';
-if ( $pid === '' ) {
-    $request_path = isset( $_SERVER['REQUEST_URI'] ) ? (string) parse_url( (string) $_SERVER['REQUEST_URI'], PHP_URL_PATH ) : '';
-    $person_base_path = (string) parse_url( metis_people_person_url(), PHP_URL_PATH );
-    $person_base_path = rtrim( $person_base_path, '/' ) . '/';
-    if ( $request_path !== '' && strpos( $request_path, $person_base_path ) === 0 ) {
-        $remainder = trim( substr( $request_path, strlen( $person_base_path ) ), '/' );
-        if ( $remainder !== '' ) {
-            $segments = explode( '/', $remainder );
-            $pid = metis_text_clean( (string) ( $segments[0] ?? '' ) );
-        }
-    }
+$path_pid = metis_portal_path_parameter( 'people', 'person' );
+$pid = $path_pid !== '' ? $path_pid : ( isset( metis_request_get()['pid'] ) ? metis_text_clean( metis_runtime_unslash( metis_request_get()['pid'] ) ) : '' );
+if ( ! $is_new && $path_pid === '' && $pid !== '' && (string) ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) === 'GET' && isset( metis_request_get()['pid'] ) ) {
+    metis_safe_redirect( metis_people_person_url( $pid ), 301 );
 }
 
 $snapshot = \Metis\Modules\People\ReadService::personSnapshot( $pid, $is_new );

@@ -39,7 +39,7 @@ function metis_portal_render_board_actions_html(array $actions): string {
         <?php foreach ($actions as $action) : ?>
             <?php
             $due_raw = (string) ($action['due_date'] ?? '');
-            $due_display = $due_raw !== '' ? date('M j, Y', strtotime($due_raw)) : 'No due date';
+            $due_display = $due_raw !== '' ? metis_runtime_format_date($due_raw, null, null, null, 'No due date') : 'No due date';
             $is_overdue = $due_raw !== '' && $due_raw < date('Y-m-d');
             $meeting_title = trim((string) ($action['meeting_title'] ?? ''));
             $meeting_label = $meeting_title !== '' ? $meeting_title : 'Board meeting';

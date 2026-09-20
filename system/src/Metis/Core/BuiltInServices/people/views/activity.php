@@ -49,7 +49,7 @@ $type_labels = function_exists('metis_people_activity_type_labels') ? metis_peop
             $created_raw = trim((string) ($row['created_at'] ?? ''));
             $created = $created_raw;
             $ts = strtotime($created_raw);
-            if ($ts) $created = date('M j, Y g:i a', $ts);
+            if ($ts) $created = metis_runtime_format_datetime($created_raw, null, null, null, $created_raw);
             ?>
             <tr class="metis-premium-row">
                 <td class="metis-premium-cell"><?php echo metis_escape_html($created); ?></td>

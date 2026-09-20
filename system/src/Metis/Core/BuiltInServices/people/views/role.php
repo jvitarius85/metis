@@ -10,10 +10,15 @@ metis_people_seed_permissions_and_roles();
 
 $can_manage = metis_people_can_manage();
 $is_new = isset( metis_request_get()['new'] ) && (string) metis_runtime_unslash( metis_request_get()['new'] ) === '1';
-$role_key_param = isset( metis_request_get()['role'] ) ? metis_key_clean( metis_runtime_unslash( metis_request_get()['role'] ) ) : '';
-$role_domain_param = isset( metis_request_get()['domain'] ) ? metis_key_clean( metis_runtime_unslash( metis_request_get()['domain'] ) ) : 'metis';
+$path_role_domain = metis_portal_path_parameter( 'people', 'role', 0 );
+$path_role_key = metis_portal_path_parameter( 'people', 'role', 1 );
+$role_key_param = $path_role_key !== '' ? metis_key_clean( $path_role_key ) : ( isset( metis_request_get()['role'] ) ? metis_key_clean( metis_runtime_unslash( metis_request_get()['role'] ) ) : '' );
+$role_domain_param = $path_role_domain !== '' ? metis_key_clean( $path_role_domain ) : ( isset( metis_request_get()['domain'] ) ? metis_key_clean( metis_runtime_unslash( metis_request_get()['domain'] ) ) : 'metis' );
 if ( ! in_array( $role_domain_param, [ 'metis', 'stripe', 'workspace' ], true ) ) {
     $role_domain_param = 'metis';
+}
+if ( ! $is_new && $path_role_key === '' && $role_key_param !== '' && (string) ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) === 'GET' && isset( metis_request_get()['role'] ) ) {
+    metis_safe_redirect( metis_people_role_url( $role_key_param, $role_domain_param ), 301 );
 }
 
 $snapshot = \Metis\Modules\People\ReadService::roleDetailSnapshot( $role_key_param, $role_domain_param, $is_new );

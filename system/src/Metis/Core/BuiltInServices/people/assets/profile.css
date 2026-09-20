@@ -40,6 +40,20 @@
     padding: 8px 0; margin-bottom: 0;
 }
 
+.metis-people-status-badge {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    margin-top: 6px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+.metis-people-status-badge.is-offboarded { background: #fee4e2; color: #b42318; }
+
 .metis-people-row {
     background: #fff; border: 1px solid var(--metis-border); border-top: none; border-radius: 0;
     cursor: pointer;
@@ -1052,8 +1066,55 @@
     .metis-people-tab-nav-btn { flex: 0 0 auto; white-space: nowrap; }
     .metis-people-tab-content { padding: 18px; min-width: 0; overflow-x: hidden; }
     .metis-avatar-cropper { grid-template-columns: 1fr; justify-items: center; }
+    .metis-people-table {
+        display: flex;
+        width: 100%;
+        max-width: 100%;
+        overflow: visible;
+    }
     .metis-people-table .metis-premium-header,
-    .metis-people-row { grid-template-columns: 1fr; }
+    .metis-people-row {
+        width: 100%;
+        min-width: 0;
+    }
+    .metis-people-table .metis-premium-header {
+        display: none !important;
+    }
+    .metis-people-table .metis-people-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0;
+        padding: 6px 0;
+    }
+    .metis-people-table .metis-people-row .metis-premium-cell {
+        display: grid;
+        grid-template-columns: minmax(76px, 92px) minmax(0, 1fr);
+        align-items: start;
+        gap: 10px;
+        padding: 8px 12px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+    .metis-people-table .metis-people-row .metis-premium-cell::before {
+        color: var(--metis-text-muted);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+    }
+    .metis-people-table .metis-people-row .metis-premium-cell:nth-child(1)::before { content: 'Name'; }
+    .metis-people-table .metis-people-row .metis-premium-cell:nth-child(2)::before { content: 'Email'; }
+    .metis-people-table .metis-people-row .metis-premium-cell:nth-child(3)::before { content: 'Roles'; }
+    .metis-people-table .metis-people-row .metis-premium-cell:nth-child(4)::before { content: 'Workspace'; }
+    .metis-people-table .metis-people-row .metis-premium-cell:nth-child(5)::before { content: 'Actions'; }
+    .metis-people-table .metis-people-row .metis-premium-cell a {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+    .metis-people-table .metis-people-row .metis-premium-cell:last-child {
+        align-items: center;
+    }
     .metis-people-role-head,
     .metis-people-role-row { grid-template-columns: 1fr; }
     .metis-workspace-user-table .metis-premium-header,

@@ -81,7 +81,8 @@ $role_by_key = $snapshot['role_by_key'] ?? [];
                     data-id="<?php echo metis_escape_attr((string) $p['id']); ?>"
                     data-search="<?php echo metis_escape_attr($search_blob); ?>"
                     data-href="<?php echo metis_escape_url( metis_people_person_url( (string) $p['pid'] ) ); ?>">
-                    <td class="metis-premium-cell"><strong><?php echo metis_escape_html($p['full_name']); ?></strong><div class="metis-muted"><?php echo metis_escape_html($p['pid']); ?></div></td>
+                    <?php $is_offboarded = ! empty( $p['offboarded_at'] ) || ( (string) ( $p['status'] ?? '' ) !== 'active' && (string) ( $p['lifecycle_status'] ?? '' ) === 'alumni' ); ?>
+                    <td class="metis-premium-cell"><strong><?php echo metis_escape_html($p['full_name']); ?></strong><div class="metis-muted"><?php echo metis_escape_html($p['pid']); ?></div><?php if ( $is_offboarded ) : ?><span class="metis-people-status-badge is-offboarded">Offboarded</span><?php endif; ?></td>
                     <td class="metis-premium-cell"><?php echo metis_escape_html($p['email']); ?></td>
                     <td class="metis-premium-cell"><?php echo metis_escape_html(!empty($role_labels) ? implode(', ', $role_labels) : '—'); ?></td>
                     <td class="metis-premium-cell">
