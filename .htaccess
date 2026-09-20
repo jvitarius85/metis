@@ -23,7 +23,7 @@ RewriteRule ^storage(?:/|$) - [F,L,NC]
 RewriteRule ^(?:vendor)(?:/|$) - [F,L,NC]
 
 # Route unknown requests through the front controller. The kernel classifies
-# portal, AJAX, webhook, asset, and legacy /system wrapper paths from REQUEST_URI.
+# portal, AJAX, webhook, cron, and asset requests from REQUEST_URI.
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [L,QSA]
