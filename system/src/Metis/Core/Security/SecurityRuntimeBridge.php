@@ -258,9 +258,14 @@ function metis_security_register_ajax_policies(): void {
     }
 
     $enclave = metis_security_enclave();
+    static $registered_actions = [];
     foreach ( metis_ajax_registry()->all() as $ajax_action => $controller ) {
         $action = metis_key_clean( (string) $ajax_action );
         if ( $action === '' || ! str_starts_with( $action, 'metis_' ) ) {
+            continue;
+        }
+
+        if ( isset( $registered_actions[ $action ] ) ) {
             continue;
         }
 
@@ -282,23 +287,13 @@ function metis_security_register_ajax_policies(): void {
             $permission = metis_security_infer_permission_from_ajax_action( $action );
         }
 
-        $nonce_key = (string) ( $controller['nonce_action'] ?? '' );
-        if ( $nonce_key === '' ) {
-            $nonce_key = metis_ajax_nonce_action( $action );
-        }
-
-        $rate_limit = (int) ( $controller['rate_limit'] ?? 0 );
-        if ( $rate_limit < 1 ) {
-            $rate_limit = $permission === 'view' ? 180 : 90;
-        }
-
-        $rate_window = (int) ( $controller['rate_window_seconds'] ?? 60 );
-        if ( $rate_window < 1 ) {
-            $rate_window = 60;
-        }
+        $nonce_key = (string) ( $controller['nonce_action'] ?? metis_ajax_nonce_action( $action ) );
+        $rate_limit = max( 1, (int) ( $controller['rate_limit'] ?? 0 ) );
+        $rate_window = max( 1, (int) ( $controller['rate_window_seconds'] ?? 60 ) );
 
         $operation = sprintf( 'ajax.%s.%s', $module, $action );
         if ( $enclave->has_policy( $operation ) ) {
+            $registered_actions[ $action ] = true;
             continue;
         }
 
@@ -315,11 +310,14 @@ function metis_security_register_ajax_policies(): void {
                 $rate_window
             )
         );
+        $registered_actions[ $action ] = true;
     }
 }
 
 function metis_security_register_route_policies(): void {
     $enclave = metis_security_enclave();
+    static $base_registered = false;
+    static $portal_registered = [];
 
     $register = static function ( Metis_Security_Policy $policy ) use ( $enclave ): void {
         if ( ! $enclave->has_policy( $policy->operation ) ) {
@@ -327,34 +325,52 @@ function metis_security_register_route_policies(): void {
         }
     };
 
-    $register( new Metis_Security_Policy( 'route.assets_runtime', null, 'view', false, false, false, null, 600, 60 ) );
-    $register( new Metis_Security_Policy( 'route.assets_module', null, 'view', false, false, false, null, 600, 60 ) );
-    $register( new Metis_Security_Policy( 'route.assets_svg', null, 'view', false, false, false, null, 600, 60 ) );
-    $register( new Metis_Security_Policy( 'route.system_version', null, 'view', false, false, false, null, 240, 60 ) );
-    $register( new Metis_Security_Policy( 'route.system_cron', null, 'view', false, false, false, null, 240, 60 ) );
-    $register( new Metis_Security_Policy( 'route.forms_public', null, 'create', false, false, false, null, 120, 60 ) );
-    $register( new Metis_Security_Policy( 'route.newsletter_public_signup', null, 'create', false, false, false, null, 60, 60 ) );
-    $register( new Metis_Security_Policy( 'route.manage_profile', null, 'view', false, false, false, null, 60, 60 ) );
-    $register( new Metis_Security_Policy( 'route.manage_profile', null, 'create', false, false, false, null, 20, 60 ) );
-    $register( new Metis_Security_Policy( 'route.manage_access', null, 'view', false, false, false, null, 60, 60 ) );
-    $register( new Metis_Security_Policy( 'route.manage_access', null, 'create', false, false, false, null, 30, 60 ) );
-    $register( new Metis_Security_Policy( 'route.manage_statement', null, 'view', false, false, false, null, 60, 60 ) );
-    $register( new Metis_Security_Policy( 'route.donations_recurring_manage', null, 'view', false, false, false, null, 60, 60 ) );
-    $register( new Metis_Security_Policy( 'route.donations_recurring_manage', null, 'create', false, false, false, null, 30, 60 ) );
-    $register( new Metis_Security_Policy( 'route.webhook_gateway', null, 'create', false, false, false, null, 180, 60 ) );
-    $register( new Metis_Security_Policy( 'route.auth_resolve', null, 'create', false, false, false, null, 180, 60 ) );
-    $register( new Metis_Security_Policy( 'route.auth_passkeys_begin', null, 'create', false, false, false, null, 180, 60 ) );
-    $register( new Metis_Security_Policy( 'route.auth_passkeys_complete', null, 'create', false, false, false, null, 180, 60 ) );
-    $register( new Metis_Security_Policy( 'route.auth_session_keepalive', null, 'view', true, true, false, null, 240, 60 ) );
-    $register( new Metis_Security_Policy( 'route.newsletter_open', null, 'view', false, false, false, null, 240, 60 ) );
-    $register( new Metis_Security_Policy( 'route.newsletter_click', null, 'view', false, false, false, null, 240, 60 ) );
-    $register( new Metis_Security_Policy( 'route.newsletter_unsubscribe', null, 'view', false, false, false, null, 240, 60 ) );
-    $register( new Metis_Security_Policy( 'route.website_theme_css', null, 'view', false, false, false, null, 300, 60 ) );
-    $register( new Metis_Security_Policy( 'route.website_homepage', null, 'view', false, false, false, null, 300, 60 ) );
-    $register( new Metis_Security_Policy( 'route.website_page', null, 'view', false, false, false, null, 300, 60 ) );
+    if ( ! $base_registered ) {
+        $register( new Metis_Security_Policy( 'route.assets_runtime', null, 'view', false, false, false, null, 600, 60 ) );
+        $register( new Metis_Security_Policy( 'route.assets_core', null, 'view', false, false, false, null, 600, 60 ) );
+        $register( new Metis_Security_Policy( 'route.assets_module', null, 'view', false, false, false, null, 600, 60 ) );
+        $register( new Metis_Security_Policy( 'route.assets_svg', null, 'view', false, false, false, null, 600, 60 ) );
+        $register( new Metis_Security_Policy( 'route.system_version', null, 'view', false, false, false, null, 240, 60 ) );
+        $register( new Metis_Security_Policy( 'route.system_cron', null, 'view', false, false, false, null, 30, 60 ) );
+        $register( new Metis_Security_Policy( 'route.forms_public', null, 'create', false, false, false, null, 120, 60 ) );
+        $register( new Metis_Security_Policy( 'route.newsletter_public_signup', null, 'create', false, false, false, null, 60, 60 ) );
+        $register( new Metis_Security_Policy( 'route.manage_profile', null, 'view', false, false, false, null, 60, 60 ) );
+        $register( new Metis_Security_Policy( 'route.manage_profile', null, 'create', false, false, false, null, 20, 60 ) );
+        $register( new Metis_Security_Policy( 'route.manage_access', null, 'view', false, false, false, null, 60, 60 ) );
+        $register( new Metis_Security_Policy( 'route.manage_access', null, 'create', false, false, false, null, 30, 60 ) );
+        $register( new Metis_Security_Policy( 'route.manage_statement', null, 'view', false, false, false, null, 60, 60 ) );
+        $register( new Metis_Security_Policy( 'route.donations_recurring_manage', null, 'view', false, false, false, null, 60, 60 ) );
+        $register( new Metis_Security_Policy( 'route.donations_recurring_manage', null, 'create', false, false, false, null, 30, 60 ) );
+        $register( new Metis_Security_Policy( 'route.webhook_gateway', null, 'create', false, false, false, null, 180, 60 ) );
+        $register( new Metis_Security_Policy( 'route.auth_resolve', null, 'create', false, false, false, null, 180, 60 ) );
+        $register( new Metis_Security_Policy( 'route.auth_passkeys_begin', null, 'create', false, false, false, null, 180, 60 ) );
+        $register( new Metis_Security_Policy( 'route.auth_passkeys_complete', null, 'create', false, false, false, null, 180, 60 ) );
+        $register( new Metis_Security_Policy( 'route.auth_session_keepalive', null, 'view', true, true, false, null, 240, 60 ) );
+        $register( new Metis_Security_Policy( 'route.newsletter_open', null, 'view', false, false, false, null, 240, 60 ) );
+        $register( new Metis_Security_Policy( 'route.newsletter_click', null, 'view', false, false, false, null, 240, 60 ) );
+        $register( new Metis_Security_Policy( 'route.newsletter_unsubscribe', null, 'view', false, false, false, null, 240, 60 ) );
+        $register( new Metis_Security_Policy( 'route.resources_public', null, 'view', false, false, false, null, 240, 60 ) );
+        $register( new Metis_Security_Policy( 'route.website_sitemap', null, 'view', false, false, false, null, 300, 60 ) );
+        $register( new Metis_Security_Policy( 'route.website_robots', null, 'view', false, false, false, null, 300, 60 ) );
+        $register( new Metis_Security_Policy( 'route.website_theme_css', null, 'view', false, false, false, null, 300, 60 ) );
+        $register( new Metis_Security_Policy( 'route.website_homepage', null, 'view', false, false, false, null, 300, 60 ) );
+        $register( new Metis_Security_Policy( 'route.website_people_profile', null, 'view', false, false, false, null, 300, 60 ) );
+        $register( new Metis_Security_Policy( 'route.website_page', null, 'view', false, false, false, null, 300, 60 ) );
+        $register( new Metis_Security_Policy( 'route.website_analytics_event', null, 'create', false, false, false, null, 120, 60 ) );
 
-    foreach ( [ 'view', 'edit', 'delete' ] as $permission ) {
-        $register( new Metis_Security_Policy( 'route.contacts_carddav.contacts.' . $permission, 'contacts', $permission, true, false, false, null, 300, 60 ) );
+        foreach ( [ 'view', 'edit', 'delete' ] as $permission ) {
+            $register( new Metis_Security_Policy( 'route.contacts_carddav.contacts.' . $permission, 'contacts', $permission, true, false, false, null, 300, 60 ) );
+        }
+
+        $register( new Metis_Security_Policy( 'route.help_index.help.view', 'help', 'view', true, true, false, null, 240, 60 ) );
+        $register( new Metis_Security_Policy( 'route.help_search.help.view', 'help', 'view', true, true, false, null, 240, 60 ) );
+        $register( new Metis_Security_Policy( 'route.help_article.help.view', 'help', 'view', true, true, false, null, 240, 60 ) );
+        $register( new Metis_Security_Policy( 'route.help_category.help.view', 'help', 'view', true, true, false, null, 240, 60 ) );
+        $register( new Metis_Security_Policy( 'route.help_admin_articles.help.manage', 'help', 'manage', true, true, false, null, 180, 60 ) );
+        $register( new Metis_Security_Policy( 'route.help_admin_create.help.manage', 'help', 'manage', true, true, false, null, 180, 60 ) );
+        $register( new Metis_Security_Policy( 'route.help_admin_edit.help.manage', 'help', 'manage', true, true, false, null, 180, 60 ) );
+
+        $base_registered = true;
     }
 
     $modules = [ 'portal' => true ];
@@ -368,16 +384,12 @@ function metis_security_register_route_policies(): void {
     }
 
     foreach ( array_keys( $modules ) as $slug ) {
+        if ( isset( $portal_registered[ $slug ] ) ) {
+            continue;
+        }
         metis_security_register_portal_route_policy( $slug );
+        $portal_registered[ $slug ] = true;
     }
-
-    $register( new Metis_Security_Policy( 'route.help_index.help.view', 'help', 'view', true, true, false, null, 240, 60 ) );
-    $register( new Metis_Security_Policy( 'route.help_search.help.view', 'help', 'view', true, true, false, null, 240, 60 ) );
-    $register( new Metis_Security_Policy( 'route.help_article.help.view', 'help', 'view', true, true, false, null, 240, 60 ) );
-    $register( new Metis_Security_Policy( 'route.help_category.help.view', 'help', 'view', true, true, false, null, 240, 60 ) );
-    $register( new Metis_Security_Policy( 'route.help_admin_articles.help.manage', 'help', 'manage', true, true, false, null, 180, 60 ) );
-    $register( new Metis_Security_Policy( 'route.help_admin_create.help.manage', 'help', 'manage', true, true, false, null, 180, 60 ) );
-    $register( new Metis_Security_Policy( 'route.help_admin_edit.help.manage', 'help', 'manage', true, true, false, null, 180, 60 ) );
 }
 
 function metis_security_register_portal_route_policy( string $slug ): void {

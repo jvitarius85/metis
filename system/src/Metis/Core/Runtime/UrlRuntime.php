@@ -40,12 +40,99 @@ function metis_runtime_config_base_url(): string {
         $path = '';
     }
 
-    $authority = $host;
+    $authority = metis_runtime_preferred_host_authority( $host );
     if ( isset( $parsed['port'] ) && is_int( $parsed['port'] ) ) {
         $authority .= ':' . $parsed['port'];
     }
 
     return $scheme . '://' . $authority . $path;
+}
+
+/**
+ * Whether the organization has selected www as its canonical public host.
+ * The General/Identity setting is autoloaded and cached for the request.
+ */
+function metis_runtime_force_www_enabled(): bool {
+    if ( ! class_exists( 'Core_Settings_Service', false ) ) {
+        return false;
+    }
+
+    try {
+        return (int) Core_Settings_Service::get( 'force_www', 0 ) === 1;
+    } catch ( Throwable ) {
+        return false;
+    }
+}
+
+/**
+ * Add a www prefix only to a conventional DNS hostname. Local development,
+ * IP addresses, IPv6 literals, and hosts already using www stay as-is.
+ */
+function metis_runtime_preferred_host_authority( string $host ): string {
+    $host = strtolower( trim( $host ) );
+    if ( $host === '' || ! metis_runtime_force_www_enabled() ) {
+        return $host;
+    }
+
+    if (
+        $host === 'localhost'
+        || str_starts_with( $host, 'www.' )
+        || str_starts_with( $host, '[' )
+        || filter_var( $host, FILTER_VALIDATE_IP ) !== false
+        || ! preg_match( '/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i', $host )
+    ) {
+        return $host;
+    }
+
+    return 'www.' . $host;
+}
+
+function metis_runtime_request_authority(): string {
+    $forwarded = metis_runtime_normalize_host( metis_runtime_forwarded_value( 'HTTP_X_FORWARDED_HOST' ) );
+    if ( $forwarded !== '' ) {
+        return $forwarded;
+    }
+
+    return metis_runtime_normalize_host( (string) ( $_SERVER['HTTP_HOST'] ?? '' ) );
+}
+
+function metis_runtime_request_host_parts( string $authority ): array {
+    $authority = strtolower( trim( $authority ) );
+    if ( $authority === '' ) {
+        return [ 'host' => '', 'port' => '' ];
+    }
+
+    if ( preg_match( '/^(.+):(\d+)$/', $authority, $matches ) === 1 && ! str_contains( $matches[1], ':' ) ) {
+        return [ 'host' => $matches[1], 'port' => ':' . $matches[2] ];
+    }
+
+    return [ 'host' => $authority, 'port' => '' ];
+}
+
+/**
+ * Redirect safe browser navigations to the canonical www host. Non-idempotent
+ * requests remain on their submitted host so payloads are never discarded.
+ */
+function metis_runtime_enforce_preferred_www_host(): void {
+    $method = strtoupper( trim( (string) ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) ) );
+    if ( ! in_array( $method, [ 'GET', 'HEAD' ], true ) || ! metis_runtime_force_www_enabled() ) {
+        return;
+    }
+
+    $request = metis_runtime_request_host_parts( metis_runtime_request_authority() );
+    $current_host = (string) ( $request['host'] ?? '' );
+    $target_host = metis_runtime_preferred_host_authority( $current_host );
+    if ( $current_host === '' || $target_host === '' || hash_equals( $current_host, $target_host ) ) {
+        return;
+    }
+
+    $request_uri = (string) ( $_SERVER['REQUEST_URI'] ?? '/' );
+    if ( $request_uri === '' || ! str_starts_with( $request_uri, '/' ) || preg_match( '/[\r\n]/', $request_uri ) ) {
+        $request_uri = '/';
+    }
+
+    $target = metis_runtime_forwarded_proto() . '://' . $target_host . (string) ( $request['port'] ?? '' ) . $request_uri;
+    metis_runtime_redirect( $target, 302 );
 }
 
 function metis_runtime_forwarded_value( string $header ): string {
