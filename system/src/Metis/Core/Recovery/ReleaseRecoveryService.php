@@ -30,7 +30,21 @@ final class ReleaseRecoveryService {
 
         $status = trim( (string) ( $transaction['status'] ?? '' ) );
         $rollbackRequested = ! empty( $transaction['rollback_requested'] );
-        if ( $rollbackRequested || $status === 'in_progress' ) {
+        if ( $rollbackRequested ) {
+            return $manager->recoverPendingReleaseTransaction( $trigger );
+        }
+
+        if ( $status === 'in_progress' ) {
+            $graceSeconds = $this->policy->releaseInProgressGraceSeconds();
+            $startedAt = strtotime( (string) ( $transaction['started_at'] ?? '' ) );
+            $ageSeconds = $startedAt === false ? $graceSeconds : max( 0, time() - $startedAt );
+            if ( $ageSeconds < $graceSeconds ) {
+                return [
+                    'status' => 'in_progress',
+                    'grace_remaining' => $graceSeconds - $ageSeconds,
+                ];
+            }
+
             return $manager->recoverPendingReleaseTransaction( $trigger );
         }
 

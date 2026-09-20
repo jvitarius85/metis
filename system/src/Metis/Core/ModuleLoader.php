@@ -18,6 +18,7 @@ final class ModuleLoader {
     private array $root_definitions = [];
     private ?FailureIsolation $isolation = null;
     private ModuleValidator $validator;
+    private ?array $cached_routes = null;
 
     public function __construct( ?string $base_path = null, ?ModuleValidator $validator = null ) {
         $this->base_path = $base_path !== null
@@ -74,6 +75,7 @@ final class ModuleLoader {
             'manifest_path' => (string) ( $config['_manifest_path'] ?? '' ),
             'package_type'  => (string) $config['package_type'],
         ];
+        $this->cached_routes = null;
 
         if ( function_exists( 'metis_quick_actions_service' ) ) {
             metis_quick_actions_service()->registerModuleActions( $slug, $config );
@@ -370,6 +372,10 @@ final class ModuleLoader {
     }
 
     public function routes(): array {
+        if ( is_array( $this->cached_routes ) ) {
+            return $this->cached_routes;
+        }
+
         $routes = [];
 
         foreach ( $this->all() as $module ) {
@@ -380,7 +386,8 @@ final class ModuleLoader {
             }
         }
 
-        return $routes;
+        $this->cached_routes = $routes;
+        return $this->cached_routes;
     }
 
     public function declaredPermissions(): array {
@@ -1099,13 +1106,25 @@ final class ModuleLoader {
             $handler = $listener['handler'] ?? null;
             $priority = (int) ( $listener['priority'] ?? 10 );
 
-            if ( $event === '' || ! is_callable( $handler ) ) {
-                $this->log( 'warn', 'Skipping invalid manifest event listener', [
+            if ( $event === '' ) {
+                throw new \RuntimeException(
+                    sprintf( 'Module [%s] declares a listener without an event name.', $slug )
+                );
+            }
+
+            if ( ! is_callable( $handler ) ) {
+                $this->log( 'error', 'Manifest event listener target is unresolved after module bootstrap', [
                     'module'  => $slug,
                     'event'   => $event,
                     'handler' => is_string( $handler ) ? $handler : gettype( $handler ),
                 ] );
-                continue;
+                throw new \RuntimeException(
+                    sprintf(
+                        'Module [%s] listener [%s] handler could not be resolved after bootstrap.',
+                        $slug,
+                        $event
+                    )
+                );
             }
 
             $this->runModuleOperation(

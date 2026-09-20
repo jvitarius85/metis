@@ -229,6 +229,32 @@ final class ModuleValidator {
             }
         }
 
+        foreach ( (array) ( $manifest['listeners'] ?? [] ) as $index => $listener ) {
+            if ( ! is_array( $listener ) ) {
+                throw new \RuntimeException( sprintf( 'Module listener[%d] must be an object: %s', $index, $manifestPath ) );
+            }
+
+            $event = trim( strtolower( (string) ( $listener['event'] ?? '' ) ) );
+            $handler = $listener['handler'] ?? null;
+            $priority = $listener['priority'] ?? 10;
+
+            if ( $event === '' ) {
+                throw new \RuntimeException( sprintf( 'Module listener[%d] must include an event name: %s', $index, $manifestPath ) );
+            }
+
+            if ( ! preg_match( '/^[a-z0-9._*-]+$/', $event ) ) {
+                throw new \RuntimeException( sprintf( 'Module listener[%d] event name is invalid: %s', $index, $manifestPath ) );
+            }
+
+            if ( ! is_string( $handler ) || trim( $handler ) === '' ) {
+                throw new \RuntimeException( sprintf( 'Module listener[%d] handler must be a non-empty static callable string: %s', $index, $manifestPath ) );
+            }
+
+            if ( ! is_int( $priority ) && ! is_numeric( $priority ) ) {
+                throw new \RuntimeException( sprintf( 'Module listener[%d] priority must be numeric: %s', $index, $manifestPath ) );
+            }
+        }
+
         $manifest['_manifest_path'] = $manifestPath;
         $manifest['_manifest_mtime'] = (int) ( @filemtime( $manifestPath ) ?: 0 );
 
@@ -273,7 +299,7 @@ final class ModuleValidator {
             }
         }
 
-        foreach ( [ 'routes', 'services' ] as $field ) {
+        foreach ( [ 'routes', 'services', 'listeners' ] as $field ) {
             if ( array_key_exists( $field, $manifest ) && ! is_array( $manifest[ $field ] ) ) {
                 throw new \RuntimeException( sprintf( 'Module manifest [%s] must be an array: %s', $field, $manifestPath ) );
             }

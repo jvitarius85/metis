@@ -481,28 +481,12 @@ function metis_router_configure_middleware( Metis_Http_Router $router ): void {
     } else {
         $router->register_middleware_group( 'contacts.stack', [ 'route.security' ] );
     }
-    $router->register_middleware_group( 'system.cron.stack', [ 'system.cron.security' ] );
+    $router->register_middleware_group( 'system.cron.stack', [ 'system.cron.security', 'route.security' ] );
     $router->register_middleware_group( 'auth.stack', [ 'auth.security', 'route.security' ] );
     $router->register_middleware_group( 'portal.stack', [ 'portal.auth', 'route.security', 'request.security', 'portal.permissions' ] );
     $router->register_middleware_group( 'ajax.stack', [ 'request.security', 'ajax.contract', 'ajax.security' ] );
 
     $router->push_global_middleware( 'request.normalize' );
-}
-
-function metis_request_path_strip_legacy_system_prefix( string $path ): string {
-    $path = '/' . ltrim( $path, '/' );
-    if ( $path === '/system' || ! str_starts_with( $path, '/system/' ) ) {
-        return $path;
-    }
-
-    $candidate = '/' . ltrim( substr( $path, strlen( '/system' ) ), '/' );
-    foreach ( [ '/admin', '/api', '/ajax', '/media', '/account', '/auth', '/login', '/logout', '/profile' ] as $app_prefix ) {
-        if ( $candidate === $app_prefix || str_starts_with( $candidate, $app_prefix . '/' ) ) {
-            return $candidate;
-        }
-    }
-
-    return $path;
 }
 
 function metis_request_path_relative_to_site(): string {
@@ -549,8 +533,6 @@ function metis_request_path_relative_to_site(): string {
         }
     }
 
-    $req_path = metis_request_path_strip_legacy_system_prefix( $req_path );
-
     return '/' . ltrim($req_path, '/');
 }
 
@@ -593,6 +575,51 @@ function metis_parse_portal_path( string $path ): array {
 
 function metis_parse_portal_request(): array {
     return metis_parse_portal_path( metis_request_path_relative_to_site() );
+}
+
+/**
+ * Return the decoded path segments following a portal domain and view.
+ *
+ * The portal router intentionally owns only the first two segments.  Detail
+ * views use this helper for their resource identifier so generated links can
+ * remain ordinary, bookmarkable paths without each module reparsing REQUEST_URI.
+ * Query-string identifiers stay supported by the calling module as a legacy
+ * fallback while existing links are migrated.
+ */
+function metis_portal_path_parameters( string $domain, string $view ): array {
+    $domain = metis_key_clean( $domain );
+    $view   = metis_key_clean( $view );
+    if ( $domain === '' || $view === '' ) {
+        return [];
+    }
+
+    $path = trim( metis_request_path_relative_to_site(), '/' );
+    $slug = trim( metis_portal_slug(), '/' );
+    if ( $slug !== '' && ( $path === $slug || str_starts_with( $path, $slug . '/' ) ) ) {
+        $path = ltrim( substr( $path, strlen( $slug ) ), '/' );
+    }
+
+    $parts = $path === '' ? [] : explode( '/', $path );
+    if ( metis_key_clean( (string) ( $parts[0] ?? '' ) ) !== $domain
+        || metis_key_clean( (string) ( $parts[1] ?? '' ) ) !== $view ) {
+        return [];
+    }
+
+    $parameters = [];
+    foreach ( array_slice( $parts, 2 ) as $part ) {
+        $value = trim( rawurldecode( (string) $part ) );
+        if ( $value === '' || str_contains( $value, '/' ) || str_contains( $value, "\\0" ) ) {
+            return [];
+        }
+        $parameters[] = metis_text_clean( $value );
+    }
+
+    return $parameters;
+}
+
+function metis_portal_path_parameter( string $domain, string $view, int $index = 0 ): string {
+    $parameters = metis_portal_path_parameters( $domain, $view );
+    return (string) ( $parameters[ max( 0, $index ) ] ?? '' );
 }
 
 function metis_module_asset_base_path(): string {
@@ -868,6 +895,32 @@ function metis_router_request_matches_asset_cache( Metis_Http_Request $request, 
 
 /**
  * @param list<string> $files
+ */
+function metis_router_cached_asset_body( array $files, callable $body_loader ): string|false {
+    $cache = metis_router_asset_cache_metadata( $files );
+    $cache_key = 'router.asset.body.' . sha1( $cache['etag'] . '|' . implode( '|', $files ) );
+
+    if ( class_exists( \Metis\Core\Cache\CacheService::class ) ) {
+        $cached = \Metis\Core\Cache\CacheService::get( $cache_key );
+        if ( is_string( $cached ) ) {
+            return $cached;
+        }
+    }
+
+    $body = $body_loader();
+    if ( $body === false ) {
+        return false;
+    }
+
+    if ( class_exists( \Metis\Core\Cache\CacheService::class ) ) {
+        \Metis\Core\Cache\CacheService::set( $cache_key, $body, 604800 );
+    }
+
+    return $body;
+}
+
+/**
+ * @param list<string> $files
  * @param callable():string|false $body_loader
  */
 function metis_router_build_cacheable_asset_response( Metis_Http_Request $request, string $content_type, array $files, callable $body_loader ): Metis_Http_Response {
@@ -884,16 +937,16 @@ function metis_router_build_cacheable_asset_response( Metis_Http_Request $reques
         return new Metis_Http_Response( 304, $headers, '' );
     }
 
-    $body = $body_loader();
+    if ( strtoupper( $request->method() ) === 'HEAD' ) {
+        return new Metis_Http_Response( 200, $headers, '' );
+    }
+
+    $body = metis_router_cached_asset_body( $files, $body_loader );
     if ( $body === false ) {
         return Metis_Http_Response::html( 'Asset unreadable.', 500 );
     }
 
-    return new Metis_Http_Response(
-        200,
-        $headers,
-        $request->method() === 'HEAD' ? '' : $body
-    );
+    return new Metis_Http_Response( 200, $headers, $body );
 }
 
 function metis_router_handle_core_asset_request( Metis_Http_Request $request ): Metis_Http_Response {
@@ -1043,18 +1096,42 @@ function metis_router_handle_runtime_asset_request( Metis_Http_Request $request 
     ];
 
     if ( isset( $batch_asset_map[ $asset ] ) ) {
-        $body = '';
-        foreach ( $batch_asset_map[ $asset ] as $asset_file ) {
+        $files = $batch_asset_map[ $asset ];
+        foreach ( $files as $asset_file ) {
             if ( ! is_file( $asset_file ) ) {
                 return Metis_Http_Response::html( 'Runtime batch asset missing.', 404 );
             }
+        }
 
-            $chunk = file_get_contents( $asset_file );
-            if ( $chunk === false ) {
-                return Metis_Http_Response::html( 'Runtime batch asset unreadable.', 500 );
+        if ( strtoupper( $request->method() ) === 'HEAD' ) {
+            return new Metis_Http_Response(
+                200,
+                [
+                    'Content-Type' => metis_module_asset_content_type( $asset ),
+                    'Cache-Control' => 'private, no-store, max-age=0',
+                ],
+                ''
+            );
+        }
+
+        $body = metis_router_cached_asset_body(
+            $files,
+            static function () use ( $files ) {
+                $body = '';
+                foreach ( $files as $asset_file ) {
+                    $chunk = file_get_contents( $asset_file );
+                    if ( $chunk === false ) {
+                        return false;
+                    }
+
+                    $body .= "\n/* " . basename( $asset_file ) . " */\n" . $chunk . "\n";
+                }
+
+                return $body;
             }
-
-            $body .= "\n/* " . basename( $asset_file ) . " */\n" . $chunk . "\n";
+        );
+        if ( $body === false ) {
+            return Metis_Http_Response::html( 'Runtime batch asset unreadable.', 500 );
         }
 
         return new Metis_Http_Response(
@@ -1325,7 +1402,7 @@ function metis_router_current_request_redirect_target( Metis_Http_Request $reque
 
 function metis_router_require_system_cron_security( Metis_Http_Request $request, callable $next ): Metis_Http_Response {
     try {
-        Metis_Cron_Manager::authorize_request( $request );
+        $context = Metis_Cron_Manager::authorize_request( $request );
     } catch ( Metis_Security_Enclave_Exception $e ) {
         $message = metis_router_public_security_message( $e );
         return Metis_Http_Response::json(
@@ -1341,7 +1418,12 @@ function metis_router_require_system_cron_security( Metis_Http_Request $request,
         );
     }
 
-    return $next( $request );
+    return $next(
+        $request
+            ->with_attribute( 'system_cron_auth_context', $context )
+            ->with_attribute( 'system_cron_auth_source', (string) ( $context['meta']['auth_source'] ?? '' ) )
+            ->with_attribute( 'system_cron_installation_id', (string) ( $context['meta']['installation_id'] ?? '' ) )
+    );
 }
 
 function metis_router_route_permission_for_request( Metis_Http_Request $request ): string {
@@ -1356,7 +1438,11 @@ function metis_router_route_permission_for_request( Metis_Http_Request $request 
         };
     }
 
-    if ( $route_name === 'assets.module' || $route_name === 'portal.page' ) {
+    if ( in_array( $route_name, [ 'assets.runtime', 'assets.core', 'assets.module', 'assets.svg', 'system.version', 'portal.page' ], true ) ) {
+        return 'view';
+    }
+
+    if ( $route_name === 'system.cron' ) {
         return 'view';
     }
 
@@ -1368,6 +1454,10 @@ function metis_router_route_permission_for_request( Metis_Http_Request $request 
         return 'manage';
     }
 
+    if ( $route_name === 'help.admin.issue_resolution' ) {
+        return 'manage';
+    }
+
     if ( in_array( $route_name, [ 'forms.public', 'newsletter.public.signup', 'donations.recurring.manage', 'manage.profile', 'manage.access', 'manage.statement' ], true ) ) {
         return $method === 'POST' ? 'create' : 'view';
     }
@@ -1376,8 +1466,16 @@ function metis_router_route_permission_for_request( Metis_Http_Request $request 
         return 'view';
     }
 
-    if ( in_array( $route_name, [ 'website.theme_css', 'website.homepage', 'website.page' ], true ) ) {
+    if ( in_array( $route_name, [ 'newsletter.public.unsubscribe', 'newsletter.public.view', 'resources.public', 'grandys_stash.ticket' ], true ) ) {
         return 'view';
+    }
+
+    if ( in_array( $route_name, [ 'website.sitemap', 'website.robots', 'website.theme_css', 'website.homepage', 'website.people_profile', 'website.page' ], true ) ) {
+        return 'view';
+    }
+
+    if ( $route_name === 'website.analytics_event' ) {
+        return 'create';
     }
 
     if ( $route_name === 'webhook.gateway' ) {
@@ -1427,6 +1525,31 @@ function metis_router_route_policy( Metis_Http_Request $request ): ?Metis_Securi
             $rate_limit = 600;
             break;
 
+        case 'assets.runtime':
+        case 'assets.core':
+        case 'assets.svg':
+            $module = null;
+            $require_authentication = false;
+            $require_session = false;
+            $rate_limit = 600;
+            break;
+
+        case 'system.version':
+            $module = null;
+            $require_authentication = false;
+            $require_session = false;
+            $rate_limit = 240;
+            break;
+
+        case 'system.cron':
+            $module = null;
+            $require_authentication = false;
+            $require_session = false;
+            $require_nonce = false;
+            $rate_limit = 30;
+            $rate_window = 60;
+            break;
+
         case 'portal.page':
             $module = metis_key_clean( (string) $request->attribute( 'domain', 'portal' ) );
             $require_authentication = true;
@@ -1445,6 +1568,7 @@ function metis_router_route_policy( Metis_Http_Request $request ): ?Metis_Securi
             break;
 
         case 'help.admin.articles':
+        case 'help.admin.issue_resolution':
         case 'help.admin.create':
         case 'help.admin.edit':
             $module = 'help';
@@ -1479,6 +1603,9 @@ function metis_router_route_policy( Metis_Http_Request $request ): ?Metis_Securi
         case 'newsletter.open':
         case 'newsletter.click':
         case 'newsletter.unsubscribe':
+        case 'newsletter.public.unsubscribe':
+        case 'newsletter.public.view':
+        case 'resources.public':
             $module = null;
             $require_authentication = false;
             $require_session = false;
@@ -1487,8 +1614,20 @@ function metis_router_route_policy( Metis_Http_Request $request ): ?Metis_Securi
             $rate_window = 60;
             break;
 
+        case 'grandys_stash.ticket':
+            $module = 'grandys_stash';
+            $require_authentication = true;
+            $require_session = true;
+            $require_nonce = false;
+            $rate_limit = 180;
+            $rate_window = 60;
+            break;
+
+        case 'website.sitemap':
+        case 'website.robots':
         case 'website.theme_css':
         case 'website.homepage':
+        case 'website.people_profile':
         case 'website.page':
             // Public website routes are intentionally anonymous, but still pass route.security
             // so rate limiting, policy registration, audit context, and fail-secure handling apply.
@@ -1604,7 +1743,7 @@ function metis_router_route_security_failure_response( Metis_Http_Request $reque
         ] );
     }
 
-    if ( in_array( $route_name, [ 'webhook.gateway', 'system.cron', 'ajax.metis.api', 'auth.resolve', 'auth.passkeys.begin', 'auth.passkeys.complete' ], true ) ) {
+    if ( in_array( $route_name, [ 'webhook.gateway', 'system.cron', 'ajax.metis.api', 'auth.resolve', 'auth.passkeys.begin', 'auth.passkeys.complete', 'auth.session.keepalive', 'batch.api', 'system.version' ], true ) ) {
         return Metis_Http_Response::json(
             [ 'success' => false, 'data' => [ 'message' => $message, 'code' => $e->code_name() ] ],
             $status_code,
@@ -1615,7 +1754,7 @@ function metis_router_route_security_failure_response( Metis_Http_Request $reque
         );
     }
 
-    if ( in_array( $route_name, [ 'contacts.carddav', 'assets.module' ], true ) ) {
+    if ( in_array( $route_name, [ 'contacts.carddav', 'assets.runtime', 'assets.core', 'assets.module', 'assets.svg' ], true ) ) {
         return new Metis_Http_Response(
             $status_code,
             [
@@ -1677,6 +1816,9 @@ function metis_router_require_route_security( Metis_Http_Request $request, calla
         }
     }
     if ( ! $enclave->has_policy( $policy->operation ) ) {
+        $enclave->register_policy( $policy );
+    }
+    if ( ! $enclave->has_policy( $policy->operation ) ) {
         if ( class_exists( 'Profiler', false ) ) {
             Profiler::mark( 'ROUTER_ENCLAVE_CHECK_DONE' );
         }
@@ -1729,6 +1871,7 @@ function metis_router_portal_nonce_map(): array {
         'settings/system' => [ 'field' => 'metis_settings_nonce', 'action' => 'metis_save_settings_runtime' ],
         'settings/runtime' => [ 'field' => 'metis_settings_nonce', 'action' => 'metis_save_settings_runtime' ],
         'settings/logging' => [ 'field' => 'metis_settings_nonce', 'action' => 'metis_save_settings_logging' ],
+        'settings/cache' => [ 'field' => 'metis_settings_nonce', 'action' => 'metis_save_settings_cache' ],
         'settings/security' => [ 'field' => 'metis_settings_nonce', 'action' => 'metis_save_settings_system_health' ],
         'settings/drive' => [ 'field' => 'metis_settings_nonce', 'action' => 'metis_save_settings_drive' ],
         'settings/calendar' => [ 'field' => 'metis_settings_nonce', 'action' => 'metis_save_settings_calendar' ],
@@ -2168,13 +2311,9 @@ function metis_router_require_ajax_security( Metis_Http_Request $request, callab
     $permission  = (string) ( is_array( $controller ) ? ( $controller['permission'] ?? 'view' ) : 'view' );
     $operation   = sprintf( 'ajax.%s.%s', $module, $ajax_action );
     $nonce_key   = (string) ( is_array( $controller ) ? ( $controller['nonce_action'] ?? metis_ajax_nonce_action( $ajax_action ) ) : metis_ajax_nonce_action( $ajax_action ) );
-    $rate_limit  = (int) ( is_array( $controller ) ? ( $controller['rate_limit'] ?? 0 ) : 0 );
-    $rate_window = (int) ( is_array( $controller ) ? ( $controller['rate_window_seconds'] ?? 60 ) : 60 );
+    $rate_limit  = max( 1, (int) ( is_array( $controller ) ? ( $controller['rate_limit'] ?? 0 ) : 0 ) );
+    $rate_window = max( 1, (int) ( is_array( $controller ) ? ( $controller['rate_window_seconds'] ?? 60 ) : 60 ) );
     $enclave     = metis_security_enclave();
-
-    if ( $rate_limit < 1 ) {
-        $rate_limit = $permission === 'view' ? 180 : 90;
-    }
 
     if ( function_exists( 'metis_security_register_ajax_policies' ) ) {
         metis_security_register_ajax_policies();

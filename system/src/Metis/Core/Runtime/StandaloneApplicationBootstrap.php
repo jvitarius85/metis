@@ -29,6 +29,34 @@ if ( ! function_exists( 'metis_portal_name' ) ) {
     }
 }
 
+if ( ! function_exists( 'metis_organization_name' ) ) {
+    /** Return the organization name for public-facing communications. */
+    function metis_organization_name(): string {
+        $name = class_exists( 'Core_Settings_Service' ) ? Core_Settings_Service::get( 'org_name', '' ) : '';
+        if ( is_array( $name ) ) {
+            $name = reset( $name );
+        }
+        $name = is_string( $name ) ? trim( $name ) : '';
+        if ( $name !== '' ) {
+            return $name;
+        }
+
+        return metis_portal_name();
+    }
+}
+
+if ( ! function_exists( 'metis_email_brand_name' ) ) {
+    /** Resolve a sender/template brand, never exposing the internal portal label. */
+    function metis_email_brand_name( string $candidate = '' ): string {
+        $organization = metis_organization_name();
+        $candidate = trim( $candidate );
+        if ( $candidate === '' || strcasecmp( $candidate, metis_portal_name() ) === 0 || in_array( strtolower( $candidate ), [ 'control center', 'metis portal' ], true ) ) {
+            return $organization;
+        }
+        return $candidate;
+    }
+}
+
 if ( ! function_exists( 'metis_portal_base_url' ) ) {
     function metis_portal_base_url(): string {
         $slug = metis_portal_slug();
@@ -628,6 +656,7 @@ function metis_standalone_install_complete_defaults(): void {
     metis_standalone_install_set_default( 'login_organization_name', $site_name );
     metis_standalone_install_set_default( 'org_tagline', $tagline );
     metis_standalone_install_set_default( 'portal_slug', 'admin' );
+    metis_standalone_install_set_default( 'webhook_base_path', 'api/webhooks' );
     metis_standalone_install_set_default( 'timezone', $timezone );
     metis_standalone_install_set_default( 'site_timezone', $timezone );
     metis_standalone_install_set_default( 'date_format', 'm/d/y' );
@@ -1212,9 +1241,9 @@ function metis_standalone_install_scheduler_instructions( string $base_url = '',
     $instructions = [];
     $base_url = rtrim( trim( $base_url ), '/' );
     if ( $base_url !== '' ) {
-        $instructions[] = sprintf( 'Allow the update server to POST to %s/e/cj through your hosting firewall or WAF.', $base_url );
+        $instructions[] = sprintf( 'Allow the update server to POST to %s/api/cron through your hosting firewall or WAF.', $base_url );
     } else {
-        $instructions[] = 'Allow the update server to reach the Metis external cron endpoint through your hosting firewall or WAF.';
+        $instructions[] = 'Allow the update server to reach the Metis /api/cron endpoint through your hosting firewall or WAF.';
     }
 
     if ( trim( $cron_command ) !== '' ) {

@@ -92,6 +92,10 @@ final class RecoveryPolicyService {
         return max(1, (int) $this->get('release_boot_verification_passes', 2));
     }
 
+    public function releaseInProgressGraceSeconds(): int {
+        return max(30, (int) $this->get('release_in_progress_grace_seconds', 180));
+    }
+
     public function prebootHealthyCacheTtlSeconds(): int {
         return max(0, (int) $this->get('preboot_healthy_cache_ttl_seconds', 60));
     }
@@ -123,6 +127,7 @@ final class RecoveryPolicyService {
             'recovery_file_mutation_enabled' => false,
             'recovery_release_rollback_enabled' => true,
             'release_boot_verification_passes' => 2,
+            'release_in_progress_grace_seconds' => 180,
             'preboot_healthy_cache_ttl_seconds' => 60,
             'allowed_git_remotes' => [],
             'allowed_fallback_branch' => 'stable',
