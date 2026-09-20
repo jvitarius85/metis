@@ -29,14 +29,14 @@
     "menu": {
         "type": "dropdown",
         "items": {
-            "identity": "Identity",
-            "organization": "Organization",
-            "developers": "Developers",
-            "system": "System",
-            "security": "Security & Health",
-            "data": "Data Protection",
+            "identity": "Workspace",
+            "organization": "Services & Integrations",
+            "developers": "Developer Tools",
+            "system": "System Operations",
+            "security": "Health & Security",
+            "data": "Recovery & Backups",
             "platform": "Platform",
-            "help": "Help"
+            "help": "Help & Support"
         }
     },
     "views": {
@@ -44,6 +44,8 @@
         "organization": "organization/index.php",
         "developers": "developers/index.php",
         "system": "system/index.php",
+        "logging": "logging.php",
+        "cache": "cache.php",
         "security": "security/index.php",
         "data": "data/index.php",
         "platform": "platform/index.php",

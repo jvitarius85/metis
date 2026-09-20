@@ -49,6 +49,40 @@ $backup_task_url = metis_settings_section_url( 'system', 'jobs-tasks' );
                 </div>
                 <p class="metis-help">Older successful snapshots beyond this count are rotated out after each new backup.</p>
             </div>
+            <div class="metis-field">
+                <h3 style="margin:0 0 8px;">Audit Retention</h3>
+                <p class="metis-help">Set separate retention windows for audit activity. Business records are not removed by these policies.</p>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px;">
+                    <div>
+                        <label for="audit_activity_retention_days">General activity</label>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <input type="number" id="audit_activity_retention_days" name="audit_activity_retention_days" class="metis-input" min="1" max="3650" value="<?php echo metis_escape_attr( (string) $audit_activity_retention_days ); ?>" style="width:120px;" <?php disabled( ! $is_system_admin ); ?>>
+                            <span class="metis-help" style="margin:0;">days</span>
+                        </div>
+                        <p class="metis-help">Default: 30 days.</p>
+                    </div>
+                    <div>
+                        <label for="audit_security_retention_days">Security events</label>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <input type="number" id="audit_security_retention_days" name="audit_security_retention_days" class="metis-input" min="1" max="3650" value="<?php echo metis_escape_attr( (string) $audit_security_retention_days ); ?>" style="width:120px;" <?php disabled( ! $is_system_admin ); ?>>
+                            <span class="metis-help" style="margin:0;">days</span>
+                        </div>
+                        <p class="metis-help">Default: 90 days.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="metis-field">
+                <label>
+                    <input type="checkbox" name="backup_failure_alerts_enabled" value="1" <?php metis_attr_checked( ! empty( $backup_failure_alerts_enabled ) ); ?> <?php disabled( ! $is_system_admin ); ?>>
+                    Send an email immediately when a backup fails
+                </label>
+                <p class="metis-help">One alert is sent per failed run, including failures discovered while recovering a stale backup worker.</p>
+            </div>
+            <div class="metis-field">
+                <label for="backup_failure_alert_recipients">Backup Failure Alert Recipients</label>
+                <textarea id="backup_failure_alert_recipients" name="backup_failure_alert_recipients" class="metis-input metis-input-wide" rows="3" placeholder="ops@example.org, admin@example.org" <?php disabled( ! $is_system_admin ); ?>><?php echo metis_escape_html( implode( "\n", $backup_failure_alert_recipients ?? [] ) ); ?></textarea>
+                <p class="metis-help">Use one address per line or separate addresses with commas. If left blank, Metis uses the primary system administrator email.</p>
+            </div>
         </div>
     </div>
 

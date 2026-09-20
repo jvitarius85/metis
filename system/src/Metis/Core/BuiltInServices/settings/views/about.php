@@ -8,22 +8,9 @@ extract( $ctx, EXTR_SKIP );
 $release_current = is_array( $release_status['current'] ?? null ) ? $release_status['current'] : [];
 $release_latest = is_array( $release_status['latest'] ?? null ) ? $release_status['latest'] : [];
 $release_installed_version = (string) ( $release_current['version'] ?? $release_status['installed_version'] ?? ( $system_version['metis_version'] ?? 'unknown' ) );
-$module_count = is_array( $system_version['modules'] ?? null ) ? count( $system_version['modules'] ) : 0;
 $module_versions = is_array( $system_version['modules'] ?? null ) ? $system_version['modules'] : [];
 $module_details = is_array( $system_version['module_details'] ?? null ) ? $system_version['module_details'] : [];
 $module_failures = is_array( $system_version['module_failures'] ?? null ) ? $system_version['module_failures'] : [];
-$failed_module_count = count( $module_failures );
-$loaded_module_count = max( 0, $module_count - $failed_module_count );
-if ( $module_details === [] && $module_versions !== [] ) {
-    foreach ( $module_versions as $module_slug => $module_version ) {
-        $module_details[] = [
-            'slug' => (string) $module_slug,
-            'version' => (string) $module_version,
-            'status' => 'loaded',
-            'reason' => '',
-        ];
-    }
-}
 
 $module_registry = function_exists( 'metis_github_update_service' )
     ? (array) metis_github_update_service()->moduleRegistry()
@@ -57,6 +44,50 @@ if ( function_exists( 'metis_module_update_service' ) ) {
     }
 }
 
+if ( $installed_module_map !== [] ) {
+    $module_details = [];
+    $module_versions = [];
+    $module_failures = [];
+
+    foreach ( $installed_module_map as $installed_id => $installed_module ) {
+        $runtime_status = trim( (string) ( $installed_module['runtime_contract_status'] ?? '' ) );
+        $runtime_note = trim( (string) ( $installed_module['runtime_contract_note'] ?? '' ) );
+        $is_runtime_warning = in_array(
+            $runtime_status,
+            [ 'missing_entry', 'source_backed_entry', 'unreadable_entry', 'unknown_entry_contract' ],
+            true
+        );
+
+        $module_versions[ $installed_id ] = (string) ( $installed_module['version'] ?? 'unknown' );
+        $module_details[] = [
+            'slug' => (string) $installed_id,
+            'version' => (string) ( $installed_module['version'] ?? 'unknown' ),
+            'status' => $is_runtime_warning ? 'failed' : 'loaded',
+            'reason' => $is_runtime_warning ? $runtime_note : '',
+        ];
+
+        if ( $is_runtime_warning ) {
+            $module_failures[] = [
+                'slug' => (string) $installed_id,
+                'reason' => $runtime_note,
+            ];
+        }
+    }
+} elseif ( $module_details === [] && $module_versions !== [] ) {
+    foreach ( $module_versions as $module_slug => $module_version ) {
+        $module_details[] = [
+            'slug' => (string) $module_slug,
+            'version' => (string) $module_version,
+            'status' => 'loaded',
+            'reason' => '',
+        ];
+    }
+}
+
+$module_count = count( $module_details );
+$failed_module_count = count( $module_failures );
+$loaded_module_count = max( 0, $module_count - $failed_module_count );
+
 $display_datetime = static function ( string $value ): string {
     return function_exists( 'metis_runtime_format_datetime' )
         ? metis_runtime_format_datetime( $value, null, null, null, '' )
@@ -81,7 +112,7 @@ $module_arrow_icon = metis_navigation_svg_icon_markup( 'arrow-right' );
 $release_apply_tag = trim( (string) ( $release_latest['tag'] ?? $release_latest['version'] ?? '' ) );
 ?>
 <h1 class="metis-page-title"><?php echo metis_escape_html( metis_current_module_view_title( 'Settings' ) ); ?></h1>
-<p class="metis-subtitle">Review Metis version, update status, and loaded modules.</p>
+<p class="metis-subtitle">Review Metis version, update status, and installed standalone modules.</p>
 <?php metis_settings_render_messages( $saved, $errors ); ?>
 <?php metis_settings_render_section_nav( 'about' ); ?>
 
@@ -163,9 +194,9 @@ $release_apply_tag = trim( (string) ( $release_latest['tag'] ?? $release_latest[
                 <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( $module_checked_display ); ?></div>
             </div>
             <div class="metis-settings-stat-card is-ok">
-                <div class="metis-settings-stat-card__label">Loaded Modules</div>
+                <div class="metis-settings-stat-card__label">Installed Modules</div>
                 <div class="metis-settings-stat-card__value"><?php echo metis_escape_html( (string) $loaded_module_count ); ?></div>
-                <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( $failed_module_count > 0 ? $failed_module_count . ' failed' : 'All loaded cleanly' ); ?></div>
+                <div class="metis-settings-stat-card__note"><?php echo metis_escape_html( $failed_module_count > 0 ? $failed_module_count . ' need attention' : 'All bundles discovered cleanly' ); ?></div>
             </div>
             <div class="metis-settings-stat-card is-ok">
                 <div class="metis-settings-stat-card__label">Metis Version</div>
@@ -199,7 +230,7 @@ $release_apply_tag = trim( (string) ( $release_latest['tag'] ?? $release_latest[
 
 <?php if ( $module_details !== [] ) : ?>
     <div class="metis-settings-card" data-settings-about-modules>
-        <div class="metis-settings-header"><h2>Loaded Modules</h2></div>
+        <div class="metis-settings-header"><h2>Installed Modules</h2></div>
         <div class="metis-settings-body">
             <div class="metis-module-grid">
                 <?php foreach ( $module_details as $module_detail ) : ?>

@@ -50,6 +50,8 @@ if ( ! function_exists( 'metis_settings_section_access_matrix' ) ) {
             'organization' => [ 'admin' ],
             'developers' => [ 'admin', 'developer' ],
             'system' => [ 'admin' ],
+            'logging' => [ 'admin' ],
+            'cache' => [ 'admin' ],
             'security' => [ 'admin' ],
             'data' => [ 'admin' ],
             'platform' => [ 'admin' ],
@@ -84,7 +86,7 @@ if ( ! function_exists( 'metis_settings_ia' ) ) {
     function metis_settings_ia(): array {
         return [
             'identity' => [
-                'label' => 'IDENTITY',
+                'label' => 'WORKSPACE',
                 'pages' => [
                     'general' => [ 'label' => 'General', 'section' => 'general' ],
                     'user-experience' => [ 'label' => 'User Experience', 'section' => 'user_experience' ],
@@ -93,7 +95,7 @@ if ( ! function_exists( 'metis_settings_ia' ) ) {
                 ],
             ],
             'organization' => [
-                'label' => 'ORGANIZATION',
+                'label' => 'SERVICES & INTEGRATIONS',
                 'pages' => [
                     'email' => [ 'label' => 'Email', 'section' => 'email' ],
                     'payments' => [ 'label' => 'Payments', 'section' => 'payments' ],
@@ -103,38 +105,49 @@ if ( ! function_exists( 'metis_settings_ia' ) ) {
                 ],
             ],
             'developers' => [
-                'label' => 'DEVELOPERS',
+                'label' => 'DEVELOPMENT & OPERATIONS',
                 'pages' => [
                     'api' => [ 'label' => 'API & Endpoints', 'section' => 'developers_api' ],
                 ],
             ],
             'system' => [
-                'label' => 'SYSTEM',
+                'label' => 'DEVELOPMENT & OPERATIONS',
                 'pages' => [
-                    'runtime' => [ 'label' => 'Runtime', 'section' => 'runtime' ],
                     'jobs-tasks' => [ 'label' => 'Jobs & Tasks', 'section' => 'jobs_tasks' ],
                 ],
             ],
+            'logging' => [
+                'label' => 'DEVELOPMENT & OPERATIONS',
+                'pages' => [
+                    'logging' => [ 'label' => 'Logging', 'section' => 'logging' ],
+                ],
+            ],
+            'cache' => [
+                'label' => 'DEVELOPMENT & OPERATIONS',
+                'pages' => [
+                    'cache' => [ 'label' => 'Cache', 'section' => 'cache' ],
+                ],
+            ],
             'security' => [
-                'label' => 'SECURITY & HEALTH',
+                'label' => 'DEVELOPMENT & OPERATIONS',
                 'pages' => [
                     'system-health' => [ 'label' => 'System Health', 'section' => 'system_health' ],
                 ],
             ],
             'data' => [
-                'label' => 'DATA PROTECTION',
+                'label' => 'RECOVERY & SUPPORT',
                 'pages' => [
                     'backup' => [ 'label' => 'Backup', 'section' => 'backup' ],
                 ],
             ],
             'platform' => [
-                'label' => 'PLATFORM',
+                'label' => 'RECOVERY & SUPPORT',
                 'pages' => [
                     'about' => [ 'label' => 'About', 'section' => 'about' ],
                 ],
             ],
             'help' => [
-                'label' => 'HELP',
+                'label' => 'RECOVERY & SUPPORT',
                 'pages' => [
                     'help' => [ 'label' => 'Help', 'section' => 'help' ],
                 ],
@@ -157,6 +170,8 @@ if ( ! function_exists( 'metis_settings_sections' ) ) {
             'drive' => 'Drive',
             'developers_api' => 'API & Endpoints',
             'runtime' => 'Runtime',
+            'logging' => 'Logging',
+            'cache' => 'Cache',
             'jobs_tasks' => 'Jobs & Tasks',
             'system_health' => 'System Health',
             'backup' => 'Backup',
@@ -183,6 +198,8 @@ if ( ! function_exists( 'metis_settings_sections' ) ) {
                 $sections['google_workspace'],
                 $sections['calendar'],
                 $sections['drive'],
+                $sections['logging'],
+                $sections['cache'],
                 $sections['runtime'],
                 $sections['jobs_tasks'],
                 $sections['system_health'],
@@ -205,11 +222,21 @@ if ( ! function_exists( 'metis_settings_section_groups' ) ) {
             }
 
             $label = (string) ( $definition['label'] ?? strtoupper( $section_key ) );
-            $grouped[ $label ] = [];
+            if ( ! isset( $grouped[ $label ] ) ) {
+                $grouped[ $label ] = [];
+            }
             foreach ( (array) ( $definition['pages'] ?? [] ) as $page_key => $page_definition ) {
                 $grouped[ $label ][ $section_key . '/' . $page_key ] = (string) ( $page_definition['label'] ?? $page_key );
             }
         }
+
+        foreach ( $grouped as &$group_sections ) {
+            uasort(
+                $group_sections,
+                static fn ( string $left, string $right ): int => strcasecmp( $left, $right )
+            );
+        }
+        unset( $group_sections );
 
         return $grouped;
     }
@@ -233,11 +260,21 @@ if ( ! function_exists( 'metis_settings_render_section_nav' ) ) {
         echo '<div class="metis-sidebar-layout metis-settings-layout">';
         echo '<aside class="metis-sidebar-layout-sidebar metis-settings-layout-sidebar">';
         echo '<div class="metis-sidebar-layout-sidebar-inner metis-settings-layout-sidebar-inner">';
-        echo '<div class="metis-list-sidebar-actions">';
-        echo '<div class="metis-list-sidebar-label">Settings</div>';
+        echo '<div class="metis-list-sidebar-actions metis-settings-navigation">';
+        echo '<div class="metis-list-sidebar-label metis-settings-navigation-title">Settings</div>';
+        echo '<p class="metis-settings-navigation-intro">Choose an area to manage your workspace, services, or system.</p>';
         echo '<nav class="metis-list-sidebar-nav" aria-label="Settings sections">';
         foreach ( metis_settings_section_groups() as $group_label => $group_sections ) {
-            echo '<div class="metis-list-sidebar-label" style="margin-top:10px;">' . metis_escape_html( (string) $group_label ) . '</div>';
+            $group_is_active = false;
+            foreach ( $group_sections as $slug => $label ) {
+                if ( (string) $slug === $active_key ) {
+                    $group_is_active = true;
+                    break;
+                }
+            }
+            echo '<details class="metis-settings-navigation-group"' . ( $group_is_active ? ' open' : '' ) . '>';
+            echo '<summary class="metis-settings-navigation-group-summary">' . metis_escape_html( (string) $group_label ) . '<span aria-hidden="true"></span></summary>';
+            echo '<div class="metis-settings-navigation-group-items">';
             foreach ( $group_sections as $slug => $label ) {
                 $parts = explode( '/', (string) $slug, 2 );
                 $section = (string) ( $parts[0] ?? '' );
@@ -246,6 +283,7 @@ if ( ! function_exists( 'metis_settings_render_section_nav' ) ) {
                 $class = $key === $active_key ? ' is-active' : '';
                 echo '<a class="metis-list-sidebar-nav-item' . metis_escape_attr( $class ) . '" href="' . metis_escape_url( metis_settings_section_url( $section, $page ) ) . '">' . metis_escape_html( (string) $label ) . '</a>';
             }
+            echo '</div></details>';
         }
         echo '</nav>';
         echo '</div>';
@@ -334,6 +372,9 @@ if ( ! function_exists( 'metis_settings_section_url' ) ) {
         $page = metis_key_clean( $page );
         if ( $section === 'modules' ) {
             return rtrim( metis_portal_url( 'modules' ), '/' ) . '/';
+        }
+        if ( $section === 'logging' || $section === 'cache' ) {
+            return rtrim( metis_portal_url( 'settings', $section ), '/' ) . '/';
         }
         if ( $section === '' ) {
             $section = 'identity';
@@ -886,6 +927,7 @@ if ( ! function_exists( 'metis_settings_normalize_inbound_mailbox_rows' ) ) {
                 'enabled'               => ! array_key_exists( 'enabled', $row ) || ! empty( $row['enabled'] ) ? 1 : 0,
                 'label_ids'             => $normalized_label_ids,
                 'label_filter_behavior' => $label_filter_behavior,
+                'module_slug'           => metis_key_clean( (string) ( $row['module_slug'] ?? '' ) ),
             ];
         }
 
@@ -1516,6 +1558,8 @@ if ( ! function_exists( 'metis_settings_build_scheduler_snapshot' ) ) {
         $date_format = trim( $date_format ) !== '' ? $date_format : 'm/d/y';
         $time_format = trim( $time_format ) !== '' ? $time_format : 'g:i:s a';
         $system_cron_tasks = Metis_Cron_Manager::registered_tasks();
+        $system_cron_run_times = Core_Settings_Service::get( 'system_cron_task_run_times', [] );
+        $system_cron_run_times = is_array( $system_cron_run_times ) ? $system_cron_run_times : [];
         $queue_summary = \Metis\Core\Application::has_service( 'operations' )
             ? metis_operations()->queueSummary()
             : [ 'cron' => [], 'operations' => [] ];
@@ -1543,6 +1587,38 @@ if ( ! function_exists( 'metis_settings_build_scheduler_snapshot' ) ) {
             $task_state = metis_get_option( 'metis_cron_task_state_' . $task_slug, [] );
             $task_state = is_array( $task_state ) ? $task_state : [];
             $last_finished_at = (string) ( $task_state['last_finished_at'] ?? '' );
+            $interval_seconds = max( MINUTE_IN_SECONDS, (int) ( $task_config['interval'] ?? 300 ) );
+            $run_time = trim( (string) ( $system_cron_run_times[ $task_slug ] ?? '' ) );
+            if ( ! preg_match( '/^(?:[01]\d|2[0-3]):[0-5]\d$/', $run_time ) ) {
+                $run_time = '';
+            }
+            $candidate_ts = $last_finished_at !== '' && strtotime( $last_finished_at ) !== false
+                ? (int) strtotime( $last_finished_at ) + $interval_seconds
+                : time();
+            if ( $candidate_ts <= time() ) {
+                $candidate_ts = time();
+            }
+            $candidate_local = ( new DateTimeImmutable( '@' . $candidate_ts ) )->setTimezone( new DateTimeZone( $timezone ) );
+            if ( $run_time !== '' && $interval_seconds % DAY_IN_SECONDS === 0 ) {
+                [ $run_hour, $run_minute ] = array_map( 'intval', explode( ':', $run_time ) );
+                $scheduled_today = $candidate_local->setTime( $run_hour, $run_minute, 0 );
+                $last_local = $last_finished_at !== '' && strtotime( $last_finished_at ) !== false
+                    ? ( new DateTimeImmutable( '@' . (int) strtotime( $last_finished_at ) ) )->setTimezone( new DateTimeZone( $timezone ) )
+                    : null;
+                if ( $last_local === null ) {
+                    $candidate_local = $candidate_local < $scheduled_today ? $scheduled_today : $scheduled_today->modify( '+1 day' );
+                } elseif ( $last_local->format( 'Y-m-d' ) === $candidate_local->format( 'Y-m-d' ) ) {
+                    $candidate_local = $scheduled_today->modify( '+1 day' );
+                } elseif ( $candidate_local < $scheduled_today ) {
+                    $candidate_local = $scheduled_today;
+                } else {
+                    $candidate_local = $scheduled_today;
+                }
+            }
+            if ( ! empty( $task_config['overnight_only'] ) && (int) $candidate_local->format( 'G' ) >= 6 ) {
+                $candidate_local = $candidate_local->modify( '+1 day' )->setTime( 0, 0, 0 );
+            }
+            $next_run_at_display = metis_settings_format_datetime_display( $candidate_local->format( 'Y-m-d H:i:s' ), $date_format, $time_format, $timezone );
 
             $system_cron_task_rows[] = [
                 'slug' => $task_slug,
@@ -1553,6 +1629,9 @@ if ( ! function_exists( 'metis_settings_build_scheduler_snapshot' ) ) {
                 'interval_minutes' => max( 1, (int) ceil( ( (int) ( $task_config['interval'] ?? 300 ) ) / MINUTE_IN_SECONDS ) ),
                 'default_interval_minutes' => max( 1, (int) ceil( ( (int) ( $task_config['default_interval'] ?? $task_config['interval'] ?? 300 ) ) / MINUTE_IN_SECONDS ) ),
                 'interval_label' => metis_settings_format_interval( (int) ( $task_config['interval'] ?? 300 ) ),
+                'overnight_only' => ! empty( $task_config['overnight_only'] ),
+                'run_time' => $run_time,
+                'next_run_at_display' => $next_run_at_display,
                 'last_status' => (string) ( $task_state['last_status'] ?? 'never' ),
                 'last_finished_at' => $last_finished_at,
                 'last_finished_at_display' => $last_finished_at !== ''
@@ -2526,7 +2605,7 @@ if ( ! function_exists( 'metis_settings_build_performance_security_report' ) ) {
             $release_last_checked_ts < 1
                 ? 'Release checker has never completed a status refresh.'
                 : sprintf( 'Last checked at %s (%d hours ago), remote status: %s.', $display_datetime( $release_last_checked ), $release_age_hours, $release_remote_status ),
-            $release_check_status === 'pass' ? '' : 'Run release check and verify GitHub/update connectivity.'
+            $release_check_status === 'pass' ? '' : 'Run a release check and verify trusted update connectivity.'
         );
 
         $release_auto_update_enabled = function_exists( 'metis_release_auto_update_enabled' )
@@ -2680,6 +2759,9 @@ if ( ! function_exists( 'metis_settings_save_general_section' ) ) {
         }
         $org_tagline = metis_text_clean( (string) ( metis_request_post()['org_tagline'] ?? '' ) );
         Core_Settings_Service::set( 'org_tagline', $org_tagline );
+        $saved = true;
+
+        Core_Settings_Service::set( 'force_www', ! empty( metis_request_post()['force_www'] ) ? 1 : 0, true );
         $saved = true;
 
         $timezone = metis_text_clean( (string) ( metis_request_post()['timezone'] ?? '' ) );
@@ -2840,8 +2922,6 @@ if ( ! function_exists( 'metis_settings_save_logging_section' ) ) {
 
         $logging_enabled = ! empty( metis_request_post()['logging_enabled'] ) ? 1 : 0;
         $audit_verbose_operational_events = ! empty( metis_request_post()['audit_verbose_operational_events'] ) ? 1 : 0;
-        $release_cache_retention_items = max( 1, min( 25, (int) metis_runtime_unslash( metis_request_post()['release_cache_retention_items'] ?? 2 ) ) );
-        $release_backup_retention_items = max( 1, min( 25, (int) metis_runtime_unslash( metis_request_post()['release_backup_retention_items'] ?? 1 ) ) );
         $logging_force_url_token = trim( metis_text_clean( (string) metis_runtime_unslash( metis_request_post()['logging_force_url_token'] ?? '' ) ) );
         if ( $logging_force_url_token !== '' && strlen( $logging_force_url_token ) < 16 ) {
             $errors[] = 'Force logging token must be at least 16 characters when enabled.';
@@ -2861,6 +2941,15 @@ if ( ! function_exists( 'metis_settings_save_logging_section' ) ) {
         Core_Settings_Service::set( 'logging_min_level', $logging_min_level, true );
         Core_Settings_Service::set( 'logging_force_url_token', $logging_force_url_token, false );
         Core_Settings_Service::set( 'audit_verbose_operational_events', $audit_verbose_operational_events, false );
+        $saved = true;
+    }
+}
+
+if ( ! function_exists( 'metis_settings_save_cache_section' ) ) {
+    function metis_settings_save_cache_section( array &$errors, bool &$saved ): void {
+        $release_cache_retention_items = max( 1, min( 25, (int) metis_runtime_unslash( metis_request_post()['release_cache_retention_items'] ?? 2 ) ) );
+        $release_backup_retention_items = max( 1, min( 25, (int) metis_runtime_unslash( metis_request_post()['release_backup_retention_items'] ?? 1 ) ) );
+
         Core_Settings_Service::set( 'release_cache_retention_items', $release_cache_retention_items, false );
         Core_Settings_Service::set( 'release_backup_retention_items', $release_backup_retention_items, false );
         $saved = true;
@@ -3283,6 +3372,34 @@ if ( ! function_exists( 'metis_settings_save_backup_section' ) ) {
         Core_Settings_Service::set( 'backup_environment', $backup_environment, false );
         $saved = true;
 
+        $backup_failure_alerts_enabled = ! empty( metis_request_post()['backup_failure_alerts_enabled'] );
+        Core_Settings_Service::set( 'backup_failure_alerts_enabled', $backup_failure_alerts_enabled, false );
+
+        $raw_alert_recipients = (string) metis_runtime_unslash( metis_request_post()['backup_failure_alert_recipients'] ?? '' );
+        $alert_recipients = [];
+        foreach ( preg_split( '/[\\s,;]+/', $raw_alert_recipients ) ?: [] as $candidate ) {
+            $email = strtolower( trim( metis_email_clean( (string) $candidate ) ) );
+            if ( $email === '' ) {
+                continue;
+            }
+            if ( ! metis_email_is_valid( $email ) ) {
+                $errors[] = 'Backup failure alerts contain an invalid email address: ' . $email;
+                continue;
+            }
+            $alert_recipients[] = $email;
+        }
+        Core_Settings_Service::set( 'backup_failure_alert_recipients', array_values( array_unique( $alert_recipients ) ), false );
+        $saved = true;
+
+        $audit_activity_retention_days = max( 1, min( 3650, (int) metis_runtime_unslash( metis_request_post()['audit_activity_retention_days'] ?? 30 ) ) );
+        $audit_security_retention_days = max( 1, min( 3650, (int) metis_runtime_unslash( metis_request_post()['audit_security_retention_days'] ?? 90 ) ) );
+        Core_Settings_Service::set( 'audit_activity_retention_days', $audit_activity_retention_days, false );
+        Core_Settings_Service::set( 'audit_security_retention_days', $audit_security_retention_days, false );
+        $policy_days = (array) Core_Settings_Service::get( 'data_retention_policy_days', [] );
+        $policy_days['audit_activity'] = $audit_activity_retention_days;
+        $policy_days['audit_security'] = $audit_security_retention_days;
+        Core_Settings_Service::set( 'data_retention_policy_days', $policy_days, false );
+
     }
 }
 
@@ -3478,6 +3595,26 @@ if ( ! function_exists( 'metis_settings_save_api_section' ) ) {
         Core_Settings_Service::set( 'communications_inbound_enable_unsubscribe_handler', ! empty( metis_request_post()['communications_inbound_enable_unsubscribe_handler'] ) ? 1 : 0, false );
         Core_Settings_Service::set( 'communications_inbound_enable_grandys_stash_handler', ! empty( metis_request_post()['communications_inbound_enable_grandys_stash_handler'] ) ? 1 : 0, false );
         $saved = true;
+
+        if ( $communications_mailboxes !== [] && class_exists( '\\Metis\\Modules\\CommunicationsInbound\\CommunicationsInboundModule' ) ) {
+            try {
+                \Metis\Modules\CommunicationsInbound\CommunicationsInboundModule::ensureMailboxes();
+                foreach ( $communications_mailboxes as $mailbox ) {
+                    if ( empty( $mailbox['enabled'] ) ) {
+                        continue;
+                    }
+                    $watch = \Metis\Modules\CommunicationsInbound\CommunicationsInboundModule::watchMailbox(
+                        (string) ( $mailbox['mailbox_email'] ?? '' ),
+                        true
+                    );
+                    if ( empty( $watch['ok'] ) ) {
+                        $errors[] = 'Inbound watch activation failed for ' . (string) ( $mailbox['mailbox_email'] ?? 'mailbox' ) . ': ' . (string) ( $watch['error'] ?? 'Unknown error.' );
+                    }
+                }
+            } catch ( \Throwable $e ) {
+                $errors[] = 'Inbound mailbox settings were saved, but watch activation failed: ' . $e->getMessage();
+            }
+        }
     }
 }
 
@@ -3687,6 +3824,9 @@ if ( ! function_exists( 'metis_settings_bootstrap' ) ) {
                 case 'runtime':
                     metis_settings_save_runtime_section( $errors, $saved );
                     break;
+                case 'cache':
+                    metis_settings_save_cache_section( $errors, $saved );
+                    break;
                 case 'jobs_tasks':
                     metis_settings_save_jobs_tasks_section( $is_system_admin, $errors, $saved );
                     break;
@@ -3702,6 +3842,7 @@ if ( ! function_exists( 'metis_settings_bootstrap' ) ) {
         $portal_name        = Core_Settings_Service::get( 'portal_name', '' );
         $org_name           = Core_Settings_Service::get( 'org_name', '' );
         $org_tagline        = Core_Settings_Service::get( 'org_tagline', '' );
+        $force_www          = (int) Core_Settings_Service::get( 'force_www', 0 ) === 1;
         $timezone = (string) Core_Settings_Service::get( 'timezone', Core_Settings_Service::get( 'site_timezone', 'UTC' ) );
         if ( $timezone === '' || ! in_array( $timezone, timezone_identifiers_list(), true ) ) {
             $timezone = 'UTC';
@@ -3791,6 +3932,10 @@ if ( ! function_exists( 'metis_settings_bootstrap' ) ) {
         $backup_drive_id               = (string) Core_Settings_Service::get( 'backup_drive_id', '' );
         $backup_retention_runs         = max( 1, (int) Core_Settings_Service::get( 'backup_retention_runs', 14 ) );
         $backup_environment            = (string) Core_Settings_Service::get( 'backup_environment', '' );
+        $backup_failure_alerts_enabled = (bool) Core_Settings_Service::get( 'backup_failure_alerts_enabled', true );
+        $backup_failure_alert_recipients = array_values( array_filter( array_map( 'strval', (array) Core_Settings_Service::get( 'backup_failure_alert_recipients', [] ) ) ) );
+        $audit_activity_retention_days = max( 1, min( 3650, (int) Core_Settings_Service::get( 'audit_activity_retention_days', 30 ) ) );
+        $audit_security_retention_days = max( 1, min( 3650, (int) Core_Settings_Service::get( 'audit_security_retention_days', 90 ) ) );
         $workspace_calendar_configs    = metis_settings_normalize_calendar_rows( Core_Settings_Service::get( 'workspace_calendar_configs', [] ) );
         $workspace_service_account_json = metis_settings_get_credential_value( 'workspace_service_account_json' );
         $workspace_service_account_present = is_string( $workspace_service_account_json ) && trim( $workspace_service_account_json ) !== '';
@@ -4046,6 +4191,7 @@ if ( ! function_exists( 'metis_settings_bootstrap' ) ) {
             'portal_name',
             'org_name',
             'org_tagline',
+            'force_www',
             'timezone',
             'date_format',
             'time_format',
@@ -4104,6 +4250,10 @@ if ( ! function_exists( 'metis_settings_bootstrap' ) ) {
             'backup_drive_id',
             'backup_retention_runs',
             'backup_environment',
+            'backup_failure_alerts_enabled',
+            'backup_failure_alert_recipients',
+            'audit_activity_retention_days',
+            'audit_security_retention_days',
             'backup_runs',
             'backup_drive_options',
             'backup_drive_error',

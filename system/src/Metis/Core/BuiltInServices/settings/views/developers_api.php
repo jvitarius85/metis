@@ -157,7 +157,7 @@ extract( $ctx, EXTR_SKIP );
             </div>
             <div class="metis-field">
                 <label for="communications_inbound_pubsub_audience">Push Audience</label>
-                <input type="text" id="communications_inbound_pubsub_audience" name="communications_inbound_pubsub_audience" class="metis-input metis-input-wide" value="<?php echo metis_escape_attr( (string) $communications_inbound_pubsub_audience ); ?>" autocomplete="off" placeholder="https://metis.example.org/metis-webhooks/gmail_pubsub">
+                <input type="text" id="communications_inbound_pubsub_audience" name="communications_inbound_pubsub_audience" class="metis-input metis-input-wide" value="<?php echo metis_escape_attr( (string) $communications_inbound_pubsub_audience ); ?>" autocomplete="off" placeholder="https://metis.example.org/api/webhooks/gmail_pubsub">
             </div>
             <div class="metis-field">
                 <label for="communications_inbound_pubsub_service_account_email">Push Service Account Email</label>
@@ -183,6 +183,11 @@ extract( $ctx, EXTR_SKIP );
                                     <label>Google User</label>
                                     <input type="email" class="metis-input" name="communications_inbound_mailboxes[<?php echo (int) $index; ?>][delegated_user]" value="<?php echo metis_escape_attr( (string) ( $row['delegated_user'] ?? '' ) ); ?>" placeholder="newsletter@example.org">
                                     <p class="metis-help">Leave this the same as the mailbox unless Google gave you a different delegated user.</p>
+                                </div>
+                                <div class="metis-field">
+                                    <label>Ingest Module</label>
+                                    <select class="metis-input" name="communications_inbound_mailboxes[<?php echo (int) $index; ?>][module_slug]"><option value="">Automatic</option><option value="grandys_stash" <?php metis_attr_selected( (string) ( $row['module_slug'] ?? '' ), 'grandys_stash' ); ?>>Grandy's Stash</option><option value="newsletter" <?php metis_attr_selected( (string) ( $row['module_slug'] ?? '' ), 'newsletter' ); ?>>Newsletter</option></select>
+                                    <p class="metis-help">Limit this inbox to a specific inbound module parser.</p>
                                 </div>
                                 <div class="metis-field">
                                     <label>Inbox Labels</label>
@@ -285,6 +290,11 @@ extract( $ctx, EXTR_SKIP );
                 <label>Google User</label>
                 <input type="email" class="metis-input" name="communications_inbound_mailboxes[${index}][delegated_user]" placeholder="newsletter@example.org">
                 <p class="metis-help">Leave this the same as the mailbox unless Google gave you a different delegated user.</p>
+            </div>
+            <div class="metis-field">
+                <label>Ingest Module</label>
+                <select class="metis-input" name="communications_inbound_mailboxes[${index}][module_slug]"><option value="">Automatic</option><option value="grandys_stash">Grandy's Stash</option><option value="newsletter">Newsletter</option></select>
+                <p class="metis-help">Limit this inbox to a specific inbound module parser.</p>
             </div>
             <div class="metis-field">
                 <label>Inbox Labels</label>

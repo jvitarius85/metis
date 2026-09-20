@@ -36,6 +36,13 @@ $format_preview = static function ( string $format ): string {
                 <p class="metis-help">Used on homepage title as <code>{org name}: {tagline}</code>.</p>
             </div>
             <div class="metis-field">
+                <label class="metis-settings-flag" for="force_www">
+                    <input type="checkbox" id="force_www" name="force_www" value="1" <?php metis_attr_checked( ! empty( $force_www ) ); ?>>
+                    Use <code>www</code> as the canonical website address
+                </label>
+                <p class="metis-help">Redirects browser visits from the bare domain to <code>www</code>. Confirm that the <code>www</code> DNS record and TLS certificate are active before enabling it.</p>
+            </div>
+            <div class="metis-field">
                 <label for="site_homepage_page_id">Homepage</label>
                 <select id="site_homepage_page_id" name="site_homepage_page_id" class="metis-input metis-input-wide">
                     <option value="0">No homepage selected</option>
