@@ -113,6 +113,7 @@ final class PeopleDirectoryService {
             'SELECT p.id, p.pid, p.auth_provider, p.email, p.first_name, p.last_name, p.display_name, p.linked_donor_id,
                     p.is_workspace_user, p.workspace_email, p.workspace_role, p.stripe_role, p.status, p.lifecycle_status,
                     p.public_visibility, p.is_staff, p.is_board, p.is_volunteer, p.staff_position, p.board_position, p.volunteer_position,
+                    p.offboarded_at,
                     au.auth_user_id
              FROM ' . $people_table . ' p
              ' . $auth_join . '

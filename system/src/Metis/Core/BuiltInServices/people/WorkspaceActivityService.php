@@ -353,6 +353,6 @@ final class WorkspaceActivityService {
         if ( ! $ts ) {
             return $raw;
         }
-        return date( 'M j, Y g:i a', $ts );
+        return \metis_runtime_format_datetime( $raw, null, null, null, $raw );
     }
 }

@@ -1428,7 +1428,7 @@ metis_ajax_register_handler( 'metis_people_get_activity_page', function () {
         $created_raw = trim((string) ($row['created_at'] ?? ''));
         $created = $created_raw;
         $ts = strtotime($created_raw);
-        if ($ts) $created = date('M j, Y g:i a', $ts);
+        if ($ts) $created = metis_runtime_format_datetime($created_raw, null, null, null, $created_raw);
         $target_name = trim((string) ($row['target_name'] ?? ''));
         $target_pid = trim((string) ($row['target_pid'] ?? ''));
         $target_label = $target_name !== '' ? ($target_name . ($target_pid !== '' ? (' (' . $target_pid . ')') : '')) : '—';

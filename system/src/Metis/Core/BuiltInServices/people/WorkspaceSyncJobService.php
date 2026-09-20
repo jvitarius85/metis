@@ -418,7 +418,7 @@ final class WorkspaceSyncJobService {
 
     private static function claimJob( string $jobs_table, int $job_id ): bool {
         $claimed_at = \metis_current_time( 'mysql' );
-        $claimed = (int) \metis_db()->execute(
+        $claimed = (int) \metis_db()->executePrepared(
             "UPDATE {$jobs_table}
              SET status = 'processing', updated_at = %s
              WHERE id = %d AND status IN ('queued','failed')",

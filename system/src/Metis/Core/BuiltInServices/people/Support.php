@@ -50,17 +50,13 @@ final class Support {
     }
 
     public static function roleUrl( string $role_key = '', string $role_domain = '' ): string {
-        $base = \metis_portal_url( 'people', 'role' );
+        $base = rtrim( \metis_portal_url( 'people', 'role' ), '/' );
         if ( $role_key === '' ) {
-            return $base;
+            return $base . '/';
         }
 
-        $url = $base . '?role=' . rawurlencode( $role_key );
-        if ( $role_domain !== '' ) {
-            $url .= '&domain=' . rawurlencode( \metis_key_clean( $role_domain ) );
-        }
-
-        return $url;
+        $domain = \metis_key_clean( $role_domain );
+        return $base . '/' . rawurlencode( $domain !== '' ? $domain : 'metis' ) . '/' . rawurlencode( \metis_key_clean( $role_key ) ) . '/';
     }
 
     public static function canManage(): bool {

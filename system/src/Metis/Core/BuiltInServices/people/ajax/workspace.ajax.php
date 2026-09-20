@@ -93,7 +93,7 @@ if (!function_exists('metis_people_workspace_format_time')) {
         if ($raw === '') return 'Unknown time';
         $ts = strtotime($raw);
         if (!$ts) return $raw;
-        return date('M j, Y g:i a', $ts);
+        return metis_runtime_format_datetime($raw, null, null, null, $raw);
     }
 }
 

@@ -487,7 +487,11 @@ final class ReadService {
         }
         $avatar_src = \metis_avatar_url($avatar_name !== '' ? $avatar_name : $person_email, (string) ($person['avatar_url'] ?? ''), 160, (string) ($person['pid'] ?? ''));
         $linked_donor_id = (string) ($person['linked_donor_id'] ?? '');
-        $donor_profile_url = $linked_donor_id !== '' ? \metis_portal_url('donations', 'donor') . '?id=' . rawurlencode($linked_donor_id) : '';
+        $donor_profile_url = $linked_donor_id !== ''
+            ? ( function_exists( 'metis_donations_detail_url' )
+                ? \metis_donations_detail_url( 'donor', $linked_donor_id )
+                : rtrim( \metis_portal_url( 'donations', 'donor' ), '/' ) . '/' . rawurlencode( $linked_donor_id ) . '/' )
+            : '';
         $linked_donor_name = '';
         if ($linked_donor_id !== '') {
             $contacts_table = \Metis_Tables::get('contacts');

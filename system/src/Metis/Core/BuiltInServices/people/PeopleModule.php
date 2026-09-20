@@ -17,6 +17,12 @@ final class PeopleModule {
         self::$booted = true;
         \Metis_Logger::info( 'People bootstrap loaded' );
 
+        // Cron workers boot the module registry without necessarily running the
+        // request `init` hook that loads module AJAX controllers. Register the
+        // workspace queue task here so offboarding and other sync jobs cannot
+        // remain queued simply because no admin page was visited.
+        self::registerWorkspaceSyncTask();
+
         \metis_on( 'init', [ self::class, 'handleInit' ], 4 );
         if ( \function_exists( 'metis_ajax_register_controller' ) ) {
             \metis_ajax_register_controller(
@@ -40,6 +46,43 @@ final class PeopleModule {
             ]
         );
         self::registerEventSubscribers();
+    }
+
+    private static function registerWorkspaceSyncTask(): void {
+        if ( ! class_exists( '\\Metis_Cron_Manager' ) ) {
+            return;
+        }
+
+        \Metis_Cron_Manager::register_task(
+            'people_workspace_sync',
+            static function (): array {
+                // The processing helpers live with the AJAX controllers for
+                // backwards compatibility. Load them lazily in worker
+                // contexts; the normal request bootstrap still uses require_once.
+                if ( ! function_exists( 'metis_people_workspace_process_jobs' ) ) {
+                    $ajax_file = __DIR__ . '/ajax/people.ajax.php';
+                    if ( is_file( $ajax_file ) ) {
+                        require_once $ajax_file;
+                    }
+                }
+
+                if ( ! function_exists( 'metis_people_workspace_process_jobs' ) ) {
+                    return [
+                        'status'  => 'failed',
+                        'message' => 'People workspace queue processor is unavailable.',
+                    ];
+                }
+
+                metis_people_ensure_schema();
+                return metis_people_workspace_process_jobs( 8, false, 0 );
+            },
+            [
+                'label'    => 'Workspace Sync',
+                'interval' => 5 * MINUTE_IN_SECONDS,
+                'lock_ttl' => 10 * MINUTE_IN_SECONDS,
+                'module'   => 'people',
+            ]
+        );
     }
 
     public static function handleInit(): void {
@@ -311,7 +354,7 @@ final class PeopleModule {
                 'url' => self::baseUrl(),
                 'metrics' => $metrics,
                 'priority' => 20,
-                'updated' => \metis_current_datetime()->format( 'M j, g:i a' ),
+                'updated' => \metis_runtime_format_datetime( \metis_current_datetime() ),
             ],
         ];
     }

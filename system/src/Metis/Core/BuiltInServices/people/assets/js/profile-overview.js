@@ -7,6 +7,14 @@ function metisPeoplePersonDetailUrl(baseUrl, pid) {
     return base.replace(/\/?$/, '/') + encodeURIComponent(personPid) + '/';
 }
 
+function metisPeopleRoleDetailUrl(baseUrl, roleKey, roleDomain) {
+    var base = String(baseUrl || '').trim();
+    var key = String(roleKey || '').trim();
+    var domain = String(roleDomain || 'metis').trim();
+    if (!base || !key) return '';
+    return base.replace(/\/?$/, '/') + encodeURIComponent(domain) + '/' + encodeURIComponent(key) + '/';
+}
+
 function personDetailUrl(baseUrl, pid) {
     return metisPeoplePersonDetailUrl(baseUrl, pid);
 }
@@ -166,7 +174,7 @@ window.MetisPeopleProfileModules.initOverview = function (context) {
                     const savedDomain = String(roleDomain ? roleDomain.value : 'metis').trim();
                     const roleNameText = String(roleName ? roleName.value : '').trim() || savedRole;
                     if (savedRole && roleRowsWrap) {
-                        const href = roleBaseUrl ? (roleBaseUrl + '?role=' + encodeURIComponent(savedRole) + '&domain=' + encodeURIComponent(savedDomain || 'metis')) : '';
+                        const href = metisPeopleRoleDetailUrl(roleBaseUrl, savedRole, savedDomain);
                         const row = document.createElement('div');
                         row.className = 'metis-premium-row metis-role-row';
                         if (href) row.dataset.href = href;
