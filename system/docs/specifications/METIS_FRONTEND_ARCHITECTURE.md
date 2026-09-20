@@ -26,13 +26,13 @@ Modules must use these services and must not recreate them.
 
 ## AJAX Contract
 
-All AJAX must go through the normalized `/api/ajax` route.
+All AJAX must go through the canonical `/api/ajax` route.
 
 On subdirectory installs, the public URL inherits the site base path. Example:
 
 - `/metis/api/ajax`
 
-The direct service wrapper remains `system/ajax.php`, but frontend callers should use the routed `/api/ajax` path.
+Legacy direct wrapper entrypoints are unsupported. Frontend callers must use the routed `/api/ajax` path.
 
 Standard response:
 ```json

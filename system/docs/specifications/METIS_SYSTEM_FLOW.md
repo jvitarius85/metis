@@ -13,15 +13,19 @@ Defines the runtime flow used across Metis.
 
 ## AJAX Flow
 
-`frontend → /api/ajax → system/ajax.php → AjaxKernel → Secure Enclave → Action Dispatcher → Service / Controller → JSON`
+`frontend → /api/ajax → index.php → Kernel → Router → AjaxKernel → Secure Enclave → Action Dispatcher → Service / Controller → JSON`
 
 ## Webhook Flow
 
-`external provider → /webhook/{provider} → system/webhooks.php → WebhookKernel → signature validation → action dispatcher → handler → response`
+`external provider → /api/webhooks/{provider} → index.php → Kernel → Router → WebhookKernel → signature validation → action dispatcher → handler → response`
+
+The webhook base path is router-owned. `webhook_base_path` may relocate the namespace, but Metis still resolves it through `index.php` rather than through standalone PHP files under web root.
 
 ## Cron Flow
 
-`system cron → system/cron.php → CronKernel → scheduled action dispatch → logs`
+`system cron → /api/cron → index.php → Kernel → Router → CronKernel → scheduled action dispatch → logs`
+
+Cron authorization supports either the local shared secret or update-server signed headers. Signed requests bind the canonical path and request body digest, enforce a five-minute timestamp window, and reject replayed nonces.
 
 ## Shell Flow
 

@@ -26,7 +26,7 @@ tests/
 - `config/` → configuration
 - `storage/` → logs, cache, runtime state, sessions
 - `vendor/` → composer dependencies
-- `system/` → thin execution launchers (`ajax.php`, `cron.php`, `webhooks.php`, `shell.php`)
+- `system/` → tooling, docs, and the CLI launcher (`shell.php`); web traffic enters through `index.php`
 - `docs/` → governance and rules
 - `tests/` → tests
 

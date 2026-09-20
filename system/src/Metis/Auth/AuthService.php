@@ -157,7 +157,12 @@ final class AuthService {
     }
 
     public function finishGoogleWorkspaceLogin(string $code, string $state, string $redirect = ''): array {
-        $redirect = \metis_auth_normalize_redirect($redirect, \metis_portal_url());
+        // Preserve an empty redirect so SsoService can recover the one-time
+        // return target saved with the OAuth state. Normalizing an empty value
+        // to the portal here discarded deep links before the callback ran.
+        $redirect = $redirect !== ''
+            ? \metis_auth_normalize_redirect($redirect, \metis_portal_url())
+            : '';
         $result = $this->sso->completeLogin($code, $state, $redirect);
         $user = (array) ($result['user'] ?? []);
         if ($user === []) {
