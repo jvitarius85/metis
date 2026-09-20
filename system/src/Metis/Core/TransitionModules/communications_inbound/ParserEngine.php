@@ -12,10 +12,13 @@ final class ParserEngine {
     /**
      * @return array{result: ParseResult, errors: array<int, array<string, string>>}
      */
-    public function evaluate( NormalizedInboundMessage $message ): array {
+    public function evaluate( NormalizedInboundMessage $message, string $module_slug = '' ): array {
         $errors = [];
 
         foreach ( $this->registry->all() as $parser ) {
+            if ( $module_slug !== '' && $parser->key() !== $module_slug ) {
+                continue;
+            }
             try {
                 $result = $parser->parse( $message );
             } catch ( \Throwable $e ) {

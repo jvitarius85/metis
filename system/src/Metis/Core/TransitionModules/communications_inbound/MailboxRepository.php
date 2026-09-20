@@ -59,6 +59,7 @@ final class MailboxRepository {
             'topic_name'            => (string) ( Settings::config()['pubsub_topic_name'] ?? '' ),
             'label_ids_json'        => \metis_json_encode( (array) ( $mailbox['label_ids'] ?? [] ) ),
             'label_filter_behavior' => (string) ( $mailbox['label_filter_behavior'] ?? '' ),
+            'module_slug'           => (string) ( $mailbox['module_slug'] ?? '' ),
             'enabled'               => ! empty( $mailbox['enabled'] ) ? 1 : 0,
             'settings_hash'         => sha1( \metis_json_encode( $mailbox ) ),
             'updated_at'            => \metis_current_time( 'mysql' ),
@@ -69,7 +70,7 @@ final class MailboxRepository {
                 $table,
                 $payload,
                 [ 'id' => (int) ( $existing['id'] ?? 0 ) ],
-                [ '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s' ],
+                [ '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s' ],
                 [ '%d' ]
             );
 

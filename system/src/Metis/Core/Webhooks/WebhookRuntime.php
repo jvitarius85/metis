@@ -26,14 +26,16 @@ final class Metis_Webhook_Exception extends RuntimeException {
 }
 
 function metis_webhook_base_path(): string {
-    $path = Core_Settings_Service::get( 'webhook_base_path', 'metis-webhooks' );
+    $path = Core_Settings_Service::get( 'webhook_base_path', 'api/webhooks' );
     if ( is_array( $path ) ) {
         $path = reset( $path );
     }
 
-    $path = metis_slug_clean( (string) $path );
+    $path = preg_replace( '#[^a-z0-9/_-]+#i', '-', strtolower( trim( (string) $path ) ) ) ?? '';
+    $path = preg_replace( '#/+#', '/', $path ) ?? '';
+    $path = trim( $path, '/-' );
 
-    return $path !== '' ? $path : 'metis-webhooks';
+    return $path !== '' ? $path : 'api/webhooks';
 }
 
 function metis_webhook_base_url(): string {

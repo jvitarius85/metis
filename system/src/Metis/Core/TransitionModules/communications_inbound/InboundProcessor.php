@@ -207,7 +207,7 @@ final class InboundProcessor {
             );
         }
 
-        $parse = $this->parser_engine->evaluate( $normalized );
+        $parse = $this->parser_engine->evaluate( $normalized, (string) ( $mailbox['module_slug'] ?? '' ) );
         $result = $parse['result'];
         $errors = (array) ( $parse['errors'] ?? [] );
         $this->messages->markParsed( $message_id, $result, $errors );
@@ -324,7 +324,7 @@ final class InboundProcessor {
 
         $normalized = $this->normalizer->normalizeGmailMessage( is_array( $mailbox ) ? $mailbox : [], $raw_payload );
         $this->attachment_storage->storeForMessage( is_array( $mailbox ) ? $mailbox : [], $message_row, $normalized, $raw_payload );
-        $parse = $this->parser_engine->evaluate( $normalized );
+        $parse = $this->parser_engine->evaluate( $normalized, (string) ( $mailbox['module_slug'] ?? '' ) );
         $result = $parse['result'];
         $errors = (array) ( $parse['errors'] ?? [] );
         $this->messages->markParsed( $message_id, $result, $errors );

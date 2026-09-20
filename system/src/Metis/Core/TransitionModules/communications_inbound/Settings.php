@@ -93,6 +93,7 @@ final class Settings {
                 'enabled'               => ! isset( $row['enabled'] ) || (int) $row['enabled'] === 1 || $row['enabled'] === true,
                 'label_ids'             => $normalized_label_ids,
                 'label_filter_behavior' => $label_filter_behavior,
+                'module_slug'           => self::cleanKey( (string) ( $row['module_slug'] ?? '' ) ),
             ];
         }
 

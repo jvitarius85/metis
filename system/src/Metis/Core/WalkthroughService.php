@@ -239,6 +239,7 @@ if ( ! function_exists( 'metis_walkthrough_register_ajax_controllers' ) ) {
                     'module' => 'core',
                     'permission' => 'view',
                     'nonce_action' => metis_ajax_nonce_action( 'metis_walkthrough_get' ),
+                    'allow_additional_fields' => false,
                     'schema' => [
                         'walkthrough' => [ 'type' => 'string', 'required' => true ],
                     ],
@@ -250,11 +251,12 @@ if ( ! function_exists( 'metis_walkthrough_register_ajax_controllers' ) ) {
                     'module' => 'core',
                     'permission' => 'view',
                     'nonce_action' => metis_ajax_nonce_action( 'metis_walkthrough_progress' ),
+                    'allow_additional_fields' => false,
                     'schema' => [
                         'walkthrough' => [ 'type' => 'string', 'required' => true ],
-                        'step' => [ 'type' => 'numeric', 'required' => false ],
-                        'completed' => [ 'type' => 'string', 'required' => false ],
-                        'skipped' => [ 'type' => 'string', 'required' => false ],
+                        'step' => [ 'type' => 'integer', 'required' => false ],
+                        'completed' => [ 'type' => 'boolean', 'required' => false ],
+                        'skipped' => [ 'type' => 'boolean', 'required' => false ],
                     ],
                 ]
             );
@@ -269,6 +271,7 @@ if ( ! function_exists( 'metis_walkthrough_register_ajax_controllers' ) ) {
             [
                 'module' => 'core',
                 'permission' => 'view',
+                'allow_additional_fields' => false,
                 'schema' => [
                     'walkthrough' => [ 'type' => 'string', 'required' => true ],
                 ],
@@ -279,11 +282,12 @@ if ( ! function_exists( 'metis_walkthrough_register_ajax_controllers' ) ) {
             [
                 'module' => 'core',
                 'permission' => 'view',
+                'allow_additional_fields' => false,
                 'schema' => [
                     'walkthrough' => [ 'type' => 'string', 'required' => true ],
-                    'step' => [ 'type' => 'numeric', 'required' => false ],
-                    'completed' => [ 'type' => 'string', 'required' => false ],
-                    'skipped' => [ 'type' => 'string', 'required' => false ],
+                    'step' => [ 'type' => 'integer', 'required' => false ],
+                    'completed' => [ 'type' => 'boolean', 'required' => false ],
+                    'skipped' => [ 'type' => 'boolean', 'required' => false ],
                 ],
             ]
         );

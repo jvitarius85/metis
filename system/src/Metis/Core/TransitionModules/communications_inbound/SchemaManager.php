@@ -30,6 +30,7 @@ final class SchemaManager {
             topic_name VARCHAR(255) DEFAULT NULL,
             label_ids_json LONGTEXT DEFAULT NULL,
             label_filter_behavior VARCHAR(24) DEFAULT NULL,
+            module_slug VARCHAR(64) DEFAULT NULL,
             enabled TINYINT(1) NOT NULL DEFAULT 1,
             current_history_id VARCHAR(64) DEFAULT NULL,
             last_watch_history_id VARCHAR(64) DEFAULT NULL,
@@ -51,6 +52,7 @@ final class SchemaManager {
             KEY watch_expiration_at (watch_expiration_at),
             KEY last_synced_at (last_synced_at)
         ) {$charset_collate};" );
+        \metis_db_delta( "ALTER TABLE {$mailboxes} ADD COLUMN module_slug VARCHAR(64) DEFAULT NULL" );
 
         \metis_db_delta( "CREATE TABLE {$messages} (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
