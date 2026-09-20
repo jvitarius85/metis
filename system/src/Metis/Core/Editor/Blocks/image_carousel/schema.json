@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "height": { "type": "number", "default": 420 },
+    "transition": { "type": "string", "default": "slide" },
+    "transition_duration_ms": { "type": "number", "default": 450 },
+    "slides": { "type": "array", "default": [] }
+  }
+}

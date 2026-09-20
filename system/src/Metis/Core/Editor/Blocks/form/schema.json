@@ -2,6 +2,7 @@
   "type": "object",
   "properties": {
     "form_id": { "type": "string", "default": "" },
-    "submit_label": { "type": "string", "default": "Submit" }
+    "submit_label": { "type": "string", "default": "Submit" },
+    "width": { "type": "string", "enum": ["full", "wide", "medium", "narrow"], "default": "full" }
   }
 }
