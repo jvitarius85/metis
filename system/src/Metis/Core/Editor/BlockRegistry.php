@@ -154,7 +154,7 @@ final class BlockRegistry {
     }
 
     private static function categoryForType( string $type ): string {
-        if ( in_array( $type, [ 'image' ], true ) ) {
+        if ( in_array( $type, [ 'image', 'image_carousel' ], true ) ) {
             return 'media';
         }
         if ( in_array( $type, [ 'button' ], true ) ) {

@@ -28,7 +28,7 @@ if ( ! function_exists( 'metis_communications_inbound_boot_required_for_request'
 
         $webhook_base = \function_exists( 'metis_webhook_base_path' )
             ? trim( (string) \metis_webhook_base_path(), '/' )
-            : 'metis-webhooks';
+            : 'api/webhooks';
 
         if ( $request_path !== '' && $webhook_base !== '' ) {
             $webhook_prefix = '/' . $webhook_base . '/gmail_pubsub';
@@ -50,8 +50,7 @@ if ( ! function_exists( 'metis_communications_inbound_boot_required_for_request'
 
             if (
                 str_contains( $candidate, 'communications_inbound_watch.php' )
-                || str_ends_with( $candidate, '/system/cron.php' )
-                || $candidate === 'system/cron.php'
+                || str_contains( $candidate, 'run_system_cron.php' )
             ) {
                 return true;
             }

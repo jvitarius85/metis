@@ -56,6 +56,13 @@ $render_context_value = static function ( mixed $value ): string {
                 <p class="metis-help">Info logs everything important, Warning keeps warnings and errors, and Error records only failures.</p>
             </div>
             <div class="metis-field">
+                <label class="metis-settings-flag" for="audit_verbose_operational_events">
+                    <input type="checkbox" id="audit_verbose_operational_events" name="audit_verbose_operational_events" value="1" <?php metis_attr_checked( ! empty( $audit_verbose_operational_events ) ); ?>>
+                    Record verbose operational audit events
+                </label>
+                <p class="metis-help">Includes high-volume successful file, process, job, and authorization events. Enable only while diagnosing a specific issue.</p>
+            </div>
+            <div class="metis-field">
                 <label for="logging_force_url_token">Force Logging URL String</label>
                 <input type="text" id="logging_force_url_token" name="logging_force_url_token" class="metis-input metis-input-wide" value="<?php echo metis_escape_attr( $logging_force_url_token ); ?>" placeholder="debug-logging-token">
                 <p class="metis-help">Optional. Use at least 16 characters. Force logging now requires an exact token match via <code>?metis_log_token=...</code> or <code>X-Metis-Log-Token</code>.</p>

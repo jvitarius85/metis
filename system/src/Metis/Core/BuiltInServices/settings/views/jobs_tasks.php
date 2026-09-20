@@ -59,7 +59,8 @@ extract( $ctx, EXTR_SKIP );
                 <tr class="metis-premium-row metis-premium-header">
                     <th class="metis-premium-cell" scope="col">Task</th>
                     <th class="metis-premium-cell" scope="col">Module</th>
-                    <th class="metis-premium-cell" scope="col">Cadence</th>
+                    <th class="metis-premium-cell" scope="col">Frequency</th>
+                    <th class="metis-premium-cell" scope="col">Next Run Time</th>
                     <th class="metis-premium-cell" scope="col">Last Status</th>
                     <th class="metis-premium-cell" scope="col">Last Run</th>
                     <?php if ( $is_system_admin ) : ?>
@@ -75,6 +76,7 @@ extract( $ctx, EXTR_SKIP );
                         <td class="metis-premium-cell">-</td>
                         <td class="metis-premium-cell">-</td>
                         <td class="metis-premium-cell">-</td>
+                        <td class="metis-premium-cell">-</td>
                         <?php if ( $is_system_admin ) : ?>
                             <td class="metis-premium-cell">-</td>
                         <?php endif; ?>
@@ -85,6 +87,11 @@ extract( $ctx, EXTR_SKIP );
                             class="metis-premium-row metis-scheduler-row <?php echo ! empty( $task_row['enabled'] ) ? 'is-enabled' : 'is-disabled'; ?>"
                             data-cron-task-row="<?php echo metis_escape_attr( (string) $task_row['slug'] ); ?>"
                             data-cron-task-enabled="<?php echo ! empty( $task_row['enabled'] ) ? '1' : '0'; ?>"
+                            data-cron-task-editable="<?php echo $is_system_admin ? '1' : '0'; ?>"
+                            data-cron-task-overnight="<?php echo ! empty( $task_row['overnight_only'] ) ? '1' : '0'; ?>"
+                            data-cron-task-label="<?php echo metis_escape_attr( (string) $task_row['label'] ); ?>"
+                            data-cron-task-frequency-minutes="<?php echo metis_escape_attr( (string) $task_row['interval_minutes'] ); ?>"
+                            data-cron-task-run-time="<?php echo metis_escape_attr( (string) ( $task_row['run_time'] ?? '' ) ); ?>"
                         >
                             <td class="metis-premium-cell">
                                 <strong><?php echo metis_escape_html( (string) $task_row['label'] ); ?></strong><br>
@@ -94,7 +101,8 @@ extract( $ctx, EXTR_SKIP );
                                 <?php endif; ?>
                             </td>
                             <td class="metis-premium-cell"><?php echo metis_escape_html( ucfirst( (string) $task_row['module'] ) ); ?></td>
-                            <td class="metis-premium-cell"><?php echo metis_escape_html( (string) $task_row['interval_label'] ); ?></td>
+                            <td class="metis-premium-cell" data-cron-task-frequency="<?php echo metis_escape_attr( (string) $task_row['slug'] ); ?>"><?php echo metis_escape_html( (string) $task_row['interval_label'] ); ?></td>
+                            <td class="metis-premium-cell" data-cron-task-next-run="<?php echo metis_escape_attr( (string) $task_row['slug'] ); ?>"><?php echo metis_escape_html( (string) ( $task_row['next_run_at_display'] ?? '—' ) ); ?></td>
                             <td class="metis-premium-cell">
                                 <span data-cron-task-state="<?php echo metis_escape_attr( (string) $task_row['slug'] ); ?>">
                                     <?php echo metis_escape_html( ucfirst( (string) $task_row['last_status'] ) ); ?>

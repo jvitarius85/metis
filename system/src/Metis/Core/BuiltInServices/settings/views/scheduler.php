@@ -202,36 +202,15 @@ function resolveCronUrl(originUrl) {
   const origin = new URL(originUrl);
   const path = origin.pathname.replace(/\/+$/, "");
 
-  if (path === "/e/cj" || path.endsWith("/e/cj")) {
+  if (path === "/api/cron" || path.endsWith("/api/cron")) {
     origin.pathname = path;
     origin.search = "";
     origin.hash = "";
     return origin;
   }
 
-  if (path === "/api/cron" || path.endsWith("/api/cron")) {
-    origin.pathname = "/e/cj";
-    origin.search = "";
-    origin.hash = "";
-    return origin;
-  }
-
-  if (path === "/system/cron" || path.endsWith("/system/cron")) {
-    origin.pathname = "/e/cj";
-    origin.search = "";
-    origin.hash = "";
-    return origin;
-  }
-
-  if (path === "/system/cron.php" || path.endsWith("/system/cron.php")) {
-    origin.pathname = "/e/cj";
-    origin.search = "";
-    origin.hash = "";
-    return origin;
-  }
-
   const basePath = path === "" ? "/" : path + "/";
-  return new URL("e/cj", origin.origin + basePath);
+  return new URL("api/cron", origin.origin + basePath);
 }
 JS
 ); ?></pre>
@@ -252,7 +231,8 @@ JS
                 <tr class="metis-premium-row metis-premium-header">
                     <th class="metis-premium-cell" scope="col">Task</th>
                     <th class="metis-premium-cell" scope="col">Module</th>
-                    <th class="metis-premium-cell" scope="col">Cadence</th>
+                    <th class="metis-premium-cell" scope="col">Frequency</th>
+                    <th class="metis-premium-cell" scope="col">Next Run Time</th>
                     <th class="metis-premium-cell" scope="col">Last Status</th>
                     <th class="metis-premium-cell" scope="col">Last Run</th>
                     <?php if ( $is_system_admin ) : ?>
@@ -266,6 +246,11 @@ JS
                         class="metis-premium-row metis-scheduler-row <?php echo ! empty( $task_row['enabled'] ) ? 'is-enabled' : 'is-disabled'; ?>"
                         data-cron-task-row="<?php echo metis_escape_attr( (string) $task_row['slug'] ); ?>"
                         data-cron-task-enabled="<?php echo ! empty( $task_row['enabled'] ) ? '1' : '0'; ?>"
+                            data-cron-task-editable="<?php echo $is_system_admin ? '1' : '0'; ?>"
+                            data-cron-task-overnight="<?php echo ! empty( $task_row['overnight_only'] ) ? '1' : '0'; ?>"
+                            data-cron-task-label="<?php echo metis_escape_attr( (string) $task_row['label'] ); ?>"
+                            data-cron-task-frequency-minutes="<?php echo metis_escape_attr( (string) $task_row['interval_minutes'] ); ?>"
+                            data-cron-task-run-time="<?php echo metis_escape_attr( (string) ( $task_row['run_time'] ?? '' ) ); ?>"
                         <?php if ( $is_system_admin ) : ?>
                             title="Double-click to toggle this task"
                         <?php endif; ?>
@@ -279,24 +264,9 @@ JS
                         </td>
                         <td class="metis-premium-cell"><?php echo metis_escape_html( ucfirst( (string) $task_row['module'] ) ); ?></td>
                         <td class="metis-premium-cell">
-                            <?php if ( $is_system_admin ) : ?>
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        step="1"
-                                        data-cron-task-interval="<?php echo metis_escape_attr( (string) $task_row['slug'] ); ?>"
-                                        value="<?php echo metis_escape_attr( (string) $task_row['interval_minutes'] ); ?>"
-                                        class="metis-input"
-                                        style="width:88px;"
-                                    >
-                                    <span class="metis-help" style="margin:0;">min</span>
-                                </div>
-                                <div class="metis-help">Default: <?php echo metis_escape_html( (string) $task_row['default_interval_minutes'] ); ?> min</div>
-                            <?php else : ?>
-                                <?php echo metis_escape_html( (string) $task_row['interval_label'] ); ?>
-                            <?php endif; ?>
+                            <span data-cron-task-frequency="<?php echo metis_escape_attr( (string) $task_row['slug'] ); ?>"><?php echo metis_escape_html( (string) $task_row['interval_label'] ); ?></span>
                         </td>
+                        <td class="metis-premium-cell" data-cron-task-next-run="<?php echo metis_escape_attr( (string) $task_row['slug'] ); ?>"><?php echo metis_escape_html( (string) ( $task_row['next_run_at_display'] ?? '—' ) ); ?></td>
                         <td class="metis-premium-cell">
                             <span data-cron-task-state="<?php echo metis_escape_attr( (string) $task_row['slug'] ); ?>">
                                 <?php echo metis_escape_html( ucfirst( (string) $task_row['last_status'] ) ); ?>

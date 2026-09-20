@@ -5,7 +5,6 @@ use Metis\Core\Cache\CacheService;
 
 final class Metis_Cron_Manager {
     private const ENDPOINT_PATH     = '/api/cron';
-    private const LEGACY_ENDPOINT_PATH = '/system/cron';
     private const SECRET_HEADER     = 'x-metis-cron-secret';
     private const FALLBACK_HEADER   = 'x-cron-secret';
     private const SIGNED_INSTALLATION_HEADER = 'x-metis-installation-id';
@@ -21,8 +20,15 @@ final class Metis_Cron_Manager {
     private const CRON_JOB_TYPE     = 'system.cron.task';
     private const DRAIN_BATCH_LIMIT = 25;
     private const DRAIN_MAX_BATCHES = 4;
+    private const INTENSIVE_WINDOW_START_HOUR = 0;
+    private const INTENSIVE_WINDOW_END_HOUR = 6;
+    private const INTENSIVE_TASKS = [
+        'integrity_scan', 'recovery_integrity_check', 'cache_cleanup',
+        'data_retention_cleanup', 'security_audit_digest', 'release_update_check',
+        'release_auto_update', 'module_compliance_audit',
+    ];
 
-    /** @var array<string,array{callback:callable,label:string,interval:int,lock_ttl:int,module:string}> */
+    /** @var array<string,array{callback:callable,label:string,interval:int,lock_ttl:int,module:string,intensive:bool}> */
     private static array $tasks = [];
     private static bool $booted = false;
     private static bool $drain_registered = false;
@@ -99,7 +105,10 @@ final class Metis_Cron_Manager {
                     ];
                 }
 
-                return \metis_data_retention()->run( [ 'batch_limit' => 1000 ] );
+                // Retention is already bounded inside the service. Use the
+                // largest safe batch here so a single scheduled run makes
+                // meaningful progress against accumulated expired history.
+                return \metis_data_retention()->run( [ 'batch_limit' => 10000 ] );
             },
             [
                 'label'    => 'Data Retention Cleanup',
@@ -297,12 +306,14 @@ final class Metis_Cron_Manager {
         }
 
         self::$tasks[ $slug ] = [
+            'slug'     => $slug,
             'callback' => $callback,
             'label'    => (string) ( $config['label'] ?? ucwords( str_replace( '_', ' ', $slug ) ) ),
             'interval' => self::resolved_interval( $slug, (int) ( $config['interval'] ?? self::DEFAULT_INTERVAL ) ),
             'default_interval' => max( 60, (int) ( $config['interval'] ?? self::DEFAULT_INTERVAL ) ),
             'lock_ttl' => max( 60, (int) ( $config['lock_ttl'] ?? self::LOCK_TTL ) ),
             'module'   => metis_key_clean( (string) ( $config['module'] ?? 'core' ) ),
+            'intensive' => ! empty( $config['intensive'] ) || in_array( $slug, self::INTENSIVE_TASKS, true ),
         ];
     }
 
@@ -312,10 +323,6 @@ final class Metis_Cron_Manager {
 
     public static function endpoint_url(): string {
         return metis_home_url( self::ENDPOINT_PATH );
-    }
-
-    public static function legacy_endpoint_path(): string {
-        return self::LEGACY_ENDPOINT_PATH;
     }
 
     public static function registered_tasks(): array {
@@ -329,6 +336,8 @@ final class Metis_Cron_Manager {
                 'default_interval' => (int) ( $task['default_interval'] ?? $task['interval'] ),
                 'lock_ttl' => (int) $task['lock_ttl'],
                 'module'   => $task['module'],
+                'intensive' => self::task_is_intensive( $task ),
+                'overnight_only' => self::task_is_intensive( $task ),
                 'enabled'  => self::task_enabled( $slug ),
             ];
         }
@@ -369,18 +378,12 @@ final class Metis_Cron_Manager {
             $path = '/';
         }
 
-        foreach ( [ self::ENDPOINT_PATH, self::LEGACY_ENDPOINT_PATH ] as $endpoint_path ) {
-            if ( $path === $endpoint_path ) {
-                return true;
-            }
-
-            // Temporary compatibility path for misconfigured schedulers that append the endpoint twice.
-            if ( $path === $endpoint_path . $endpoint_path ) {
-                return true;
-            }
+        if ( $path === self::ENDPOINT_PATH ) {
+            return true;
         }
 
-        if ( $path === self::LEGACY_ENDPOINT_PATH . self::ENDPOINT_PATH ) {
+        // Tolerate duplicated canonical paths from misconfigured schedulers.
+        if ( $path === self::ENDPOINT_PATH . self::ENDPOINT_PATH ) {
             return true;
         }
 
@@ -424,9 +427,42 @@ final class Metis_Cron_Manager {
 
     public static function handle_request( Metis_Http_Request $request ): Metis_Http_Response {
         $input      = $request->input();
+        $request_id = metis_audit_request_id();
+        $auth_source = metis_key_clean( (string) $request->attribute( 'system_cron_auth_source', '' ) );
+        $update_server_response = self::handle_update_server_admin_request( $input, $request_id, $auth_source );
+        if ( $update_server_response !== null ) {
+            $queued_operation = is_array( $update_server_response['queued'] ?? null )
+                ? (array) $update_server_response['queued']
+                : [];
+            if ( (string) ( $update_server_response['mode'] ?? '' ) === 'backup_remediation'
+                && ! empty( $queued_operation['ok'] ) ) {
+                // The update server is an operator-initiated recovery path.
+                // Start its queued worker after the response, rather than
+                // waiting for the next scheduled cron tick.
+                self::register_post_response_drain( $request_id );
+            }
+
+            $success = self::update_server_response_success( $update_server_response );
+            $status = $success ? 200 : 207;
+            if ( (string) ( $update_server_response['status'] ?? '' ) === 'failed' ) {
+                $status = 500;
+            }
+
+            return Metis_Http_Response::json(
+                [
+                    'success' => $success,
+                    'data' => $update_server_response,
+                ],
+                $status,
+                [
+                    'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                    'X-Metis-Request-Id' => $request_id,
+                ]
+            );
+        }
+
         $force_all  = ! empty( $input['force'] );
         $trigger    = metis_key_clean( (string) ( $input['trigger'] ?? 'cloudflare_worker' ) );
-        $request_id = metis_audit_request_id();
         $selected   = self::normalize_requested_tasks( $input['tasks'] ?? [] );
         $results    = self::queue_due_tasks( $selected, $force_all, $trigger, $request_id );
 
@@ -450,6 +486,276 @@ final class Metis_Cron_Manager {
                 'X-Metis-Request-Id' => $request_id,
             ]
         );
+    }
+
+    private static function handle_update_server_admin_request( array $input, string $request_id, string $auth_source = '' ): ?array {
+        $mode = trim( (string) ( $input['update_server_mode'] ?? '' ) );
+        if ( $mode === '' ) {
+            return null;
+        }
+
+        if ( ! in_array( $auth_source, [ 'update_server', 'shared_secret' ], true ) ) {
+            return [
+                'mode' => $mode,
+                'status' => 'failed',
+                'message' => 'Update-server administrative actions require authenticated cron access.',
+            ];
+        }
+
+        $trigger = metis_key_clean( (string) ( $input['trigger'] ?? 'update_server_admin' ) );
+        return match ( $mode ) {
+            'diagnostics_snapshot' => self::build_update_server_diagnostics_snapshot( $trigger, $request_id ),
+            'final_recovery_attempt' => self::run_update_server_final_recovery( $trigger, $request_id ),
+            'backup_remediation' => self::run_update_server_backup_remediation( $trigger, $request_id ),
+            default => [
+                'mode' => $mode,
+                'status' => 'failed',
+                'message' => 'Unknown update-server admin request.',
+                'generated_at' => gmdate( 'c' ),
+            ],
+        };
+    }
+
+    private static function build_update_server_diagnostics_snapshot( string $trigger, string $request_id ): array {
+        self::init();
+
+        $version = \Metis\Core\Application::has_service( 'system_version' )
+            ? (array) \Metis\Core\Application::service( 'system_version' )->current()
+            : [];
+        $release = \Metis\Core\Application::has_service( 'release' )
+            ? (array) \Metis\Core\Application::service( 'release' )->status( false )
+            : [];
+        $queue = \Metis\Core\Application::has_service( 'operations' )
+            ? (array) \Metis\Core\Application::service( 'operations' )->queueSummary()
+            : [];
+        $integrity = \Metis\Core\Application::has_service( 'integrity_service' )
+            ? (array) \Metis\Core\Application::service( 'integrity_service' )->verifyBaseline()
+            : [];
+        $recovery = ( new \Metis\Core\Recovery\PrebootIntegrityService() )->dashboardSnapshot();
+
+        $update_state = [];
+        if ( function_exists( 'metis_update_service' ) ) {
+            try {
+                $update_state = (array) metis_update_service()->refreshUpdateState( true, 'system_cron' );
+            } catch ( \Throwable $throwable ) {
+                $update_state = [
+                    'status' => 'failed',
+                    'message' => $throwable->getMessage(),
+                ];
+            }
+        }
+
+        $module_compliance = [];
+        if ( function_exists( 'metis_module_compliance_report' ) ) {
+            try {
+                $module_compliance = (array) metis_module_compliance_report( true );
+            } catch ( \Throwable $throwable ) {
+                $module_compliance = [
+                    'status' => 'failed',
+                    'message' => $throwable->getMessage(),
+                ];
+            }
+        }
+
+        $backup = [
+            'pause_status' => function_exists( 'metis_backup_pause_status' ) ? (array) metis_backup_pause_status() : [],
+            'runs' => function_exists( 'metis_backup_list_runs' ) ? (array) metis_backup_list_runs( 3 ) : [],
+        ];
+        $findings = self::build_update_server_findings( $release, $queue, $integrity, $recovery, $update_state, $module_compliance, $backup );
+        $highest = self::highest_update_server_severity( $findings );
+
+        return [
+            'mode' => 'diagnostics_snapshot',
+            'status' => $highest,
+            'message' => $highest === 'ok'
+                ? 'No critical recovery blockers were detected.'
+                : 'Diagnostics found conditions that may require recovery review.',
+            'generated_at' => gmdate( 'c' ),
+            'request_id' => $request_id,
+            'trigger' => $trigger,
+            'system' => [
+                'metis_version' => (string) ( $version['metis_version'] ?? '' ),
+                'build' => (string) ( $version['build'] ?? '' ),
+                'php_version' => PHP_VERSION,
+                'release' => [
+                    'status' => (string) ( $release['status'] ?? '' ),
+                    'installed_version' => (string) ( $release['installed_version'] ?? '' ),
+                    'installed_tag' => (string) ( $release['installed_tag'] ?? '' ),
+                    'latest_tag' => (string) ( $release['latest']['tag'] ?? '' ),
+                    'update_available' => ! empty( $release['update_available'] ),
+                    'last_checked_at' => (string) ( $release['last_checked_at'] ?? '' ),
+                ],
+                'queue_summary' => $queue,
+            ],
+            'integrity' => $integrity,
+            'recovery' => $recovery,
+            'backup' => $backup,
+            'updates' => $update_state,
+            'module_compliance' => $module_compliance,
+            'findings' => $findings,
+            'finding_count' => count( $findings ),
+        ];
+    }
+
+    private static function run_update_server_final_recovery( string $trigger, string $request_id ): array {
+        $repair = function_exists( 'metis_self_healing_service' )
+            ? (array) metis_self_healing_service()->repairSystem( $trigger !== '' ? $trigger : 'update_server_manual_recovery' )
+            : [
+                'status' => 'unavailable',
+                'message' => 'Self-healing service is unavailable.',
+            ];
+
+        $postcheck = self::build_update_server_diagnostics_snapshot( 'update_server_recovery_postcheck', $request_id );
+        $repair_status = trim( (string) ( $repair['status'] ?? '' ) );
+        $status = in_array( $repair_status, [ 'pass', 'warning', 'recovered', 'completed', 'ok' ], true )
+            ? (string) ( $postcheck['status'] ?? 'ok' )
+            : 'critical';
+
+        return [
+            'mode' => 'final_recovery_attempt',
+            'status' => $status,
+            'message' => $repair_status !== ''
+                ? 'Final recovery attempt finished with status [' . $repair_status . '].'
+                : 'Final recovery attempt completed.',
+            'generated_at' => gmdate( 'c' ),
+            'request_id' => $request_id,
+            'trigger' => $trigger,
+            'repair' => $repair,
+            'postcheck' => $postcheck,
+        ];
+    }
+
+    private static function run_update_server_backup_remediation( string $trigger, string $request_id ): array {
+        if ( ! \Metis\Core\Application::has_service( 'operations' ) ) {
+            metis_register_core_services();
+        }
+
+        $queued = \Metis\Core\Application::service( 'operations' )->queueOperation(
+            'backup.run',
+            [],
+            [
+                'created_by' => 0,
+                'dedupe_key' => 'operation:backup.run:update-server-remediation',
+            ]
+        );
+        $postcheck = self::build_update_server_diagnostics_snapshot( 'update_server_backup_postcheck', $request_id );
+
+        return [
+            'mode' => 'backup_remediation',
+            // Queueing is the only synchronous outcome of this request. The
+            // post-check intentionally still reports the pre-existing failed
+            // backup state until the worker has run, so it must not turn a
+            // successfully queued remediation into a failed API response.
+            'status' => ! empty( $queued['ok'] ) ? 'queued' : 'failed',
+            'message' => ! empty( $queued['ok'] )
+                ? 'Backup remediation queued successfully. The installation will report the completed result after its worker runs.'
+                : 'Backup remediation could not be queued.',
+            'generated_at' => gmdate( 'c' ),
+            'request_id' => $request_id,
+            'trigger' => $trigger,
+            'queued' => $queued,
+            'postcheck' => $postcheck,
+        ];
+    }
+
+    private static function build_update_server_findings(
+        array $release,
+        array $queue,
+        array $integrity,
+        array $recovery,
+        array $update_state,
+        array $module_compliance,
+        array $backup = []
+    ): array {
+        $findings = [];
+
+        if ( ! empty( $release['update_available'] ) ) {
+            $findings[] = [
+                'severity' => 'info',
+                'title' => 'Trusted release update available',
+                'summary' => 'A newer trusted release is available for this installation.',
+            ];
+        }
+
+        $queue_failed = (int) ( $queue['failed_count'] ?? 0 );
+        if ( $queue_failed > 0 ) {
+            $findings[] = [
+                'severity' => 'warning',
+                'title' => 'Queued work has failures',
+                'summary' => sprintf( '%d queued operation(s) are currently marked failed.', $queue_failed ),
+            ];
+        }
+
+        $integrity_ok = $integrity['ok'] ?? null;
+        if ( $integrity_ok === false ) {
+            $findings[] = [
+                'severity' => 'critical',
+                'title' => 'Integrity verification is blocking',
+                'summary' => trim( (string) ( $integrity['message'] ?? 'Integrity verification did not pass.' ) ),
+            ];
+        }
+
+        $recovery_status = trim( (string) ( $recovery['status'] ?? '' ) );
+        if ( in_array( $recovery_status, [ 'critical', 'maintenance', 'failed' ], true ) ) {
+            $findings[] = [
+                'severity' => 'critical',
+                'title' => 'Recovery state needs intervention',
+                'summary' => 'Recovery integrity reported a critical or failed state.',
+            ];
+        }
+
+        $module_failed = (int) ( $module_compliance['summary']['failed'] ?? 0 );
+        if ( $module_failed > 0 ) {
+            $findings[] = [
+                'severity' => 'warning',
+                'title' => 'Module compliance failures detected',
+                'summary' => sprintf( '%d module(s) failed compliance checks.', $module_failed ),
+            ];
+        }
+
+        if ( (string) ( $update_state['status'] ?? '' ) === 'failed' ) {
+            $findings[] = [
+                'severity' => 'warning',
+                'title' => 'Update refresh failed',
+                'summary' => trim( (string) ( $update_state['message'] ?? 'Update state refresh could not complete.' ) ),
+            ];
+        }
+
+        $pause_status = is_array( $backup['pause_status'] ?? null ) ? (array) $backup['pause_status'] : [];
+        $latest_backup = is_array( $backup['runs'][0] ?? null ) ? (array) $backup['runs'][0] : [];
+        if ( ! empty( $pause_status['paused'] ) ) {
+            $findings[] = [
+                'severity' => ! empty( $pause_status['escalated'] ) ? 'critical' : 'warning',
+                'title' => ! empty( $pause_status['escalated'] ) ? 'Backups require manual remediation' : 'Backups are paused pending retry',
+                'summary' => trim( (string) ( $pause_status['reason'] ?? 'Backup automation is paused.' ) ),
+            ];
+        } elseif ( in_array( (string) ( $latest_backup['status'] ?? '' ), [ 'failed', 'error' ], true ) ) {
+            $findings[] = [
+                'severity' => 'warning',
+                'title' => 'Latest backup run failed',
+                'summary' => trim( (string) ( $latest_backup['last_error'] ?? 'The most recent backup did not complete.' ) ),
+            ];
+        }
+
+        return $findings;
+    }
+
+    private static function highest_update_server_severity( array $findings ): string {
+        $order = [ 'ok' => 0, 'info' => 1, 'warning' => 2, 'critical' => 3 ];
+        $highest = 'ok';
+        foreach ( $findings as $finding ) {
+            $severity = trim( (string) ( $finding['severity'] ?? 'info' ) );
+            if ( ( $order[ $severity ] ?? 0 ) > ( $order[ $highest ] ?? 0 ) ) {
+                $highest = $severity;
+            }
+        }
+
+        return $highest;
+    }
+
+    private static function update_server_response_success( array $payload ): bool {
+        $status = trim( (string) ( $payload['status'] ?? '' ) );
+        return ! in_array( $status, [ 'failed', 'critical' ], true );
     }
 
     public static function queue_due_tasks( array $selected = [], bool $force_all = false, string $trigger = 'manual', string $request_id = '', bool $ignore_disabled = false ): array {
@@ -488,12 +794,22 @@ final class Metis_Cron_Manager {
             $task  = self::$tasks[ $slug ];
             $state = self::task_state( $slug );
 
-            if ( ! $force_all && ! self::task_is_due( $state, (int) $task['interval'], $now ) ) {
+            if ( ! $force_all && self::should_defer_intensive_task( $task, $trigger, $now ) ) {
+                $summary['skipped'][] = $slug;
+                $results[ $slug ] = [
+                    'status'   => 'skipped',
+                    'message'  => 'Intensive task deferred until the midnight maintenance window.',
+                    'next_due' => self::next_intensive_window_timestamp( $now ),
+                ];
+                continue;
+            }
+
+            if ( ! $force_all && ! self::task_is_due( $state, (int) $task['interval'], $now, $task ) ) {
                 $summary['skipped'][] = $slug;
                 $results[ $slug ] = [
                     'status'   => 'skipped',
                     'message'  => 'Task is not due.',
-                    'next_due' => self::next_due_timestamp( $state, (int) $task['interval'], $now ),
+                    'next_due' => self::next_due_timestamp( $state, (int) $task['interval'], $now, $task ),
                 ];
                 continue;
             }
@@ -509,7 +825,9 @@ final class Metis_Cron_Manager {
                 ],
                 [
                     'queue'       => 'system',
-                    'priority'    => 10,
+                    // Make the nightly backup claim ahead of other cron
+                    // tasks so updates have a fresh restore point first.
+                    'priority'    => $slug === 'system_backup_snapshot' ? 20 : 10,
                     'max_attempts'=> 3,
                     'dedupe_key'  => 'system_cron_task:' . $slug,
                 ]
@@ -693,11 +1011,19 @@ final class Metis_Cron_Manager {
         $state = self::task_state( $slug );
         $now   = time();
 
-        if ( ! $force && ! self::task_is_due( $state, (int) $task['interval'], $now ) ) {
+        if ( ! $force && self::should_defer_intensive_task( $task, $trigger, $now ) ) {
+            return [
+                'status'   => 'skipped',
+                'message'  => 'Intensive task deferred until the midnight maintenance window.',
+                'next_due' => self::next_intensive_window_timestamp( $now ),
+            ];
+        }
+
+        if ( ! $force && ! self::task_is_due( $state, (int) $task['interval'], $now, $task ) ) {
             return [
                 'status'   => 'skipped',
                 'message'  => 'Task is not due.',
-                'next_due' => self::next_due_timestamp( $state, (int) $task['interval'], $now ),
+                'next_due' => self::next_due_timestamp( $state, (int) $task['interval'], $now, $task ),
             ];
         }
 
@@ -885,8 +1211,24 @@ final class Metis_Cron_Manager {
         @flush();
     }
 
-    private static function task_is_due( array $state, int $interval, int $now ): bool {
+    private static function task_is_due( array $state, int $interval, int $now, array $task = [] ): bool {
         $last_finished = self::timestamp_from_state( $state['last_finished_at'] ?? '' );
+        $run_time = self::task_run_time( $task );
+        if ( $run_time !== null && $interval % DAY_IN_SECONDS === 0 ) {
+            $timezone = function_exists( 'metis_runtime_timezone' ) ? metis_runtime_timezone() : new DateTimeZone( 'UTC' );
+            $local_now = ( new DateTimeImmutable( '@' . $now ) )->setTimezone( $timezone );
+            $target_today = $local_now->setTime( $run_time[0], $run_time[1], 0 );
+            if ( $local_now < $target_today ) {
+                return false;
+            }
+            if ( $last_finished > 0 ) {
+                $last_local = ( new DateTimeImmutable( '@' . $last_finished ) )->setTimezone( $timezone );
+                if ( $last_local->format( 'Y-m-d' ) === $local_now->format( 'Y-m-d' ) && $last_local >= $target_today ) {
+                    return false;
+                }
+            }
+            return true;
+        }
         if ( $last_finished < 1 ) {
             return true;
         }
@@ -894,13 +1236,65 @@ final class Metis_Cron_Manager {
         return ( $now - $last_finished ) >= $interval;
     }
 
-    private static function next_due_timestamp( array $state, int $interval, int $now ): int {
+    private static function should_defer_intensive_task( array $task, string $trigger, int $now ): bool {
+        if ( ! self::task_is_intensive( $task ) || in_array( $trigger, [ 'manual', 'manual_ui', 'hermes', 'admin_ui' ], true ) ) {
+            return false;
+        }
+
+        $hour = (int) ( new DateTimeImmutable( '@' . $now ) )
+            ->setTimezone( function_exists( 'metis_runtime_timezone' ) ? metis_runtime_timezone() : new DateTimeZone( 'UTC' ) )
+            ->format( 'G' );
+
+        return $hour < self::INTENSIVE_WINDOW_START_HOUR || $hour >= self::INTENSIVE_WINDOW_END_HOUR;
+    }
+
+    private static function task_is_intensive( array $task ): bool {
+        $slug = metis_key_clean( (string) ( $task['slug'] ?? '' ) );
+        $overrides = Core_Settings_Service::get( 'system_cron_overnight_tasks', [] );
+        if ( is_array( $overrides ) && $slug !== '' && array_key_exists( $slug, $overrides ) ) {
+            return ! empty( $overrides[ $slug ] );
+        }
+
+        return ! empty( $task['intensive'] );
+    }
+
+    private static function next_intensive_window_timestamp( int $now ): int {
+        $timezone = function_exists( 'metis_runtime_timezone' ) ? metis_runtime_timezone() : new DateTimeZone( 'UTC' );
+        $local = ( new DateTimeImmutable( '@' . $now ) )->setTimezone( $timezone );
+        if ( (int) $local->format( 'G' ) < self::INTENSIVE_WINDOW_START_HOUR ) {
+            return $local->setTime( self::INTENSIVE_WINDOW_START_HOUR, 0, 0 )->getTimestamp();
+        }
+
+        return $local->modify( '+1 day' )->setTime( self::INTENSIVE_WINDOW_START_HOUR, 0, 0 )->getTimestamp();
+    }
+
+    private static function next_due_timestamp( array $state, int $interval, int $now, array $task = [] ): int {
+        $run_time = self::task_run_time( $task );
+        if ( $run_time !== null && $interval % DAY_IN_SECONDS === 0 ) {
+            $timezone = function_exists( 'metis_runtime_timezone' ) ? metis_runtime_timezone() : new DateTimeZone( 'UTC' );
+            $local_now = ( new DateTimeImmutable( '@' . $now ) )->setTimezone( $timezone );
+            $candidate = $local_now->setTime( $run_time[0], $run_time[1], 0 );
+            if ( $local_now >= $candidate ) {
+                $candidate = $candidate->modify( '+1 day' );
+            }
+            return $candidate->getTimestamp();
+        }
         $last_finished = self::timestamp_from_state( $state['last_finished_at'] ?? '' );
         if ( $last_finished < 1 ) {
             return $now;
         }
 
         return $last_finished + $interval;
+    }
+
+    private static function task_run_time( array $task ): ?array {
+        $slug = metis_key_clean( (string) ( $task['slug'] ?? '' ) );
+        $run_times = Core_Settings_Service::get( 'system_cron_task_run_times', [] );
+        $value = is_array( $run_times ) && $slug !== '' ? trim( (string) ( $run_times[ $slug ] ?? '' ) ) : '';
+        if ( ! preg_match( '/^(?:[01]\d|2[0-3]):[0-5]\d$/', $value ) ) {
+            return null;
+        }
+        return [ (int) substr( $value, 0, 2 ), (int) substr( $value, 3, 2 ) ];
     }
 
     private static function task_state( string $slug ): array {
@@ -1208,7 +1602,11 @@ final class Metis_Cron_Manager {
         CacheService::clearGroup( 'query' );
         CacheService::clearGroup( 'fragments' );
         CacheService::clearGroup( 'hermes' );
-        metis_reports_clear_cache();
+        $reports_cache_cleared = false;
+        if ( \function_exists( 'metis_reports_clear_cache' ) ) {
+            \metis_reports_clear_cache();
+            $reports_cache_cleared = true;
+        }
         $release_cleanup = \function_exists( 'metis_release_cleanup_artifacts' )
             ? \metis_release_cleanup_artifacts( 'cache_cleanup' )
             : [ 'status' => 'skipped', 'message' => 'Release manager is not available.' ];
@@ -1221,7 +1619,7 @@ final class Metis_Cron_Manager {
 
         return [
             'deleted_rows' => 0,
-            'reports_cache_cleared' => true,
+            'reports_cache_cleared' => $reports_cache_cleared,
             'cache_groups_cleared' => [ 'query', 'fragments', 'hermes' ],
             'release_artifact_cleanup' => $release_cleanup,
             'job_queue_history_cleanup' => $job_queue_cleanup,

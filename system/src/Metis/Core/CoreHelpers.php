@@ -714,6 +714,118 @@ function metis_navigation_icon_markup( string $icon ): string {
     return $icon;
 }
 
+/**
+ * Render a compact, accessible group of related row actions.
+ *
+ * Modules supply action semantics; the shared runtime owns the control shape,
+ * icon treatment, accessible names, and accessibility-mode label expansion.
+ *
+ * @param array<int,array<string,mixed>> $actions
+ * @param array<string,mixed> $options
+ */
+function metis_action_pill( array $actions, array $options = [] ): string {
+    $items = [];
+    foreach ( $actions as $action ) {
+        if ( ! is_array( $action ) ) {
+            continue;
+        }
+
+        $label = trim( (string) ( $action['label'] ?? '' ) );
+        if ( $label === '' ) {
+            continue;
+        }
+
+        $aria_label = trim( (string) ( $action['aria_label'] ?? '' ) );
+        if ( $aria_label === '' ) {
+            $aria_label = $label;
+        }
+        $icon = metis_navigation_resolve_icon_slug( (string) ( $action['icon'] ?? '' ) );
+        $icon_markup = $icon !== '' ? metis_navigation_icon_markup( 'icon:' . $icon ) : '';
+        $classes = [ 'metis-action-pill-button' ];
+        foreach ( (array) ( $action['classes'] ?? [] ) as $class ) {
+            $class = trim( (string) $class );
+            if ( preg_match( '/^[a-z][a-z0-9_-]*$/i', $class ) === 1 ) {
+                $classes[] = $class;
+            }
+        }
+        if ( ! empty( $action['danger'] ) ) {
+            $classes[] = 'is-danger';
+        }
+
+        $attributes = [
+            'class' => implode( ' ', array_values( array_unique( $classes ) ) ),
+            'aria-label' => $aria_label,
+            'title' => $aria_label,
+        ];
+        foreach ( (array) ( $action['attributes'] ?? [] ) as $name => $value ) {
+            $name = strtolower( trim( (string) $name ) );
+            if ( preg_match( '/^(?:data|aria)-[a-z0-9:_-]+$/', $name ) !== 1 ) {
+                continue;
+            }
+            $attributes[ $name ] = (string) $value;
+        }
+
+        $href = trim( (string) ( $action['href'] ?? '' ) );
+        $tag = $href !== '' ? 'a' : 'button';
+        if ( $tag === 'a' ) {
+            $attributes['href'] = metis_escape_url( $href );
+        } else {
+            $attributes['type'] = 'button';
+        }
+
+        $endpoint = trim( (string) ( $action['endpoint'] ?? '' ) );
+        if ( $endpoint !== '' ) {
+            $endpoint = metis_escape_url( $endpoint );
+            if ( $endpoint !== '' ) {
+                $attributes['data-metis-action-pill-endpoint'] = $endpoint;
+                $method = strtoupper( trim( (string) ( $action['method'] ?? 'POST' ) ) );
+                $attributes['data-metis-action-pill-method'] = in_array( $method, [ 'POST', 'PUT', 'PATCH', 'DELETE' ], true ) ? $method : 'POST';
+                $payload = [];
+                foreach ( (array) ( $action['payload'] ?? [] ) as $name => $value ) {
+                    $name = trim( (string) $name );
+                    if ( preg_match( '/^[a-z][a-z0-9:_-]*$/i', $name ) !== 1 || is_array( $value ) || is_object( $value ) ) {
+                        continue;
+                    }
+                    $payload[ $name ] = is_bool( $value ) ? ( $value ? '1' : '0' ) : (string) $value;
+                }
+                if ( $payload !== [] ) {
+                    $payload_json = json_encode( $payload, JSON_UNESCAPED_SLASHES );
+                    if ( is_string( $payload_json ) ) {
+                        $attributes['data-metis-action-pill-payload'] = $payload_json;
+                    }
+                }
+                $success_message = trim( (string) ( $action['success_message'] ?? '' ) );
+                if ( $success_message !== '' ) {
+                    $attributes['data-metis-action-pill-success-message'] = $success_message;
+                }
+            }
+        }
+
+        $attribute_markup = '';
+        foreach ( $attributes as $name => $value ) {
+            $attribute_markup .= ' ' . $name . '="' . metis_escape_attr( (string) $value ) . '"';
+        }
+
+        $icon_markup = $icon_markup !== ''
+            ? '<span class="metis-action-pill-icon" aria-hidden="true">' . $icon_markup . '</span>'
+            : '';
+        $items[] = '<' . $tag . $attribute_markup . '>'
+            . $icon_markup
+            . '<span class="metis-action-pill-label">' . metis_escape_html( $label ) . '</span>'
+            . '</' . $tag . '>';
+    }
+
+    if ( $items === [] ) {
+        return '';
+    }
+
+    $group_label = trim( (string) ( $options['label'] ?? 'Actions' ) );
+    return '<div class="metis-action-pill" role="group" aria-label="'
+        . metis_escape_attr( $group_label !== '' ? $group_label : 'Actions' ) . '">'
+        . implode( '', $items )
+        . '</div>';
+}
+
 function metis_current_module(): ?array {
     $slug = metis_key_clean( (string) metis_get_query_var( 'metis_domain' ) );
     if ( $slug === '' || ! function_exists( 'metis_get_module' ) ) {
