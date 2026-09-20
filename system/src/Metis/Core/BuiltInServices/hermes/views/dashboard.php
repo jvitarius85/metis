@@ -56,7 +56,7 @@ $format_date = static function ( string $value ): string {
         return metis_runtime_format_datetime( $value, null, null, null, $value );
     }
 
-    return date( 'M j, Y g:i a', $timestamp );
+    return metis_runtime_format_datetime( $timestamp, null, null, null, (string) $value );
 };
 
 $format_money = static function ( float $value ): string {
