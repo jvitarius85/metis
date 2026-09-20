@@ -59,6 +59,7 @@
     }
     var sharedRichSelections = {};
     var sharedRichColorSelections = {};
+    var sharedLinkDialog = null;
     var SHARED_EMOJI_SHORTCODES = {
         ':wave:': '👋',
         ':sparkles:': '✨',
@@ -498,17 +499,94 @@
         }
         return Promise.resolve(null);
     }
-    function requestLinkUrl() {
-        return requestPrompt({
-            title: 'Insert Link',
-            label: 'URL',
-            message: 'Enter link URL.',
-            defaultValue: 'https://',
-            placeholder: 'https://',
-            required: true,
-            confirmLabel: 'Insert'
-        }).then(function(value) {
-            return s(value).trim();
+    function ensureLinkDialog() {
+        if (sharedLinkDialog) return sharedLinkDialog;
+        var modal = document.createElement('div');
+        modal.className = 'metis-modal-backdrop';
+        modal.id = 'metis-editor-link-dialog';
+        modal.setAttribute('aria-hidden', 'true');
+        modal.innerHTML =
+            '<div class="metis-modal metis-confirm-modal-inner metis-prompt-modal-inner" role="dialog" aria-modal="true" aria-labelledby="metis-editor-link-dialog-title">' +
+                '<form data-editor-link-form>' +
+                    '<h3 class="metis-modal-title" id="metis-editor-link-dialog-title">Add link</h3>' +
+                    '<p class="metis-confirm-message" id="metis-editor-link-dialog-help">Choose the text readers see and where the link opens.</p>' +
+                    '<div class="metis-field">' +
+                        '<label for="metis-editor-link-label">Link text <span class="metis-muted">(optional)</span></label>' +
+                        '<input type="text" class="metis-input" id="metis-editor-link-label" placeholder="Leave blank to keep selected text">' +
+                    '</div>' +
+                    '<div class="metis-field">' +
+                        '<label for="metis-editor-link-url">Destination URL</label>' +
+                        '<input type="text" class="metis-input" id="metis-editor-link-url" placeholder="https://example.com" required aria-describedby="metis-editor-link-dialog-help">' +
+                    '</div>' +
+                    '<div class="metis-form-actions">' +
+                        '<button type="button" class="metis-btn metis-btn-ghost" data-editor-link-cancel>Cancel</button>' +
+                        '<button type="submit" class="metis-btn">Add link</button>' +
+                    '</div>' +
+                '</form>' +
+            '</div>';
+        document.body.appendChild(modal);
+        if (window.Metis && Metis.modal && typeof Metis.modal.init === 'function') {
+            Metis.modal.init(document);
+        }
+        sharedLinkDialog = modal;
+        return modal;
+    }
+    function requestLinkDetails() {
+        var modal = ensureLinkDialog();
+        var form = modal.querySelector('[data-editor-link-form]');
+        var labelInput = modal.querySelector('#metis-editor-link-label');
+        var urlInput = modal.querySelector('#metis-editor-link-url');
+        var cancelButton = modal.querySelector('[data-editor-link-cancel]');
+        if (!form || !labelInput || !urlInput || !cancelButton) return Promise.resolve(null);
+        labelInput.value = '';
+        urlInput.value = '';
+        urlInput.setCustomValidity('');
+        return new Promise(function(resolve) {
+            var settled = false;
+            function cleanup() {
+                form.removeEventListener('submit', onSubmit);
+                cancelButton.removeEventListener('click', onCancel);
+                modal.removeEventListener('click', onBackdrop);
+                document.removeEventListener('keydown', onKeyDown);
+            }
+            function finish(value) {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                if (window.Metis && Metis.modal && typeof Metis.modal.close === 'function') {
+                    Metis.modal.close(modal);
+                }
+                resolve(value);
+            }
+            function onCancel() { finish(null); }
+            function onSubmit(event) {
+                event.preventDefault();
+                var url = s(urlInput.value).trim();
+                if (!url) {
+                    urlInput.setCustomValidity('Enter a destination URL.');
+                    urlInput.reportValidity();
+                    return;
+                }
+                urlInput.setCustomValidity('');
+                finish({ url: url, label: s(labelInput.value).trim() });
+            }
+            function onBackdrop(event) {
+                if (event.target === modal) finish(null);
+            }
+            function onKeyDown(event) {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    finish(null);
+                }
+            }
+            form.addEventListener('submit', onSubmit);
+            cancelButton.addEventListener('click', onCancel);
+            modal.addEventListener('click', onBackdrop);
+            document.addEventListener('keydown', onKeyDown);
+            if (window.Metis && Metis.modal && typeof Metis.modal.open === 'function') {
+                Metis.modal.open(modal);
+            }
+            window.setTimeout(function() { labelInput.focus(); }, 0);
         });
     }
     function requestEmoji() {
@@ -670,6 +748,45 @@
             return false;
         }
     }
+    function normalizeEditorLinkUrl(url) {
+        var raw = s(url || '').trim();
+        if (!raw) return '';
+        if (/^(https?:|mailto:|tel:|\/|#)/i.test(raw)) return raw;
+        return 'https://' + raw;
+    }
+    function unwrapLinksFromFragment(fragment) {
+        if (!fragment || !fragment.querySelectorAll) return fragment;
+        fragment.querySelectorAll('a').forEach(function (node) {
+            while (node.firstChild) node.parentNode.insertBefore(node.firstChild, node);
+            node.parentNode.removeChild(node);
+        });
+        return fragment;
+    }
+    function insertEditorLinkAtRange(target, range, url, label) {
+        var linkUrl = normalizeEditorLinkUrl(url);
+        if (!target || !range || !linkUrl || !target.contains(range.commonAncestorContainer)) return null;
+        var link = document.createElement('a');
+        link.setAttribute('href', linkUrl);
+        var linkLabel = s(label).trim();
+        if (linkLabel) {
+            range.deleteContents();
+            link.textContent = linkLabel;
+        } else if (range.collapsed) {
+            link.textContent = linkUrl;
+        } else {
+            link.appendChild(unwrapLinksFromFragment(range.extractContents()));
+        }
+        range.insertNode(link);
+        var nextRange = document.createRange();
+        nextRange.setStartAfter(link);
+        nextRange.collapse(true);
+        var sel = window.getSelection ? window.getSelection() : null;
+        if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(nextRange);
+        }
+        return nextRange;
+    }
     function placeRichCaretAtEnd(target) {
         if (!target || !target.id) return null;
         target.focus();
@@ -799,9 +916,55 @@
         if (!sel || !sel.rangeCount) return false;
         var range = sel.getRangeAt(0);
         if (range.collapsed || !target.contains(range.commonAncestorContainer)) return false;
-        var html = selectedHtmlFromRange(range);
+        var property = s(styleText).split(':')[0].trim().toLowerCase();
+        var fragment = range.extractContents();
+        if (property) {
+            fragment.querySelectorAll('[style]').forEach(function (node) {
+                node.style.removeProperty(property);
+                if (!s(node.getAttribute('style') || '').trim()) node.removeAttribute('style');
+            });
+        }
+        var wrapper = document.createElement('span');
+        wrapper.setAttribute('style', styleText);
+        wrapper.appendChild(fragment);
         range.deleteContents();
-        document.execCommand('insertHTML', false, '<span style="' + esc(styleText) + '">' + html + '</span>');
+        range.insertNode(wrapper);
+        range.selectNodeContents(wrapper);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        saveRichSelection(target);
+        return true;
+    }
+    function applyNewsletterFontSize(target, sizePx) {
+        if (!target) return false;
+        target.focus();
+        var range = ensureRichSelection(target);
+        if (!range || !target.contains(range.commonAncestorContainer)) return false;
+        if (range.collapsed) {
+            var anchor = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+            var block = anchor && anchor.closest ? anchor.closest('p,div,h1,h2,h3,h4,h5,h6,li,blockquote,pre') : null;
+            if (!block || !target.contains(block)) return false;
+            range.selectNodeContents(block);
+        }
+        var fragment = range.extractContents();
+        fragment.querySelectorAll('[style]').forEach(function(node) {
+            node.style.removeProperty('font-size');
+            if (!s(node.getAttribute('style') || '').trim()) node.removeAttribute('style');
+        });
+        if (sizePx > 0) {
+            var wrapper = document.createElement('span');
+            wrapper.setAttribute('style', 'font-size:' + String(sizePx) + 'px !important;line-height:1.5 !important;');
+            wrapper.appendChild(fragment);
+            range.insertNode(wrapper);
+            range.selectNodeContents(wrapper);
+        } else {
+            range.insertNode(fragment);
+        }
+        var selection = window.getSelection ? window.getSelection() : null;
+        if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
         saveRichSelection(target);
         return true;
     }
@@ -1359,9 +1522,9 @@
 
     function iconUrl(slug) {
         if (window.Metis && Metis.ui && Metis.ui.richText && typeof Metis.ui.richText.iconUrl === 'function') {
-            return Metis.ui.richText.iconUrl(slug);
+            return Metis.ui.richText.iconFallbackUrl(slug);
         }
-        return appBasePath() + '/svg/' + encodeURIComponent(s(slug || '').replace(/_/g, '-'));
+        return appBasePath() + '/assets/Images/icons/' + encodeURIComponent(s(slug || '').replace(/_/g, '-')) + '.svg';
     }
 
     function iconFallbackUrl(slug) {
@@ -1955,6 +2118,38 @@
             syncNewsletterBodyFromEditor();
         }
 
+        function linkifyNewsletterEmailAddresses(rootNode) {
+            if (!rootNode || !document.createTreeWalker) return;
+            var emailPattern = /[A-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+/gi;
+            var walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, null);
+            var textNodes = [];
+            var node;
+            while ((node = walker.nextNode())) textNodes.push(node);
+            textNodes.forEach(function (textNode) {
+                var parent = textNode.parentElement;
+                if (!parent || parent.closest('a,code,pre,script,style')) return;
+                var value = s(textNode.nodeValue || '');
+                emailPattern.lastIndex = 0;
+                var match;
+                var lastIndex = 0;
+                var fragment = document.createDocumentFragment();
+                var found = false;
+                while ((match = emailPattern.exec(value))) {
+                    found = true;
+                    if (match.index > lastIndex) fragment.appendChild(document.createTextNode(value.slice(lastIndex, match.index)));
+                    var email = match[0];
+                    var link = document.createElement('a');
+                    link.setAttribute('href', 'mailto:' + email);
+                    link.textContent = email;
+                    fragment.appendChild(link);
+                    lastIndex = match.index + email.length;
+                }
+                if (!found || !textNode.parentNode) return;
+                if (lastIndex < value.length) fragment.appendChild(document.createTextNode(value.slice(lastIndex)));
+                textNode.parentNode.replaceChild(fragment, textNode);
+            });
+        }
+
         function normalizeNewsletterEditorHtml(html) {
             var raw = s(html || '');
             if (!raw.trim()) return '';
@@ -1967,10 +2162,51 @@
             Array.prototype.slice.call(frag.querySelectorAll('script,style')).forEach(function (node) { node.remove(); });
             normalizeInlineEmojiImages(frag);
             replaceEmojiTextNodesWithImages(frag);
+            neutralizeNewsletterGmailLayoutWrappers(frag);
+            linkifyNewsletterEmailAddresses(frag);
+            pruneEmptyNewsletterEditorBlocks(frag);
             var text = s(frag.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
             var hasVisibleContent = !!frag.querySelector('img,hr,.metis-inline-divider,.metis-inline-image,.metis-inline-emoji,iframe,video,table,ul,ol,blockquote,pre');
             if (!text && !hasVisibleContent) return '';
             return template.innerHTML;
+        }
+
+        function neutralizeNewsletterGmailLayoutWrappers(rootNode) {
+            if (!rootNode || !rootNode.querySelectorAll) return;
+            var layoutProperties = ['display', 'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'overflow', 'overflow-x', 'overflow-y', 'min-width', 'width', 'border-left', 'border-left-width', 'border-left-style', 'border-left-color'];
+            rootNode.querySelectorAll('.gmail_signature').forEach(function (signature) {
+                Array.prototype.slice.call(signature.querySelectorAll('[style]')).forEach(function (node) {
+                    layoutProperties.forEach(function (property) { node.style.removeProperty(property); });
+                    if (!s(node.getAttribute('style') || '').trim()) node.removeAttribute('style');
+                });
+            });
+        }
+
+        function pruneEmptyNewsletterEditorBlocks(rootNode) {
+            if (!rootNode || !rootNode.querySelectorAll) return;
+            var preservedSelector = 'img,hr,.metis-inline-divider,.metis-inline-image,.metis-inline-emoji,iframe,video,table,ul,ol,blockquote,pre';
+            var removableTags = { DIV: true, P: true, SPAN: true, FONT: true };
+            var lastMeaningfulNode = null;
+            var textWalker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
+            var textNode;
+            while ((textNode = textWalker.nextNode())) {
+                if (s(textNode.nodeValue || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim()) {
+                    lastMeaningfulNode = textNode;
+                }
+            }
+            Array.prototype.slice.call(rootNode.querySelectorAll(preservedSelector)).forEach(function (node) {
+                if (!lastMeaningfulNode || (lastMeaningfulNode.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+                    lastMeaningfulNode = node;
+                }
+            });
+            if (!lastMeaningfulNode) return;
+            Array.prototype.slice.call(rootNode.querySelectorAll('div,p,span,font')).reverse().forEach(function (node) {
+                if (!node.parentNode || !removableTags[node.tagName]) return;
+                var text = s(node.textContent || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+                if (text || node.querySelector(preservedSelector)) return;
+                if (!(node.compareDocumentPosition(lastMeaningfulNode) & Node.DOCUMENT_POSITION_PRECEDING)) return;
+                node.parentNode.removeChild(node);
+            });
         }
 
         function markNewsletterEditorEmpty(target) {
@@ -2111,10 +2347,11 @@
 
         function newsletterAudiencePayload() {
             hydrateNewsletterFromInputs();
+            var isCustomAudience = state.newsletterAudience.mode === 'custom';
             return {
                 mode: state.newsletterAudience.mode,
-                list_ids: state.newsletter.list_ids.slice(),
-                rules: state.newsletterAudience.mode === 'custom' ? state.newsletterAudience.rules.slice() : []
+                list_ids: isCustomAudience ? [] : state.newsletter.list_ids.slice(),
+                rules: isCustomAudience ? state.newsletterAudience.rules.slice() : []
             };
         }
 
@@ -2125,9 +2362,8 @@
 
         function newsletterAudienceReady() {
             hydrateNewsletterFromInputs();
-            if (!state.newsletter.list_ids.length) return false;
-            if (state.newsletterAudience.mode !== 'custom') return true;
-            return state.newsletterAudience.rules.length > 0;
+            if (state.newsletterAudience.mode === 'custom') return state.newsletterAudience.rules.length > 0;
+            return state.newsletter.list_ids.length > 0;
         }
 
         function newsletterEditUrl(code) {
@@ -2410,7 +2646,7 @@
             if (state.newsletter.code) payload.campaign_code = state.newsletter.code;
             if (state.newsletter.id) payload.campaign_id = state.newsletter.id;
             if (state.newsletter.template_id) payload.template_id = state.newsletter.template_id;
-            if (Array.isArray(state.newsletter.list_ids)) payload.list_ids = JSON.stringify(state.newsletter.list_ids);
+            if (Array.isArray(audience.list_ids)) payload.list_ids = JSON.stringify(audience.list_ids);
             payload.audience_json = JSON.stringify(audience);
             if (state.newsletter.scheduled_at) payload.scheduled_at = state.newsletter.scheduled_at;
             return request('metis_newsletter_save_campaign', payload);
@@ -2485,6 +2721,96 @@
             }
         }
 
+        function openNewsletterInlineImageModal(targetId) {
+            var modal = document.getElementById('metis-nl-inline-image-modal');
+            var target = targetId ? document.getElementById(targetId) : null;
+            if (!modal || !target) return;
+            state.newsletterInlineImageTargetId = target.id;
+            state.newsletterInlineImageSelection = cloneStoredRichSelection(target);
+            var status = document.getElementById('metis-nl-inline-image-status');
+            var input = document.getElementById('metis-nl-inline-image-input');
+            if (status) status.textContent = 'Choose a JPG, PNG, GIF, or WebP image up to 8MB.';
+            if (input) input.value = '';
+            if (window.Metis && Metis.ui && Metis.ui.modal) {
+                Metis.ui.modal.form('metis-nl-inline-image-modal');
+            }
+        }
+
+        function closeNewsletterInlineImageModal() {
+            if (window.Metis && Metis.ui && Metis.ui.modal) {
+                Metis.ui.modal.close('metis-nl-inline-image-modal');
+            }
+            state.newsletterInlineImageTargetId = '';
+            state.newsletterInlineImageSelection = null;
+        }
+
+        function setNewsletterInlineImageUploadState(active, message) {
+            var input = document.getElementById('metis-nl-inline-image-input');
+            var button = document.getElementById('metis-nl-inline-image-choose');
+            var status = document.getElementById('metis-nl-inline-image-status');
+            if (input) input.disabled = !!active;
+            if (button) button.disabled = !!active;
+            if (status) status.textContent = s(message || 'Choose a JPG, PNG, GIF, or WebP image up to 8MB.');
+        }
+
+        function uploadNewsletterInlineImage(files) {
+            var file = files && files.length ? files[0] : null;
+            var target = document.getElementById(s(state.newsletterInlineImageTargetId || ''));
+            if (!file || !target) return;
+            if (file.type && file.type.indexOf('image/') !== 0) {
+                setNewsletterInlineImageUploadState(false, 'Choose an image file.');
+                return;
+            }
+            if (file.size > 8 * 1024 * 1024) {
+                setNewsletterInlineImageUploadState(false, 'Image must be 8MB or smaller.');
+                return;
+            }
+            var action = 'metis_newsletter_upload_image';
+            var cfg = ajaxConfig(action);
+            var form = new FormData();
+            form.append('action', action);
+            form.append('nonce', cfg.nonce || '');
+            form.append('metis_action_nonce', cfg.action_nonce || '');
+            form.append('metis_csrf_action', cfg.csrf_action || defaultCsrfAction());
+            form.append('image', file);
+            setNewsletterInlineImageUploadState(true, 'Uploading ' + s(file.name || 'image') + '...');
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', cfg.ajax_url, true);
+            xhr.responseType = 'text';
+            xhr.onload = function () {
+                var parsed = null;
+                try { parsed = JSON.parse(s(xhr.responseText || '')); } catch (_err) {}
+                if (xhr.status < 200 || xhr.status >= 300 || !parsed || !parsed.success || !s(parsed.data && parsed.data.url || '')) {
+                    var message = s(parsed && parsed.data && parsed.data.message || parsed && parsed.message || 'Image upload failed.');
+                    setNewsletterInlineImageUploadState(false, message);
+                    setStatus(message, 'error');
+                    return;
+                }
+                var saved = state.newsletterInlineImageSelection;
+                if (saved) restoreSpecificRichSelection(target, saved);
+                var url = s(parsed.data.url || '');
+                var alt = s(parsed.data.filename || file.name || 'Newsletter image');
+                insertHtmlAtSelection(target, '<figure class="metis-inline-image is-medium"><img src="' + esc(url) + '" alt="' + esc(alt) + '"></figure>');
+                saveRichSelection(target);
+                hydrateNewsletterFromInputs();
+                queueNewsletterPreview();
+                scheduleNewsletterAutosave();
+                closeNewsletterInlineImageModal();
+                setStatus('Image uploaded.', 'ok');
+            };
+            xhr.onerror = function () {
+                setNewsletterInlineImageUploadState(false, 'Image upload failed.');
+                setStatus('Image upload failed.', 'error');
+            };
+            xhr.send(form);
+        }
+
+        function notifyNewsletterTestSent() {
+            if (window.Metis && Metis.util && typeof Metis.util.notify === 'function') {
+                Metis.util.notify('Test email sent.', 'success');
+            }
+        }
+
         function ensureNewsletterPersisted() {
             if (state.newsletter.id > 0 && state.newsletter.code) return Promise.resolve(true);
             return saveNewsletterState({ autosave: false }).then(function () {
@@ -2517,11 +2843,13 @@
                     }).then(function () {
                         setStatus('Test email sent.', 'ok');
                         closeNewsletterTestModal();
+                        notifyNewsletterTestSent();
                     });
                 }
                 return request('metis_newsletter_test_send_campaign', payload).then(function () {
                     setStatus('Test email sent.', 'ok');
                     closeNewsletterTestModal();
+                    notifyNewsletterTestSent();
                 });
             }).catch(function (err) {
                 setStatus('Test send failed: ' + s(err && err.message || 'Request failed.'), 'error');
@@ -2541,7 +2869,7 @@
                 return;
             }
             if (!newsletterAudienceReady()) {
-                setStatus('Choose at least one list. Custom audience also needs at least one rule.', 'error');
+                setStatus(state.newsletterAudience.mode === 'custom' ? 'Add at least one custom audience rule.' : 'Choose at least one current list.', 'error');
                 state.step = 1;
                 renderStep1();
                 renderStep2();
@@ -2624,6 +2952,13 @@
                 '<div class="metis-modal-footer"><button type="button" class="metis-btn metis-btn-ghost" id="metis-nl-test-cancel" data-modal-close="metis-nl-test-modal">Cancel</button><button type="button" class="metis-btn" id="metis-nl-test-send">Send Test</button></div>' +
                 '</div>' +
                 '</div>' +
+                '<div id="metis-nl-inline-image-modal" class="metis-modal-backdrop metis-nl-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Insert Image">' +
+                '<div class="metis-modal metis-nl-modal__dialog">' +
+                '<div class="metis-modal-header"><h2 class="metis-modal-title">Insert Image</h2><button type="button" class="metis-modal-close" id="metis-nl-inline-image-close" data-modal-close="metis-nl-inline-image-modal" aria-label="Close">&times;</button></div>' +
+                '<div class="metis-modal-body"><p id="metis-nl-inline-image-status" class="metis-muted">Choose a JPG, PNG, GIF, or WebP image up to 8MB.</p><input id="metis-nl-inline-image-input" type="file" accept="image/jpeg,image/png,image/gif,image/webp" hidden></div>' +
+                '<div class="metis-modal-footer"><button type="button" class="metis-btn metis-btn-ghost" id="metis-nl-inline-image-cancel" data-modal-close="metis-nl-inline-image-modal">Cancel</button><button type="button" class="metis-btn" id="metis-nl-inline-image-choose">Choose Image</button></div>' +
+                '</div>' +
+                '</div>' +
                 '</div>';
         }
 
@@ -2639,21 +2974,22 @@
                 var checked = state.newsletter.list_ids.indexOf(listId) !== -1;
                 return '<label class="metis-nl-check-item"><input type="checkbox" data-nl-list-id="1" value="' + esc(String(listId)) + '"' + (checked ? ' checked' : '') + '> <span>' + esc(s(row && row.name || 'List ' + listId)) + '</span></label>';
             }).join('');
+            var isCustomAudience = state.newsletterAudience.mode === 'custom';
             var ruleRows = state.newsletterAudience.rules.length ? state.newsletterAudience.rules : [defaultNewsletterAudienceRule()];
             var rulesHtml = ruleRows.map(function (rule, index) {
                 return '' +
                     '<div class="metis-nl-rule-row" data-nl-rule-row="' + esc(String(index)) + '">' +
-                    '<select class="metis-se-select" data-nl-rule-field>' +
+                    '<select class="metis-se-select" data-nl-rule-field aria-label="Audience field">' +
                         NEWSLETTER_AUDIENCE_FIELDS.map(function (option) {
                             return '<option value="' + esc(option[0]) + '"' + (rule.field === option[0] ? ' selected' : '') + '>' + esc(option[1]) + '</option>';
                         }).join('') +
                     '</select>' +
-                    '<select class="metis-se-select" data-nl-rule-operator>' +
+                    '<select class="metis-se-select" data-nl-rule-operator aria-label="Audience match">' +
                         NEWSLETTER_AUDIENCE_OPERATORS.map(function (option) {
                             return '<option value="' + esc(option[0]) + '"' + (rule.operator === option[0] ? ' selected' : '') + '>' + esc(option[1]) + '</option>';
                         }).join('') +
                     '</select>' +
-                    '<input class="metis-se-input" data-nl-rule-value type="text" value="' + esc(rule.value || '') + '" placeholder="Value">' +
+                    '<input class="metis-se-input" data-nl-rule-value type="text" value="' + esc(rule.value || '') + '" placeholder="Value" aria-label="Audience value">' +
                     '<button type="button" class="metis-se-nav-btn" data-nl-rule-remove="' + esc(String(index)) + '">Remove</button>' +
                     '</div>';
             }).join('');
@@ -2664,9 +3000,9 @@
                 '<div class="metis-se-field-grid metis-nl-details-grid">' +
                 '<div class="metis-se-field-row metis-nl-details-row"><label>Send Timing</label><div class="metis-nl-choice-row"><label class="metis-nl-choice"><input id="metis-nl-send-now" type="radio" name="metis-nl-send-mode" value="now"' + (state.newsletter.status === 'scheduled' ? '' : ' checked') + '> Send now</label><label class="metis-nl-choice"><input id="metis-nl-send-scheduled" type="radio" name="metis-nl-send-mode" value="scheduled"' + (state.newsletter.status === 'scheduled' ? ' checked' : '') + '> Schedule send</label></div></div>' +
                 '<div class="metis-se-field-row metis-nl-details-row metis-nl-schedule-row"' + (state.newsletter.status === 'scheduled' ? '' : ' hidden') + '><label for="metis-nl-scheduled-at">Scheduled Time</label><input id="metis-nl-scheduled-at" class="metis-se-input" type="datetime-local" value="' + esc(toDateTimeInputValue(state.newsletter.scheduled_at || '')) + '"></div>' +
-                '<div class="metis-se-field-row metis-nl-details-row"><label>Audience</label><div class="metis-nl-choice-row"><label class="metis-nl-choice"><input type="radio" name="metis-nl-audience-mode" value="lists"' + (state.newsletterAudience.mode === 'lists' ? ' checked' : '') + '> Current lists</label><label class="metis-nl-choice"><input type="radio" name="metis-nl-audience-mode" value="custom"' + (state.newsletterAudience.mode === 'custom' ? ' checked' : '') + '> Custom audience</label></div></div>' +
-                '<div class="metis-se-field-row metis-nl-details-row"><label>Lists</label><div class="metis-nl-check-grid">' + (listOptions || '<div class="metis-muted">No active lists available.</div>') + '</div></div>' +
-                '<div class="metis-se-field-row metis-nl-details-row metis-nl-rules-row"' + (state.newsletterAudience.mode === 'custom' ? '' : ' hidden') + '><label>Rules</label><div class="metis-nl-rules-wrap"><div class="metis-nl-rules-list">' + rulesHtml + '</div><button type="button" class="metis-se-nav-btn" id="metis-nl-add-rule">Add Rule</button></div></div>' +
+                '<div class="metis-se-field-row metis-nl-details-row"><label>Audience</label><div class="metis-nl-choice-row" role="radiogroup" aria-label="Audience type"><label class="metis-nl-choice"><input type="radio" name="metis-nl-audience-mode" value="lists"' + (!isCustomAudience ? ' checked' : '') + '> Current List(s)</label><label class="metis-nl-choice"><input type="radio" name="metis-nl-audience-mode" value="custom"' + (isCustomAudience ? ' checked' : '') + '> Build a Custom Audience</label></div></div>' +
+                '<div class="metis-se-field-row metis-nl-details-row metis-nl-lists-row"' + (isCustomAudience ? ' hidden' : '') + '><label>Choose List(s)</label><div class="metis-nl-check-grid">' + (listOptions || '<div class="metis-muted">No active lists available.</div>') + '</div></div>' +
+                '<div class="metis-se-field-row metis-nl-details-row metis-nl-rules-row"' + (isCustomAudience ? '' : ' hidden') + '><label>Build Your Audience</label><div class="metis-nl-rules-wrap"><p class="metis-nl-audience-help">Start with all active, subscribed contacts, then add rules to narrow the audience.</p><div class="metis-nl-rules-list">' + rulesHtml + '</div><button type="button" class="metis-se-nav-btn" id="metis-nl-add-rule">Add Rule</button></div></div>' +
                 '<div class="metis-se-field-row metis-nl-details-row"><label>Actions</label><div class="metis-nl-delivery-actions"><button type="button" class="metis-se-nav-btn" id="metis-nl-open-test">Send Test Email</button><button type="button" class="metis-btn" id="metis-nl-deliver">' + esc(sendActionLabel) + '</button></div></div>' +
                 '</div>' +
                 '</div>' +
@@ -2717,7 +3053,7 @@
                 ['default', 'Default'],
                 ['sm', 'Small'],
                 ['lg', 'Large'],
-                ['xl', 'Large+']
+                ['xl', 'Extra Large']
             ].map(function (row) {
                 return '<button type="button" role="menuitem" class="metis-se-rich-menu-item" data-rich-action="size" data-rich-target="' + esc(targetId) + '" data-rich-value="' + esc(row[0]) + '">' + esc(row[1]) + '</button>';
             }).join('');
@@ -2928,6 +3264,19 @@
                     closeNewsletterTestModal();
                     return;
                 }
+                var closeInlineImage = e.target.closest('#metis-nl-inline-image-close, #metis-nl-inline-image-cancel');
+                if (closeInlineImage) {
+                    e.preventDefault();
+                    closeNewsletterInlineImageModal();
+                    return;
+                }
+                var chooseInlineImage = e.target.closest('#metis-nl-inline-image-choose');
+                if (chooseInlineImage) {
+                    e.preventDefault();
+                    var inlineImageInput = document.getElementById('metis-nl-inline-image-input');
+                    if (inlineImageInput && !inlineImageInput.disabled) inlineImageInput.click();
+                    return;
+                }
                 var sendTest = e.target.closest('#metis-nl-test-send');
                 if (sendTest) {
                     e.preventDefault();
@@ -2956,13 +3305,8 @@
                             restoreRichSelection(actionTarget);
                             document.execCommand('formatBlock', false, actionValue === 'P' ? '<p>' : '<' + s(actionValue || 'p').toLowerCase() + '>');
                         } else if (action === 'size') {
-                            var sizeMap = { sm: '0.92rem', lg: '1.12rem', xl: '1.28rem' };
-                            if (actionValue === 'default') {
-                                restoreRichSelection(actionTarget);
-                                document.execCommand('removeFormat', false, null);
-                            } else {
-                                wrapSelectionWithStyle(actionTarget, 'font-size:' + (sizeMap[actionValue] || '1rem'));
-                            }
+                            var sizeMap = { sm: 14, lg: 20, xl: 24 };
+                            applyNewsletterFontSize(actionTarget, actionValue === 'default' ? 0 : (sizeMap[actionValue] || 16));
                         } else if (action === 'color') {
                             var resolvedColor = resolveEditorThemeColor(actionValue, resolveEditorThemeColor('metis_text', '#1f2330'));
                             if (resolvedColor) wrapSelectionWithStyle(actionTarget, 'color:' + resolvedColor);
@@ -2991,20 +3335,28 @@
                     }
                     if (cmd === 'createLink') {
                         var newsletterLinkSelection = target ? cloneStoredRichSelection(target) : null;
-                        requestLinkUrl().then(function(url) {
-                            if (url && target) {
+                        requestLinkDetails().then(function(link) {
+                            if (link && target) {
                                 if (newsletterLinkSelection) restoreSpecificRichSelection(target, newsletterLinkSelection);
-                                applyLinkAtSelection(target, url);
+                                var newsletterLinkRange = ensureRichSelection(target);
+                                var newsletterLinkNextRange = insertEditorLinkAtRange(target, newsletterLinkRange, link.url, link.label);
+                                if (newsletterLinkNextRange) {
+                                    richSelections[target.id] = {
+                                        range: newsletterLinkNextRange.cloneRange(),
+                                        snapshot: serializeRangeWithin(target, newsletterLinkNextRange)
+                                    };
+                                }
                             }
                             if (target) saveRichSelection(target);
                             hydrateNewsletterFromInputs();
                             queueNewsletterPreview();
+                            scheduleNewsletterAutosave();
                         });
                         return;
                     } else if (cmd === 'insertImagePrompt') {
                         if (target) {
                             saveRichSelection(target);
-                            openInlineImageModal(target.id);
+                            openNewsletterInlineImageModal(target.id);
                         }
                     } else if (cmd === 'insertEmojiPrompt') {
                         var emojiSelection = target ? cloneStoredRichSelection(target) : null;
@@ -3199,7 +3551,11 @@
                 scheduleNewsletterAutosave();
             });
 
-            root.addEventListener('change', function () {
+            root.addEventListener('change', function (e) {
+                if (e.target && e.target.id === 'metis-nl-inline-image-input') {
+                    uploadNewsletterInlineImage(e.target.files);
+                    return;
+                }
                 hydrateNewsletterFromInputs();
                 queueNewsletterPreview();
                 scheduleNewsletterAutosave();
@@ -3207,6 +3563,8 @@
                 if (scheduleRow) scheduleRow.hidden = state.newsletter.status !== 'scheduled';
                 var rulesRow = root.querySelector('.metis-nl-rules-row');
                 if (rulesRow) rulesRow.hidden = state.newsletterAudience.mode !== 'custom';
+                var listsRow = root.querySelector('.metis-nl-lists-row');
+                if (listsRow) listsRow.hidden = state.newsletterAudience.mode === 'custom';
                 var deliverBtn = document.getElementById('metis-nl-deliver');
                 if (deliverBtn) deliverBtn.textContent = state.newsletter.status === 'scheduled'
                     ? (isAnnouncementBlast() ? 'Schedule Blast' : 'Schedule Campaign')
@@ -3226,8 +3584,8 @@
     }
 
     function bootStructuredEditorV2() {
-        var PAGE_SECTION_TYPES = ['heading', 'text', 'image', 'button', 'columns', 'hero', 'feature_grid', 'card_grid', 'html', 'cta', 'events', 'form', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive'];
-        var POST_SECTION_TYPES = ['heading', 'text', 'image', 'button', 'columns', 'feature_grid', 'card_grid', 'html', 'transcript', 'cta', 'events', 'form', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive'];
+        var PAGE_SECTION_TYPES = ['heading', 'text', 'image', 'image_carousel', 'button', 'columns', 'hero', 'feature_grid', 'card_grid', 'html', 'cta', 'events', 'form', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive'];
+        var POST_SECTION_TYPES = ['heading', 'text', 'image', 'image_carousel', 'button', 'columns', 'feature_grid', 'card_grid', 'html', 'transcript', 'cta', 'events', 'form', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive'];
         var HERO_STYLES = ['split', 'centered', 'overlay'];
 
         state.sections = [];
@@ -3523,36 +3881,15 @@
             }
         }
 
-        function normalizeEditorLinkUrl(url) {
-            var raw = s(url || '').trim();
-            if (!raw) return '';
-            if (/^(https?:|mailto:|tel:|\/|#)/i.test(raw)) return raw;
-            return 'https://' + raw;
-        }
-
-        function unwrapLinksFromHtml(html) {
-            var wrap = document.createElement('div');
-            wrap.innerHTML = s(html || '');
-            wrap.querySelectorAll('a').forEach(function (node) {
-                while (node.firstChild) node.parentNode.insertBefore(node.firstChild, node);
-                node.parentNode.removeChild(node);
-            });
-            return wrap.innerHTML;
-        }
-
-        function applyLinkAtSelection(target, url) {
-            var linkUrl = normalizeEditorLinkUrl(url);
-            if (!target || !linkUrl) return false;
+        function applyLinkAtSelection(target, url, label) {
             target.focus();
-            restoreRichSelection(target);
-            var sel = window.getSelection ? window.getSelection() : null;
-            if (!sel || !sel.rangeCount) return false;
-            var range = sel.getRangeAt(0);
-            if (!target.contains(range.commonAncestorContainer)) return false;
-            var selectedHtml = range.collapsed ? esc(linkUrl) : unwrapLinksFromHtml(selectedHtmlFromRange(range));
-            range.deleteContents();
-            document.execCommand('insertHTML', false, '<a href="' + esc(linkUrl) + '">' + selectedHtml + '</a>');
-            saveRichSelection(target);
+            var range = ensureRichSelection(target);
+            var nextRange = insertEditorLinkAtRange(target, range, url, label);
+            if (!nextRange) return false;
+            richSelections[target.id] = {
+                range: nextRange.cloneRange(),
+                snapshot: serializeRangeWithin(target, nextRange)
+            };
             return true;
         }
 
@@ -3721,6 +4058,7 @@
             if (type === 'posts_list') return 'Posts List';
             if (type === 'newsletter_signup') return 'Newsletter Signup';
             if (type === 'newsletter_archive') return 'Newsletter Archive';
+            if (type === 'image_carousel') return 'Image Carousel';
             if (type === 'transcript') return 'Transcript';
             if (type === 'html') return 'Embed / HTML';
             if (type === 'cta') return 'CTA';
@@ -3738,6 +4076,7 @@
                 heading: 'Page heading or section title',
                 text: 'Rich text content',
                 image: 'Single responsive image',
+                image_carousel: 'Rotating images with links or popup forms',
                 button: 'Link button',
                 columns: 'Two to four text columns',
                 hero: 'Lead panel with media and CTA',
@@ -3818,10 +4157,11 @@
             if (t === 'transcript') base.content = { source: '', rows: [] };
             else if (t === 'heading') base.content = { text: 'Heading', level: 'h2', align: 'left', vertical_align: 'top' };
             else if (t === 'image') base.content = { src: '', media_id: 0, link_url: '', alt: '', caption: '', width: '', height: '', mode: 'contained', align: 'center' };
+            else if (t === 'image_carousel') base.content = { height: 420, transition: 'slide', transition_duration_ms: 450, slides: [{ src: '', media_id: 0, alt: '', action_type: 'url', url: '', popup_id: '', duration_ms: 5000 }] };
             else if (t === 'button') base.content = { label: 'Learn more', url: '#', align: 'left' };
             else if (t === 'hero') base.content = { title: 'Hero Title', subtitle: '', cta_label: 'Learn More', cta_url: '#', image_src: '' };
             else if (t === 'html') base.content = { html: '<div></div>' };
-            else if (t === 'columns') base.content = { columns: [{ width: '50%', body: '<p></p>', module: { type: 'text', content: { body: '<p></p>' } } }, { width: '50%', body: '<p></p>', module: { type: 'text', content: { body: '<p></p>' } } }] };
+            else if (t === 'columns') base.content = { width_mode: 'equal', columns: [{ width: '50%', body: '<p></p>', module: { type: 'text', content: { body: '<p></p>' } } }, { width: '50%', body: '<p></p>', module: { type: 'text', content: { body: '<p></p>' } } }] };
             else if (t === 'feature_grid') {
                 base.type = 'card_grid';
                 base.content = { columns: 3, items: [{ icon: '', title: 'Card', text: '', cta: { label: '', url: '#' } }] };
@@ -3870,7 +4210,7 @@
 
         function defaultColumnModule(type) {
             var moduleType = columnModuleTypes().indexOf(s(type || 'text')) === -1 ? 'text' : s(type || 'text');
-            if (moduleType === 'form') return { type: 'form', content: { form_id: '', submit_label: 'Submit' } };
+            if (moduleType === 'form') return { type: 'form', content: { form_id: '', submit_label: 'Submit', width: 'full' } };
             if (moduleType === 'form_tabs') return { type: 'form_tabs', content: { tabs: normalizeFormTabs([]) } };
             if (moduleType === 'donation_form') return { type: 'donation_form', content: { campaign_id: '', preset_amounts: [25, 50, 100], allow_custom_amount: true, mode: 'both', show_name: true, show_email: true, show_phone: false } };
             if (moduleType === 'donation_progress') return { type: 'donation_progress', content: { campaign_id: '', goal_amount: '', raised_amount: '', percent: '' } };
@@ -3892,6 +4232,7 @@
             } else if (next.type === 'form') {
                 next.content.form_id = s(content.form_id || '');
                 next.content.submit_label = repairMojibakeText(content.submit_label || 'Submit') || 'Submit';
+                next.content.width = ['full', 'wide', 'medium', 'narrow'].indexOf(s(content.width || 'full')) === -1 ? 'full' : s(content.width || 'full');
             } else if (next.type === 'form_tabs') {
                 next.content.tabs = normalizeFormTabs(content.tabs || []);
             } else if (next.type === 'donation_form') {
@@ -3958,6 +4299,29 @@
                 module.content.body = body;
             }
             return { width: width, body: body, module: module };
+        }
+
+        function columnWidthsForMode(mode, count) {
+            var m = ['custom', 'narrow', 'equal', 'wide'].indexOf(s(mode || 'custom')) === -1 ? 'custom' : s(mode || 'custom');
+            if (m === 'custom') return null;
+            if (count === 2 && m === 'narrow') return ['33%', '67%'];
+            if (count === 2 && m === 'wide') return ['67%', '33%'];
+            var width = count === 1 ? '100%' : (count === 2 ? '50%' : (count === 3 ? '33%' : '25%'));
+            return Array(count).fill(width);
+        }
+
+        function inferColumnWidthMode(content) {
+            var data = content && typeof content === 'object' ? content : {};
+            if (Object.prototype.hasOwnProperty.call(data, 'width_mode') && s(data.width_mode || '').trim() !== '') {
+                return s(data.width_mode).trim();
+            }
+            var cols = Array.isArray(data.columns) ? data.columns : [];
+            if (cols.length !== 2) return 'equal';
+            var widths = cols.map(function (col) { return s(col && col.width || '').replace('%', '').trim(); });
+            if (widths[0] === '33' && widths[1] === '67') return 'narrow';
+            if (widths[0] === '67' && widths[1] === '33') return 'wide';
+            if (widths[0] === '50' && widths[1] === '50') return 'equal';
+            return 'custom';
         }
 
         function defaultSectionFromLibraryType(type) {
@@ -4028,6 +4392,23 @@
                 if (!value) return;
                 html += '<option value="' + esc(value) + '"' + (value === s(selected || '') ? ' selected' : '') + '>' + esc(s(row && row.label || value)) + '</option>';
             });
+            return html;
+        }
+
+        function carouselTimingOptions(selected, presets) {
+            var selectedValue = Math.max(1, parseInt(s(selected || '0'), 10) || 0);
+            var hasSelectedValue = false;
+            var html = '';
+            (Array.isArray(presets) ? presets : []).forEach(function (preset) {
+                var value = Math.max(1, parseInt(s(preset && preset.value || '0'), 10) || 0);
+                if (!value) return;
+                if (value === selectedValue) hasSelectedValue = true;
+                html += '<option value="' + esc(String(value)) + '"' + (value === selectedValue ? ' selected' : '') + '>' + esc(s(preset && preset.label || '')) + '</option>';
+            });
+            if (!hasSelectedValue && selectedValue) {
+                var seconds = Math.round((selectedValue / 1000) * 100) / 100;
+                html += '<option value="' + esc(String(selectedValue)) + '" selected>Current: ' + esc(String(seconds)) + ' seconds</option>';
+            }
             return html;
         }
 
@@ -4177,6 +4558,12 @@
             };
         }
 
+        function carouselImageTargetFromId(raw) {
+            var match = s(raw || '').match(/^carousel-image:(\d+):(\d+)$/);
+            if (!match) return null;
+            return { index: parseInt(match[1], 10), slideIndex: parseInt(match[2], 10) };
+        }
+
         function columnImageTargetFromId(raw) {
             var match = s(raw || '').match(/^column-image:(\d+):(\d+):(src)$/);
             if (!match) return null;
@@ -4189,6 +4576,10 @@
 
         function openBlockImagePicker(index, field) {
             openInlineImageModal('block-image:' + String(index) + ':' + s(field || 'src'));
+        }
+
+        function openCarouselImagePicker(index, slideIndex) {
+            openInlineImageModal('carousel-image:' + String(index) + ':' + String(slideIndex));
         }
 
         function openColumnImagePicker(index, columnIndex, field) {
@@ -4311,6 +4702,25 @@
                 out.content.height = normalizeImageDimension(content.height || '');
                 out.content.mode = ['contained', 'wide', 'full_width'].indexOf(s(content.mode || 'contained')) === -1 ? 'contained' : s(content.mode || 'contained');
                 out.content.align = ['left', 'center', 'right'].indexOf(s(content.align || 'center')) === -1 ? 'center' : s(content.align || 'center');
+            } else if (out.type === 'image_carousel') {
+                out.content.height = Math.max(160, Math.min(1200, parseInt(s(content.height || '420'), 10) || 420));
+                var carouselTransition = s(content.transition || 'slide');
+                out.content.transition = ['slide', 'fade', 'crossfade', 'tile', 'reveal', 'cinematic'].indexOf(carouselTransition) === -1 ? 'slide' : carouselTransition;
+                out.content.transition_duration_ms = Math.max(100, Math.min(2000, parseInt(s(content.transition_duration_ms || '450'), 10) || 450));
+                var carouselSlides = Array.isArray(content.slides) ? content.slides : [];
+                out.content.slides = carouselSlides.map(function (slide) {
+                    var row = slide && typeof slide === 'object' ? slide : {};
+                    return {
+                        src: s(row.src || ''),
+                        media_id: Math.max(0, parseInt(s(row.media_id || '0'), 10) || 0),
+                        alt: repairMojibakeText(row.alt || ''),
+                        action_type: s(row.action_type || 'url') === 'popup' ? 'popup' : 'url',
+                        url: s(row.url || ''),
+                        popup_id: s(row.popup_id || ''),
+                        duration_ms: Math.max(1000, Math.min(60000, parseInt(s(row.duration_ms || '5000'), 10) || 5000))
+                    };
+                }).slice(0, 12);
+                if (!out.content.slides.length) out.content.slides = defaultSectionByType('image_carousel').content.slides;
             } else if (out.type === 'button') {
                 out.content.label = repairMojibakeText(content.label || 'Learn more');
                 out.content.action_type = s(content.action_type || 'url') === 'popup' ? 'popup' : 'url';
@@ -4333,10 +4743,13 @@
             } else if (out.type === 'columns') {
                 var count = Math.max(1, Math.min(4, parseInt(s(content.count || ''), 10) || (Array.isArray(content.columns) ? content.columns.length : 2) || 2));
                 var widths = ['100%', '50%', '33%', '25%'];
+                var rawWidthMode = inferColumnWidthMode(content);
+                out.content.width_mode = ['custom', 'narrow', 'equal', 'wide'].indexOf(rawWidthMode) === -1 ? 'custom' : rawWidthMode;
+                var presetWidths = columnWidthsForMode(out.content.width_mode, count);
                 var cols = [];
                 for (var i = 0; i < count; i += 1) {
                     var row = Array.isArray(content.columns) && content.columns[i] && typeof content.columns[i] === 'object' ? content.columns[i] : {};
-                    cols.push(normalizeColumnEntry(row, widths[count - 1]));
+                    cols.push(normalizeColumnEntry(row, presetWidths && presetWidths[i] ? presetWidths[i] : (row.width || widths[count - 1])));
                 }
                 out.content.columns = cols;
             } else if (out.type === 'feature_grid' || out.type === 'card_grid') {
@@ -4381,6 +4794,7 @@
             } else if (out.type === 'form') {
                 out.content.form_id = s(content.form_id || '');
                 out.content.submit_label = repairMojibakeText(content.submit_label || 'Submit') || 'Submit';
+                out.content.width = ['full', 'wide', 'medium', 'narrow'].indexOf(s(content.width || 'full')) === -1 ? 'full' : s(content.width || 'full');
             } else if (out.type === 'form_tabs') {
                 out.content.tabs = normalizeFormTabs(content.tabs || []);
             } else if (out.type === 'donation_form') {
@@ -4686,8 +5100,8 @@
         function blockLibraryTypes() {
             var allowed = availableSectionTypes();
             var preferred = isPostContext()
-                ? ['section_header', 'heading', 'text', 'button', 'html', 'transcript', 'form', 'image', 'columns', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory']
-                : ['section_header', 'heading', 'text', 'button', 'html', 'form', 'image', 'hero', 'columns', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory'];
+                ? ['section_header', 'heading', 'text', 'button', 'html', 'transcript', 'form', 'image', 'image_carousel', 'columns', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory']
+                : ['section_header', 'heading', 'text', 'button', 'html', 'form', 'image', 'image_carousel', 'hero', 'columns', 'card_grid', 'cta', 'divider', 'spacer', 'posts_list', 'newsletter_signup', 'newsletter_archive', 'events', 'donation_form', 'donation_progress', 'campaign_summary', 'testimonials', 'people_directory'];
             return preferred.filter(function (type) {
                 if (type === 'section_header') return allowed.indexOf('heading') !== -1;
                 return allowed.indexOf(type) !== -1;
@@ -4696,7 +5110,7 @@
 
         function blockCategory(type) {
             if (type === 'section_header' || type === 'heading' || type === 'text' || type === 'button' || type === 'html' || type === 'transcript') return 'Content';
-            if (type === 'image' || type === 'hero') return 'Media';
+            if (type === 'image' || type === 'image_carousel' || type === 'hero') return 'Media';
             if (type === 'columns' || type === 'card_grid' || type === 'feature_grid' || type === 'cta' || type === 'divider' || type === 'spacer') return 'Layout';
             if (type === 'posts_list' || type === 'newsletter_signup' || type === 'newsletter_archive' || type === 'events' || type === 'form' || type === 'donation_form' || type === 'donation_progress' || type === 'campaign_summary' || type === 'testimonials' || type === 'people_directory') return 'Dynamic';
             return 'Blocks';
@@ -4711,6 +5125,7 @@
                 html: 'code',
                 transcript: 'phrase-sentiment',
                 image: 'image',
+                image_carousel: 'image',
                 hero: 'website',
                 columns: 'distribute-horizontal-center',
                 feature_grid: 'grid',
@@ -4870,6 +5285,23 @@
             return true;
         }
 
+        function updateColumnWidthMode(target) {
+            if (!target || target.id !== 'metis-v2-columns-width-mode') return false;
+            var sec = activeSection();
+            if (!sec || sec.type !== 'columns') return false;
+            var mode = s(target.value || 'custom');
+            sec.content.width_mode = ['custom', 'narrow', 'equal', 'wide'].indexOf(mode) === -1 ? 'custom' : mode;
+            var modeWidths = columnWidthsForMode(sec.content.width_mode, Array.isArray(sec.content.columns) ? sec.content.columns.length : 2);
+            if (modeWidths && Array.isArray(sec.content.columns)) {
+                sec.content.columns = sec.content.columns.map(function (col, idx) {
+                    return normalizeColumnEntry(col, modeWidths[idx]);
+                });
+            }
+            renderBuilderCanvas();
+            setDirtyAutosave();
+            return true;
+        }
+
         function enhanceEditorSelects(scope) {
             if (!scope || !scope.querySelectorAll) return;
             scope.querySelectorAll('select.metis-se-select').forEach(function (select) {
@@ -4877,6 +5309,13 @@
                 select.setAttribute('data-metis-ui-select', '1');
                 if (!select.getAttribute('data-metis-select-trigger-class')) {
                     select.setAttribute('data-metis-select-trigger-class', 'metis-se-select');
+                }
+                if (select.id === 'metis-v2-columns-width-mode' && !select.__metisColumnWidthHandler) {
+                    select.__metisColumnWidthHandler = true;
+                    select.addEventListener('change', function (event) {
+                        updateColumnWidthMode(select);
+                        event.stopPropagation();
+                    });
                 }
             });
             if (window.Metis && Metis.ui && Metis.ui.select && typeof Metis.ui.select.init === 'function') {
@@ -5028,6 +5467,12 @@
                     sectionImage +
                     '<figcaption' + editableAttr(index, 'image_caption') + '>' + esc(s(content.caption || '')) + '</figcaption>' +
                 '</figure>';
+            } else if (type === 'image_carousel') {
+                var previewSlides = Array.isArray(content.slides) ? content.slides.filter(function (slide) { return slide && slide.src; }) : [];
+                var previewSlide = previewSlides[0] || {};
+                body = '<div class="metis-builder-carousel-preview" style="height:' + esc(String(Math.max(160, parseInt(s(content.height || '420'), 10) || 420))) + 'px">' +
+                    (previewSlide.src ? '<img src="' + esc(s(previewSlide.src || '')) + '" alt="' + esc(s(previewSlide.alt || '')) + '">' : '<div class="metis-builder-media-empty">Add images in settings.</div>') +
+                    '<span class="metis-builder-carousel-preview__meta">' + esc(String(previewSlides.length)) + ' slide' + (previewSlides.length === 1 ? '' : 's') + ' • ' + esc(s(content.transition || 'slide')) + '</span></div>';
             } else if (type === 'button') {
                 var sectionButtonActionType = s(content.action_type || 'url') === 'popup' ? 'popup' : 'url';
                 var sectionButtonTargetLabel = sectionButtonActionType === 'popup'
@@ -5048,7 +5493,9 @@
                 '</div>';
             } else if (type === 'columns') {
                 var cols = Array.isArray(content.columns) ? content.columns : [];
-                body = '<div class="metis-builder-columns" style="--metis-builder-cols:' + esc(String(Math.max(1, cols.length || 2))) + ';">' + cols.map(function (col, colIndex) {
+                var previewWidths = columnWidthsForMode(content.width_mode || 'custom', Math.max(1, cols.length || 2));
+                var previewTemplate = previewWidths ? previewWidths.map(function (width) { return 'minmax(0,' + String(parseFloat(width) || 1) + 'fr)'; }).join(' ') : '';
+                body = '<div class="metis-builder-columns" style="--metis-builder-cols:' + esc(String(Math.max(1, cols.length || 2))) + ';' + (previewTemplate ? 'grid-template-columns:' + esc(previewTemplate) + ';' : '') + '">' + cols.map(function (col, colIndex) {
                     return renderColumnModulePreview(col, colIndex);
                 }).join('') + '</div>';
             } else if (type === 'feature_grid' || type === 'card_grid') {
@@ -5351,6 +5798,37 @@
                 html += '<div class="metis-se-field-row"><label>Alignment</label><select id="metis-v2-image-align" class="metis-se-select"><option value="left"' + (imageAlignValue(sec.content) === 'left' ? ' selected' : '') + '>Left</option><option value="center"' + (imageAlignValue(sec.content) === 'center' ? ' selected' : '') + '>Center</option><option value="right"' + (imageAlignValue(sec.content) === 'right' ? ' selected' : '') + '>Right</option></select></div>';
                 html += '<div class="metis-se-field-row"><label>Width</label><input id="metis-v2-image-width" class="metis-se-input" inputmode="numeric" pattern="[0-9]*" value="' + esc(s(sec.content.width || '')) + '" placeholder="Auto"></div>';
                 html += '<div class="metis-se-field-row"><label>Height</label><input id="metis-v2-image-height" class="metis-se-input" inputmode="numeric" pattern="[0-9]*" value="' + esc(s(sec.content.height || '')) + '" placeholder="Auto"></div>';
+            } else if (sec.type === 'image_carousel') {
+                var carouselSlides = Array.isArray(sec.content.slides) ? sec.content.slides : [];
+                var transitionTimingPresets = [
+                    { value: 250, label: 'Snappy (0.25 seconds)' },
+                    { value: 450, label: 'Quick (0.45 seconds)' },
+                    { value: 650, label: 'Balanced (0.65 seconds)' },
+                    { value: 900, label: 'Gentle (0.9 seconds)' },
+                    { value: 1200, label: 'Leisurely (1.2 seconds)' }
+                ];
+                var slideTimingPresets = [
+                    { value: 3000, label: '3 seconds' },
+                    { value: 4000, label: '4 seconds' },
+                    { value: 5000, label: '5 seconds' },
+                    { value: 6000, label: '6 seconds' },
+                    { value: 8000, label: '8 seconds' },
+                    { value: 10000, label: '10 seconds' }
+                ];
+                html += '<div class="metis-se-field-row"><div class="metis-se-field-help">Carousel banners automatically use the standard 1983 × 793 responsive ratio.</div></div>';
+                html += '<div class="metis-se-field-row"><label>Transition</label><select id="metis-v2-carousel-transition" class="metis-se-select"><option value="slide"' + (sec.content.transition === 'slide' ? ' selected' : '') + '>Slide</option><option value="fade"' + (sec.content.transition === 'fade' ? ' selected' : '') + '>Fade</option><option value="crossfade"' + (sec.content.transition === 'crossfade' ? ' selected' : '') + '>Crossfade</option><option value="tile"' + (sec.content.transition === 'tile' ? ' selected' : '') + '>Tile</option><option value="reveal"' + (sec.content.transition === 'reveal' ? ' selected' : '') + '>Reveal</option><option value="cinematic"' + (sec.content.transition === 'cinematic' ? ' selected' : '') + '>Cinematic</option></select></div>';
+                html += '<div class="metis-se-field-row"><label>Transition Speed</label><select id="metis-v2-carousel-transition-duration" class="metis-se-select">' + carouselTimingOptions(sec.content.transition_duration_ms || 450, transitionTimingPresets) + '</select></div>';
+                carouselSlides.forEach(function (slide, slideIndex) {
+                    var actionType = s(slide.action_type || 'url') === 'popup' ? 'popup' : 'url';
+                    html += '<div class="metis-se-card metis-carousel-slide-settings"><div class="metis-se-field-grid"><div class="metis-se-field-row"><label>Slide ' + esc(String(slideIndex + 1)) + ' Image</label><div class="metis-featured-image-actions"><button type="button" class="metis-se-nav-btn" data-open-carousel-media="' + esc(String(slideIndex)) + '">Choose from Media</button></div><input class="metis-se-input" data-v2-carousel-field="src" data-slide-idx="' + esc(String(slideIndex)) + '" value="' + esc(s(slide.src || '')) + '" placeholder="https://"></div>';
+                    html += '<div class="metis-se-field-row"><label>Alt Text</label><input class="metis-se-input" data-v2-carousel-field="alt" data-slide-idx="' + esc(String(slideIndex)) + '" value="' + esc(s(slide.alt || '')) + '"></div>';
+                    html += '<div class="metis-se-field-row"><label>Show This Image For</label><select class="metis-se-select" data-v2-carousel-field="duration_ms" data-slide-idx="' + esc(String(slideIndex)) + '">' + carouselTimingOptions(slide.duration_ms || 5000, slideTimingPresets) + '</select></div>';
+                    html += '<div class="metis-se-field-row"><label>Click Action</label><select class="metis-se-select" data-v2-carousel-field="action_type" data-slide-idx="' + esc(String(slideIndex)) + '"><option value="url"' + (actionType === 'url' ? ' selected' : '') + '>Open a link</option><option value="popup"' + (actionType === 'popup' ? ' selected' : '') + '>Open a popup form</option></select></div>';
+                    html += '<div class="metis-se-field-row"' + (actionType !== 'url' ? ' hidden' : '') + '><label>Link URL</label><input class="metis-se-input" data-v2-carousel-field="url" data-slide-idx="' + esc(String(slideIndex)) + '" value="' + esc(s(slide.url || '')) + '" placeholder="https:// or /page"></div>';
+                    html += '<div class="metis-se-field-row"' + (actionType !== 'popup' ? ' hidden' : '') + '><label>Popup Form</label><select class="metis-se-select" data-v2-carousel-field="popup_id" data-slide-idx="' + esc(String(slideIndex)) + '">' + optionList(state.options.popups, slide.popup_id, 'Select popup form') + '</select></div>';
+                    html += '<div class="metis-se-field-row"><button type="button" class="metis-se-nav-btn" data-v2-carousel-remove="' + esc(String(slideIndex)) + '"' + (carouselSlides.length < 2 ? ' disabled' : '') + '>Remove Slide</button></div></div></div>';
+                });
+                html += '<div class="metis-se-field-row"><button type="button" class="metis-se-nav-btn" data-v2-carousel-add>Add Slide</button></div>';
             } else if (sec.type === 'button') {
                 var buttonActionType = s(sec.content.action_type || 'url') === 'popup' ? 'popup' : 'url';
                 html += '<div class="metis-se-field-row"><label>Action</label><select id="metis-v2-button-action-type" class="metis-se-select"><option value="url"' + (buttonActionType === 'url' ? ' selected' : '') + '>Open a link</option><option value="popup"' + (buttonActionType === 'popup' ? ' selected' : '') + '>Open a popup</option></select></div>';
@@ -5377,6 +5855,13 @@
                     '<option value="3"' + (columnCount === 3 ? ' selected' : '') + '>3</option>' +
                     '<option value="4"' + (columnCount === 4 ? ' selected' : '') + '>4</option>' +
                 '</select></div>';
+                var columnWidthMode = ['custom', 'narrow', 'equal', 'wide'].indexOf(s(sec.content.width_mode || 'custom')) === -1 ? 'custom' : s(sec.content.width_mode || 'custom');
+                html += '<div class="metis-se-field-row"><label>Column width</label><select id="metis-v2-columns-width-mode" class="metis-se-select">' +
+                    '<option value="equal"' + (columnWidthMode === 'equal' ? ' selected' : '') + '>Equal</option>' +
+                    '<option value="narrow"' + (columnWidthMode === 'narrow' ? ' selected' : '') + '>Narrow then wide</option>' +
+                    '<option value="wide"' + (columnWidthMode === 'wide' ? ' selected' : '') + '>Wide then narrow</option>' +
+                    '<option value="custom"' + (columnWidthMode === 'custom' ? ' selected' : '') + '>Custom</option>' +
+                '</select><div class="metis-se-field-help">Narrow and wide apply to two-column layouts; other layouts stay evenly distributed.</div></div>';
                 columns.forEach(function (column, columnIndex) {
                     var module = normalizeColumnModule(column && column.module, column && column.body);
                     var moduleContent = module.content && typeof module.content === 'object' ? module.content : {};
@@ -5500,6 +5985,7 @@
             } else if (sec.type === 'form') {
                 html += '<div class="metis-se-field-row"><label>Form</label><select id="metis-v2-form-id" class="metis-se-select">' + optionList(state.options.forms, sec.content.form_id, 'Select form') + '</select></div>';
                 html += '<div class="metis-se-field-row"><label>Submit Label</label><input id="metis-v2-form-submit-label" class="metis-se-input" value="' + esc(s(sec.content.submit_label || 'Submit')) + '"></div>';
+                html += '<div class="metis-se-field-row"><label>Width</label><select id="metis-v2-form-width" class="metis-se-select"><option value="full"' + (s(sec.content.width || 'full') === 'full' ? ' selected' : '') + '>Full width</option><option value="wide"' + (s(sec.content.width || '') === 'wide' ? ' selected' : '') + '>Wide</option><option value="medium"' + (s(sec.content.width || '') === 'medium' ? ' selected' : '') + '>Medium</option><option value="narrow"' + (s(sec.content.width || '') === 'narrow' ? ' selected' : '') + '>Narrow</option></select></div>';
                 if (!state.options.forms.length) html += '<div class="metis-se-meta-value">No forms are available yet.</div>';
             } else if (sec.type === 'donation_form') {
                 html += '<div class="metis-se-field-row"><label>Campaign</label><select id="metis-v2-donation-campaign" class="metis-se-select">' + optionList(state.options.donationCampaigns, sec.content.campaign_id, 'Select campaign') + '</select></div>';
@@ -6161,6 +6647,7 @@
 
             renderInlineImagePickerList();
             var blockTarget = blockImageTargetFromId(state.inlineImageTargetId);
+            var carouselTarget = carouselImageTargetFromId(state.inlineImageTargetId);
             if (blockTarget && state.sections[blockTarget.index]) {
                 var imageSection = state.sections[blockTarget.index];
                 imageSection.content = imageSection.content && typeof imageSection.content === 'object' ? imageSection.content : {};
@@ -6174,6 +6661,18 @@
                 renderSectionList();
                 setDirtyAutosave();
                 return;
+            }
+
+            if (carouselTarget && state.sections[carouselTarget.index]) {
+                var carouselSection = state.sections[carouselTarget.index];
+                var carouselSlides = Array.isArray(carouselSection.content.slides) ? carouselSection.content.slides : [];
+                if (carouselSlides[carouselTarget.slideIndex]) {
+                    carouselSlides[carouselTarget.slideIndex].src = mediaPublicUrlForRow(row);
+                    carouselSlides[carouselTarget.slideIndex].media_id = Math.max(0, parseInt(s(row.id || '0'), 10) || 0);
+                    if (!s(carouselSlides[carouselTarget.slideIndex].alt || '')) carouselSlides[carouselTarget.slideIndex].alt = s(row.label || 'Image');
+                    closeInlineImageModal(); renderStep2Editor(); renderBuilderCanvas(); setDirtyAutosave();
+                    return;
+                }
             }
 
             var inlineTarget = state.inlineImageTargetId ? document.getElementById(state.inlineImageTargetId) : null;
@@ -7164,6 +7663,26 @@
                     if (state.activeSection >= 0) openBlockImagePicker(state.activeSection, mediaField);
                     return;
                 }
+                var openCarouselMedia = e.target.closest('[data-open-carousel-media]');
+                if (openCarouselMedia) {
+                    var carouselMediaIdx = parseInt(s(openCarouselMedia.getAttribute('data-open-carousel-media') || '-1'), 10);
+                    if (state.activeSection >= 0 && carouselMediaIdx >= 0) openCarouselImagePicker(state.activeSection, carouselMediaIdx);
+                    return;
+                }
+                var carouselAdd = e.target.closest('[data-v2-carousel-add]');
+                if (carouselAdd) {
+                    var carouselSection = activeSection();
+                    carouselSection.content.slides = Array.isArray(carouselSection.content.slides) ? carouselSection.content.slides : [];
+                    if (carouselSection.content.slides.length < 12) carouselSection.content.slides.push({ src: '', media_id: 0, alt: '', action_type: 'url', url: '', popup_id: '', duration_ms: 5000 });
+                    renderStep2Editor(); renderBuilderCanvas(); setDirtyAutosave(); return;
+                }
+                var carouselRemove = e.target.closest('[data-v2-carousel-remove]');
+                if (carouselRemove) {
+                    var carouselRemoveIdx = parseInt(s(carouselRemove.getAttribute('data-v2-carousel-remove') || '-1'), 10);
+                    var carouselRemoveSection = activeSection();
+                    if (Array.isArray(carouselRemoveSection.content.slides) && carouselRemoveSection.content.slides.length > 1 && carouselRemoveIdx >= 0) carouselRemoveSection.content.slides.splice(carouselRemoveIdx, 1);
+                    renderStep2Editor(); renderBuilderCanvas(); setDirtyAutosave(); return;
+                }
                 var openColumnMedia = e.target.closest('[data-open-column-media]');
                 if (openColumnMedia) {
                     var columnMediaIdx = parseInt(s(openColumnMedia.getAttribute('data-open-column-media') || '-1'), 10);
@@ -7179,6 +7698,7 @@
                     var inlineRow = featuredImageMediaById(inlineMediaId);
                     var blockTarget = blockImageTargetFromId(state.inlineImageTargetId);
                     var columnTarget = columnImageTargetFromId(state.inlineImageTargetId);
+                    var carouselTarget = carouselImageTargetFromId(state.inlineImageTargetId);
                     if (blockTarget && inlineRow && state.sections[blockTarget.index]) {
                         var imageSection = state.sections[blockTarget.index];
                         imageSection.content = imageSection.content && typeof imageSection.content === 'object' ? imageSection.content : {};
@@ -7192,6 +7712,16 @@
                         renderSectionList();
                         setDirtyAutosave();
                         return;
+                    }
+                    if (carouselTarget && inlineRow && state.sections[carouselTarget.index]) {
+                        var carouselTargetSection = state.sections[carouselTarget.index];
+                        var carouselTargetSlides = Array.isArray(carouselTargetSection.content.slides) ? carouselTargetSection.content.slides : [];
+                        if (carouselTargetSlides[carouselTarget.slideIndex]) {
+                            carouselTargetSlides[carouselTarget.slideIndex].src = mediaPublicUrlForRow(inlineRow);
+                            carouselTargetSlides[carouselTarget.slideIndex].media_id = Math.max(0, parseInt(s(inlineRow.id || '0'), 10) || 0);
+                            if (!s(carouselTargetSlides[carouselTarget.slideIndex].alt || '')) carouselTargetSlides[carouselTarget.slideIndex].alt = s(inlineRow.label || 'Image');
+                            closeInlineImageModal(); renderStep2Editor(); renderBuilderCanvas(); setDirtyAutosave(); return;
+                        }
                     }
                     if (columnTarget && inlineRow && state.sections[columnTarget.index]) {
                         var columnSection = state.sections[columnTarget.index];
@@ -7302,10 +7832,10 @@
                     }
                     if (cmd === 'createLink') {
                         var linkSelection = target ? cloneStoredRichSelection(target) : null;
-                        requestLinkUrl().then(function(url) {
-                            if (url && target) {
+                        requestLinkDetails().then(function(link) {
+                            if (link && target) {
                                 if (linkSelection) restoreSpecificRichSelection(target, linkSelection);
-                                applyLinkAtSelection(target, url);
+                                applyLinkAtSelection(target, link.url, link.label);
                             }
                             if (target) {
                                 saveRichSelection(target);
@@ -7506,6 +8036,32 @@
                 if (target.id === 'metis-v2-section-background') { sec.settings = normalizeSectionSettings(Object.assign({}, sec.settings || {}, { background: target.value })); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-heading-text') { sec.content.text = s(target.value || ''); renderSectionList(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-src') { sec.content.src = s(target.value || ''); sec.content.media_id = 0; renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (target.matches && target.matches('[data-v2-carousel-field]')) {
+                    var carouselIndex = parseInt(s(target.getAttribute('data-slide-idx') || '-1'), 10);
+                    var carouselField = s(target.getAttribute('data-v2-carousel-field') || '');
+                    var carouselSlides = Array.isArray(sec.content.slides) ? sec.content.slides : [];
+                    if (carouselIndex >= 0 && carouselSlides[carouselIndex] && carouselField) {
+                        if (carouselField === 'duration_ms') carouselSlides[carouselIndex][carouselField] = Math.max(1000, Math.min(60000, parseInt(s(target.value || '5000'), 10) || 5000));
+                        else if (carouselField === 'action_type') carouselSlides[carouselIndex][carouselField] = s(target.value || 'url') === 'popup' ? 'popup' : 'url';
+                        else carouselSlides[carouselIndex][carouselField] = s(target.value || '');
+                        if (carouselField === 'src') carouselSlides[carouselIndex].media_id = 0;
+                        // Only the action selection changes the visible editor controls.
+                        if (carouselField === 'action_type') renderStep2Editor();
+                        renderBuilderCanvas();
+                        setDirtyAutosave();
+                    }
+                    return;
+                }
+                if (target.id === 'metis-v2-carousel-height') {
+                    var carouselHeight = parseInt(s(target.value || ''), 10);
+                    // Let users complete a multi-digit value before applying the height bounds.
+                    if (carouselHeight >= 160 && carouselHeight <= 1200) {
+                        sec.content.height = carouselHeight;
+                        renderBuilderCanvas();
+                    }
+                    setDirtyAutosave();
+                    return;
+                }
                 if (target.id === 'metis-v2-image-link-url') { sec.content.link_url = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-alt') { sec.content.alt = s(target.value || ''); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-image-caption') { sec.content.caption = s(target.value || ''); setDirtyAutosave(); return; }
@@ -7527,13 +8083,16 @@
                     setDirtyAutosave();
                     return;
                 }
+                if (updateColumnWidthMode(target)) return;
                 if (target.id === 'metis-v2-columns-count') {
                     var count = Math.max(1, Math.min(4, parseInt(s(target.value || '2'), 10) || 2));
                     var widths = ['100%', '50%', '33%', '25%'];
                     var cols = Array.isArray(sec.content.columns) ? sec.content.columns : [];
                     while (cols.length < count) cols.push({ width: widths[count - 1], body: '<p></p>', module: defaultColumnModule('text') });
                     if (cols.length > count) cols = cols.slice(0, count);
-                    cols = cols.map(function (col) { return normalizeColumnEntry(col, widths[count - 1]); });
+                    var currentMode = ['custom', 'narrow', 'equal', 'wide'].indexOf(s(sec.content.width_mode || 'custom')) === -1 ? 'custom' : s(sec.content.width_mode || 'custom');
+                    var countModeWidths = columnWidthsForMode(currentMode, count);
+                    cols = cols.map(function (col, idx) { return normalizeColumnEntry(col, countModeWidths && countModeWidths[idx] ? countModeWidths[idx] : (currentMode === 'custom' ? (col.width || widths[count - 1]) : widths[count - 1])); });
                     sec.content.columns = cols;
                     renderStep2Editor();
                     renderBuilderCanvas();
@@ -7604,6 +8163,7 @@
                 if (target.id === 'metis-v2-events-view-mode') { sec.content.view_mode = ['card', 'week', 'calendar'].indexOf(s(target.value || 'card')) === -1 ? 'card' : s(target.value || 'card'); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-events-limit') { sec.content.limit = Math.max(1, Math.min(50, parseInt(s(target.value || '5'), 10) || 5)); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-form-submit-label') { sec.content.submit_label = s(target.value || 'Submit') || 'Submit'; renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-form-width') { sec.content.width = ['full', 'wide', 'medium', 'narrow'].indexOf(s(target.value || 'full')) === -1 ? 'full' : s(target.value || 'full'); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-donation-amounts') { sec.content.preset_amounts = normalizePresetAmounts(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-progress-goal') { sec.content.goal_amount = normalizeDecimalString(target.value || '', 1000000000); target.value = sec.content.goal_amount; setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-progress-raised') { sec.content.raised_amount = normalizeDecimalString(target.value || '', 1000000000); target.value = sec.content.raised_amount; setDirtyAutosave(); return; }
@@ -7672,6 +8232,26 @@
                     return;
                 }
                 var sec = activeSection();
+                if (target.matches && target.matches('[data-v2-carousel-field]')) {
+                    var carouselIndex = parseInt(s(target.getAttribute('data-slide-idx') || '-1'), 10);
+                    var carouselField = s(target.getAttribute('data-v2-carousel-field') || '');
+                    var carouselSlides = sec && Array.isArray(sec.content.slides) ? sec.content.slides : [];
+                    if (carouselIndex >= 0 && carouselSlides[carouselIndex] && carouselField) {
+                        if (carouselField === 'action_type') {
+                            carouselSlides[carouselIndex].action_type = s(target.value || 'url') === 'popup' ? 'popup' : 'url';
+                            renderStep2Editor();
+                        } else if (carouselField === 'popup_id') {
+                            carouselSlides[carouselIndex].popup_id = s(target.value || '');
+                        } else if (carouselField === 'duration_ms') {
+                            carouselSlides[carouselIndex].duration_ms = Math.max(1000, Math.min(60000, parseInt(s(target.value || '5000'), 10) || 5000));
+                        } else {
+                            carouselSlides[carouselIndex][carouselField] = s(target.value || '');
+                        }
+                        renderBuilderCanvas();
+                        setDirtyAutosave();
+                    }
+                    return;
+                }
                 if (target.id === 'metis-v2-featured-image-mime') {
                     renderFeaturedImagePickerList();
                     return;
@@ -7728,6 +8308,15 @@
                     setDirtyAutosave();
                     return;
                 }
+                if (target.id === 'metis-v2-carousel-transition') { var carouselTransition = s(target.value || 'slide'); sec.content.transition = ['slide', 'fade', 'crossfade', 'tile', 'reveal', 'cinematic'].indexOf(carouselTransition) === -1 ? 'slide' : carouselTransition; renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-carousel-transition-duration') { sec.content.transition_duration_ms = Math.max(100, Math.min(2000, parseInt(s(target.value || '450'), 10) || 450)); renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-carousel-height') {
+                    sec.content.height = Math.max(160, Math.min(1200, parseInt(s(target.value || ''), 10) || 420));
+                    target.value = sec.content.height;
+                    renderBuilderCanvas();
+                    setDirtyAutosave();
+                    return;
+                }
                 if (target.id === 'metis-v2-button-popup-id') { sec.content.popup_id = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-button-align') { sec.content.align = ['left', 'center', 'right'].indexOf(s(target.value || 'left')) === -1 ? 'left' : s(target.value || 'left'); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (updateActiveImageField(target, sec)) return;
@@ -7770,6 +8359,7 @@
                     return;
                 }
                 if (target.id === 'metis-v2-form-id') { sec.content.form_id = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
+                if (target.id === 'metis-v2-form-width') { sec.content.width = ['full', 'wide', 'medium', 'narrow'].indexOf(s(target.value || 'full')) === -1 ? 'full' : s(target.value || 'full'); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-donation-campaign') { sec.content.campaign_id = s(target.value || ''); renderBuilderCanvas(); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-donation-mode') { sec.content.mode = ['one_time', 'monthly', 'both'].indexOf(s(target.value || 'both')) === -1 ? 'both' : s(target.value || 'both'); setDirtyAutosave(); return; }
                 if (target.id === 'metis-v2-donation-allow-custom') { sec.content.allow_custom_amount = !!target.checked; setDirtyAutosave(); return; }
