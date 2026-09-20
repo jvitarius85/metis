@@ -121,6 +121,7 @@ final class UpdateServerIdentityService {
             'public_key_sha256' => (string) ($identity['public_key_sha256'] ?? ''),
             'metis_version' => (string) ($context['metis_version'] ?? Version::current()),
             'php_version' => PHP_VERSION,
+            'cron_secret' => trim((string) ($context['cron_secret'] ?? '')),
             'module_inventory' => array_values((array) ($context['module_inventory'] ?? [])),
         ];
     }

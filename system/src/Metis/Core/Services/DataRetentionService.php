@@ -7,6 +7,11 @@ use Metis\Services\DatabaseService;
 
 final class DataRetentionService {
     private const DEFAULT_BATCH_LIMIT = 1000;
+    private const MAX_BATCHES_PER_POLICY = 10;
+    private const DEFAULT_POLICY_DAYS = [
+        'audit_activity' => 30,
+        'audit_security' => 90,
+    ];
 
     public function __construct(
         private readonly DatabaseService $db
@@ -365,19 +370,27 @@ final class DataRetentionService {
         $days = $this->retentionDays( $policy );
         $cutoff = $this->cutoffDate( $days );
         [ $where, $args ] = $this->whereClause( $policy, $dateColumn, $cutoff, $filters );
-        $args[] = $batchLimit;
-
-        $deleted = $this->db->executePrepared(
-            "DELETE FROM {$table}
-             WHERE {$where}
-             ORDER BY {$dateColumn} ASC, id ASC
-             LIMIT %d",
-            $args
-        );
+        $deleted = 0;
+        $batches = 0;
+        do {
+            $deleteArgs = $args;
+            $deleteArgs[] = $batchLimit;
+            $batchDeleted = (int) $this->db->executePrepared(
+                "DELETE FROM {$table}
+                 WHERE {$where}
+                 ORDER BY {$dateColumn} ASC, id ASC
+                 LIMIT %d",
+                $deleteArgs
+            );
+            $deleted += max( 0, $batchDeleted );
+            $batches++;
+        } while ( $batchDeleted >= $batchLimit && $batches < self::MAX_BATCHES_PER_POLICY );
 
         return [
             'status' => 'ok',
-            'deleted_rows' => max( 0, (int) $deleted ),
+            'deleted_rows' => $deleted,
+            'batches' => $batches,
+            'drain_limited' => $batchDeleted >= $batchLimit,
             'retention_days' => $days,
             'cutoff' => $cutoff,
         ];
@@ -450,7 +463,7 @@ final class DataRetentionService {
      */
     private function retentionDays( array $policy ): int {
         $key = (string) ( $policy['key'] ?? '' );
-        $days = (int) ( $policy['retention_days'] ?? 90 );
+        $days = (int) ( $policy['retention_days'] ?? ( self::DEFAULT_POLICY_DAYS[ $key ] ?? 90 ) );
 
         if ( \class_exists( 'Core_Settings_Service' ) ) {
             $overrides = \Core_Settings_Service::get( 'data_retention_policy_days', [] );

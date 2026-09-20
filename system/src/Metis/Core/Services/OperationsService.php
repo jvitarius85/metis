@@ -215,7 +215,7 @@ final class OperationsService {
         }, $rows );
     }
 
-    public function executeQueuedOperation( array $jobPayload ): array {
+    public function executeQueuedOperation( array $jobPayload, array $job = [] ): array {
         $operation = $this->normalizeOperation( (string) ( $jobPayload['operation'] ?? '' ) );
         $payload = is_array( $jobPayload['payload'] ?? null ) ? $jobPayload['payload'] : [];
 
@@ -226,7 +226,7 @@ final class OperationsService {
             'calendar.sync' => $this->runCalendarSyncOperation( $operation ),
             'cache.clear' => $this->runCacheClearOperation( $operation ),
             'backup.run' => $this->runBackupOperation( $operation ),
-            'backup.stage' => $this->runBackupStageOperation( $operation, $payload ),
+            'backup.stage' => $this->runBackupStageOperation( $operation, $payload, (int) ( $job['id'] ?? 0 ) ),
             'backup.restore' => $this->runBackupRestoreOperation( $operation, $payload ),
             'backup.file_restore' => $this->runBackupFileRestoreOperation( $operation, $payload ),
             'release.check' => $this->runReleaseCheckOperation( $operation ),
@@ -247,7 +247,7 @@ final class OperationsService {
 
         $this->workers->register(
             self::JOB_TYPE,
-            fn ( array $payload ): array => $this->executeQueuedOperation( $payload )
+            fn ( array $payload, array $job = [] ): array => $this->executeQueuedOperation( $payload, $job )
         );
 
         $this->registered = true;
@@ -358,7 +358,10 @@ final class OperationsService {
             'calendar.sync'      => [ 'label' => 'Calendar Sync', 'priority' => 15, 'max_attempts' => 2 ],
             'cache.clear'        => [ 'label' => 'Clear Runtime Cache', 'priority' => 10, 'max_attempts' => 1 ],
             'backup.run'         => [ 'label' => 'Run Backup', 'priority' => 12, 'max_attempts' => 2 ],
-            'backup.stage'       => [ 'label' => 'Run Backup Stage', 'priority' => 11, 'max_attempts' => 1 ],
+            // Backup stages persist their database-export position, so a
+            // recovered worker can safely continue instead of discarding a
+            // large partial artifact after one interrupted process.
+            'backup.stage'       => [ 'label' => 'Run Backup Stage', 'priority' => 11, 'max_attempts' => 4 ],
             'backup.restore'     => [ 'label' => 'Restore Backup', 'priority' => 6, 'max_attempts' => 1 ],
             'backup.file_restore' => [ 'label' => 'Restore Backup File', 'priority' => 6, 'max_attempts' => 1 ],
             'release.check'      => [ 'label' => 'Check Releases', 'priority' => 16, 'max_attempts' => 2 ],
@@ -553,7 +556,7 @@ final class OperationsService {
         return [ 'operation' => $operation, 'result' => $result ];
     }
 
-    private function runBackupStageOperation( string $operation, array $payload ): array {
+    private function runBackupStageOperation( string $operation, array $payload, int $jobId = 0 ): array {
         if ( ! \function_exists( 'metis_backup_run_stage' ) ) {
             throw new RuntimeException( 'Backup stage service is not available.' );
         }
@@ -564,7 +567,7 @@ final class OperationsService {
             throw new RuntimeException( 'Backup stage payload is required.' );
         }
 
-        $result = \metis_backup_run_stage( $runUuid, $stage );
+        $result = \metis_backup_service()->runBackupStage( $runUuid, $stage, $jobId );
         if ( empty( $result['ok'] ) ) {
             throw new RuntimeException( (string) ( $result['error'] ?? 'Backup stage failed.' ) );
         }
@@ -648,7 +651,51 @@ final class OperationsService {
             throw new RuntimeException( 'Release tag is required.' );
         }
 
-        return [ 'operation' => $operation, 'tag' => $tag, 'result' => \metis_release_apply( $tag, 'settings_operations' ) ];
+        $token = \Metis\Release\ReleaseProgress::normalizeToken( (string) ( $payload['progress_token'] ?? '' ) );
+        $writeProgress = static function ( array $progress ) use ( $token, $tag ): void {
+            if ( $token === '' ) {
+                return;
+            }
+
+            \Metis\Release\ReleaseProgress::write( $token, [
+                'tag' => $tag,
+                'stage' => (string) ( $progress['stage'] ?? 'running' ),
+                'message' => (string) ( $progress['message'] ?? 'Applying trusted release.' ),
+                'percent' => (int) ( $progress['percent'] ?? 0 ),
+                'context' => is_array( $progress['context'] ?? null ) ? $progress['context'] : [],
+                'done' => false,
+            ] );
+        };
+
+        try {
+            $result = \metis_release_apply_with_progress( $tag, 'release_worker', $writeProgress );
+        } catch ( \Throwable $throwable ) {
+            if ( $token !== '' ) {
+                \Metis\Release\ReleaseProgress::write( $token, [
+                    'tag' => $tag,
+                    'stage' => 'failed',
+                    'message' => $throwable->getMessage(),
+                    'percent' => 1,
+                    'context' => [],
+                    'done' => true,
+                ] );
+            }
+            throw $throwable;
+        }
+
+        if ( $token !== '' ) {
+            \Metis\Release\ReleaseProgress::write( $token, [
+                'tag' => $tag,
+                'stage' => ! empty( $result['ok'] ) ? 'complete' : 'failed',
+                'message' => (string) ( $result['message'] ?? ( ! empty( $result['ok'] ) ? 'Release update completed.' : 'Release update failed.' ) ),
+                'percent' => ! empty( $result['ok'] ) ? 100 : 99,
+                'context' => [],
+                'done' => true,
+                'result' => $result,
+            ] );
+        }
+
+        return [ 'operation' => $operation, 'tag' => $tag, 'result' => $result ];
     }
 
     private function runReleaseRollbackOperation( string $operation ): array {

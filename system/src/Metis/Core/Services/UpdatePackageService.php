@@ -61,6 +61,10 @@ final class UpdatePackageService {
     public function applyPayload(string $payloadRoot, string $targetRoot, array $manifest, ?callable $pathGuard = null): array {
         $payloadRoot = rtrim(str_replace('\\', '/', $payloadRoot), '/');
         $targetRoot = rtrim(str_replace('\\', '/', $targetRoot), '/');
+        if ($payloadRoot === '' || !is_dir($payloadRoot)) {
+            throw new \RuntimeException('Update package payload root is missing.');
+        }
+
         $copied = 0;
         $deleted = 0;
 
@@ -78,7 +82,7 @@ final class UpdatePackageService {
             }
 
             $source = $payloadRoot . '/' . $relative;
-            if (!is_file($source)) {
+            if (!is_file($source) || is_link($source)) {
                 throw new \RuntimeException(sprintf('Update package is missing payload file [%s].', $relative));
             }
 
@@ -92,8 +96,28 @@ final class UpdatePackageService {
             if (!is_dir($directory)) {
                 $this->files->ensureDirectory($directory);
             }
-            if (!@copy($source, $destination)) {
+            if (is_dir($destination) && !is_link($destination)) {
+                throw new \RuntimeException(sprintf('Update package target path [%s] is a directory.', $relative));
+            }
+
+            $stagedDestination = tempnam($directory, 'metis-update-');
+            if (!is_string($stagedDestination) || $stagedDestination === '') {
+                throw new \RuntimeException(sprintf('Unable to stage update package file [%s].', $relative));
+            }
+
+            if (!@copy($source, $stagedDestination)) {
+                @unlink($stagedDestination);
                 throw new \RuntimeException(sprintf('Unable to apply update package file [%s].', $relative));
+            }
+
+            $permissions = @fileperms($source);
+            if (is_int($permissions) && $permissions > 0) {
+                @chmod($stagedDestination, $permissions & 0777);
+            }
+
+            if (!@rename($stagedDestination, $destination)) {
+                @unlink($stagedDestination);
+                throw new \RuntimeException(sprintf('Unable to promote staged update package file [%s].', $relative));
             }
             $copied++;
         }

@@ -4,6 +4,9 @@ declare(strict_types=1);
 namespace Metis\Core\Services;
 
 final class RuntimeAssetService {
+    /** @var array<string,array<string,mixed>> */
+    private array $assetCache = [];
+
     public function renderJavascript(string $domain = '', string $view = ''): string {
         $assets = $this->collectAssets($domain, $view);
         $scripts = [];
@@ -44,6 +47,11 @@ final class RuntimeAssetService {
     }
 
     private function collectAssets(string $domain, string $view): array {
+        $cacheKey = $this->cacheKey($domain, $view);
+        if (isset($this->assetCache[$cacheKey])) {
+            return $this->assetCache[$cacheKey];
+        }
+
         $this->ensureAssetHooksLoaded();
 
         $original_assets = is_array($GLOBALS['metis_assets'] ?? null) ? $GLOBALS['metis_assets'] : [];
@@ -61,6 +69,8 @@ final class RuntimeAssetService {
 
         $GLOBALS['metis_assets'] = $original_assets;
         $GLOBALS['metis_query_vars'] = $original_query_vars;
+
+        $this->assetCache[$cacheKey] = $assets;
 
         return $assets;
     }
@@ -91,5 +101,9 @@ final class RuntimeAssetService {
                 $GLOBALS['metis_assets'][$key] = $value;
             }
         }
+    }
+
+    private function cacheKey(string $domain, string $view): string {
+        return trim($domain) . '|' . trim($view);
     }
 }

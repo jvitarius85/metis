@@ -47,6 +47,7 @@ final class UpdateServerClient {
         $payload = $this->identity->registrationPayload($context + [
             'channel' => $settings['channel'],
             'metis_version' => Version::current(),
+            'cron_secret' => $this->currentCronSecret(),
         ]);
         $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
         if (!is_string($body)) {
@@ -114,6 +115,7 @@ final class UpdateServerClient {
             ],
             'modules' => array_values($moduleInventory),
             'php_version' => PHP_VERSION,
+            'cron_secret' => $this->currentCronSecret(),
         ];
         $body = json_encode($payload, JSON_UNESCAPED_SLASHES);
         if (!is_string($body)) {
@@ -199,6 +201,17 @@ final class UpdateServerClient {
         }
 
         return is_array($response['json'] ?? null) ? (array) $response['json'] : [];
+    }
+
+    private function currentCronSecret(): string {
+        if (\class_exists('\Core_Settings_Service')) {
+            $secret = \Core_Settings_Service::get('system_cron_secret', '');
+            if (\is_string($secret)) {
+                return trim($secret);
+            }
+        }
+
+        return '';
     }
 
     public function moduleRegistry(bool $forceRefresh = false, array $moduleInventory = []): array {

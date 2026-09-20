@@ -33,7 +33,7 @@ final class ReleaseExecutionService {
     }
 
     public function assertSystemAdministrator( string $trigger = 'manual' ): void {
-        if ( \in_array( $trigger, [ 'cli', 'settings_direct', 'settings_operations', 'system_cron' ], true ) ) {
+        if ( \in_array( $trigger, [ 'cli', 'release_worker', 'settings_direct', 'settings_operations', 'system_cron' ], true ) ) {
             return;
         }
 

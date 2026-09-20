@@ -123,6 +123,14 @@ final class EmailService {
         if ( $replyTo !== '' && \metis_email_is_valid( $replyTo ) ) {
             $headers[] = 'Reply-To: ' . $replyTo;
         }
+        $inReplyTo = self::normalizeThreadHeader( $options['in_reply_to'] ?? '' );
+        $references = self::normalizeThreadHeader( $options['references'] ?? '' );
+        if ( $inReplyTo !== '' ) {
+            $headers[] = 'In-Reply-To: ' . $inReplyTo;
+        }
+        if ( $references !== '' ) {
+            $headers[] = 'References: ' . $references;
+        }
         if ( ! empty( $options['attachments'] ) ) {
             $result = [ 'ok' => false, 'error' => 'Email provider unavailable for attachments.' ];
             self::trackUsage( self::detectModuleSlug( $options ), $result, $options );
@@ -139,6 +147,17 @@ final class EmailService {
         return $result;
     }
 
+    private static function normalizeThreadHeader( mixed $value ): string {
+        if ( ! is_scalar( $value ) ) {
+            return '';
+        }
+        $value = trim( preg_replace( '/[\r\n]+/', ' ', (string) $value ) ?? '' );
+        if ( $value === '' || strlen( $value ) > 998 || preg_match( '/^(?:<[^<>\s]+>\s*)+$/', $value ) !== 1 ) {
+            return '';
+        }
+        return $value;
+    }
+
     /**
      * @param array<string,mixed> $options
      * @return array<string,mixed>
@@ -153,6 +172,9 @@ final class EmailService {
         $replyTo = self::normalizeReplyToList( $options['reply_to'] ?? '' );
 
         $defaultFromName = trim( (string) \Core_Settings_Service::get( 'newsletter_default_from_name', '' ) );
+        if ( function_exists( '\\metis_email_brand_name' ) ) {
+            $defaultFromName = \metis_email_brand_name( $defaultFromName );
+        }
         $defaultFromEmail = strtolower( trim( \metis_email_clean( (string) \Core_Settings_Service::get( 'newsletter_default_from_email', '' ) ) ) );
         $defaultReplyTo = strtolower( trim( \metis_email_clean( (string) \Core_Settings_Service::get( 'newsletter_default_reply_to', '' ) ) ) );
 
