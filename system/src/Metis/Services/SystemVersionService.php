@@ -15,6 +15,52 @@ final class SystemVersionService {
         $coreServices = [];
         $coreServiceDetails = [];
         $coreServiceFailures = [];
+        $installedModuleMap = [];
+
+        if ( Application::has_service( 'module_updates' ) ) {
+            foreach ( (array) Application::service( 'module_updates' )->discoverInstalledModules() as $installedModule ) {
+                if ( ! is_array( $installedModule ) ) {
+                    continue;
+                }
+
+                $slug = \metis_key_clean( (string) ( $installedModule['id'] ?? '' ) );
+                if ( $slug === '' ) {
+                    continue;
+                }
+
+                $version = trim( (string) ( $installedModule['version'] ?? '' ) );
+                if ( $version === '' ) {
+                    $version = 'unknown';
+                }
+
+                $runtimeStatus = trim( (string) ( $installedModule['runtime_contract_status'] ?? '' ) );
+                $runtimeNote = trim( (string) ( $installedModule['runtime_contract_note'] ?? '' ) );
+                $hasRuntimeWarning = in_array(
+                    $runtimeStatus,
+                    [ 'missing_entry', 'source_backed_entry', 'unreadable_entry', 'unknown_entry_contract' ],
+                    true
+                );
+
+                $installedModuleMap[ $slug ] = true;
+                $modules[ $slug ] = $version;
+                $moduleDetails[ $slug ] = [
+                    'slug' => $slug,
+                    'version' => $version,
+                    'status' => $hasRuntimeWarning ? 'failed' : 'loaded',
+                    'reason' => $hasRuntimeWarning ? $runtimeNote : '',
+                    'package_type' => 'module',
+                ];
+
+                if ( $hasRuntimeWarning ) {
+                    $moduleFailures[ $slug ] = [
+                        'slug' => $slug,
+                        'reason' => $runtimeNote,
+                        'path' => (string) ( $installedModule['manifest_path'] ?? '' ),
+                        'package_type' => 'module',
+                    ];
+                }
+            }
+        }
 
         if ( Application::has_service( 'modules' ) ) {
             $moduleService = Application::service( 'modules' );
@@ -36,6 +82,9 @@ final class SystemVersionService {
                     $coreServices[ $slug ] = $version;
                     $coreServiceDetails[ $slug ] = $detail;
                 } else {
+                    if ( isset( $installedModuleMap[ (string) $slug ] ) ) {
+                        continue;
+                    }
                     $modules[ $slug ] = $version;
                     $moduleDetails[ $slug ] = $detail;
                 }
@@ -82,6 +131,10 @@ final class SystemVersionService {
                             'reason' => $reason,
                             'package_type' => $packageType,
                         ];
+                        continue;
+                    }
+
+                    if ( isset( $installedModuleMap[ $slug ] ) ) {
                         continue;
                     }
 

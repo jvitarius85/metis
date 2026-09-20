@@ -22,8 +22,13 @@ final class ReleaseManager {
     private const ARCHIVE_PROTECTED_DIRS = [
         '.git',
         '.github',
+        'docs',
         'meta',
         'storage',
+        'system/storage',
+        'system/tests',
+        'system/tools/update_server',
+        'tools',
     ];
     private const ARCHIVE_PROTECTED_FILES = [
         '.DS_Store',
@@ -35,6 +40,7 @@ final class ReleaseManager {
         'README.md',
         'ROADMAP.md',
         'SECURITY.md',
+        'release-backup.json',
         'system/config/database.php',
         'system/config/update.php',
     ];
@@ -1144,13 +1150,16 @@ final class ReleaseManager {
             ];
         }
 
-        $children = array_values(
+        $source_root = $extract_dir;
+        if ( ! is_file( $source_root . '/metis-package.json' ) ) {
+            $children = array_values(
             array_filter(
                 scandir( $extract_dir ) ?: [],
                 static fn ( string $name ): bool => $name !== '.' && $name !== '..' && is_dir( $extract_dir . '/' . $name )
             )
-        );
-        $source_root = isset( $children[0] ) ? $extract_dir . '/' . $children[0] : $extract_dir;
+            );
+            $source_root = isset( $children[0] ) ? $extract_dir . '/' . $children[0] : $extract_dir;
+        }
         $package = $this->updatePackageService()->inspectExtractedPackage( $source_root );
         if ( $package !== [] ) {
             return [
@@ -1208,6 +1217,11 @@ final class ReleaseManager {
 
             $target_path = $target_root . '/' . $relative;
             if ( $item->isDir() ) {
+                if ( $item->isLink() ) {
+                    $failures[] = [ 'path' => $relative, 'reason' => 'source_is_symlink' ];
+                    continue;
+                }
+
                 if ( ! \is_dir( $target_path ) && ! \metis_runtime_make_dir( $target_path ) ) {
                     $failures[] = [ 'path' => $relative, 'reason' => 'mkdir_failed' ];
                 }
@@ -1216,6 +1230,11 @@ final class ReleaseManager {
 
             if ( ! $item->isFile() ) {
                 $skipped++;
+                continue;
+            }
+
+            if ( $item->isLink() ) {
+                $failures[] = [ 'path' => $relative, 'reason' => 'source_is_symlink' ];
                 continue;
             }
 
@@ -1230,8 +1249,31 @@ final class ReleaseManager {
                 continue;
             }
 
-            if ( ! @copy( $source_path, $target_path ) ) {
+            if ( \is_link( $target_path ) ) {
+                $failures[] = [ 'path' => $relative, 'reason' => 'target_is_symlink' ];
+                continue;
+            }
+
+            $staged_target = @tempnam( $target_dir, 'metis-restore-' );
+            if ( ! \is_string( $staged_target ) || $staged_target === '' ) {
+                $failures[] = [ 'path' => $relative, 'reason' => 'stage_failed' ];
+                continue;
+            }
+
+            if ( ! @copy( $source_path, $staged_target ) ) {
+                @unlink( $staged_target );
                 $failures[] = [ 'path' => $relative, 'reason' => 'copy_failed' ];
+                continue;
+            }
+
+            $permissions = @fileperms( $source_path );
+            if ( \is_int( $permissions ) && $permissions > 0 ) {
+                @chmod( $staged_target, $permissions & 0777 );
+            }
+
+            if ( ! @rename( $staged_target, $target_path ) ) {
+                @unlink( $staged_target );
+                $failures[] = [ 'path' => $relative, 'reason' => 'promote_failed' ];
                 continue;
             }
 
@@ -1472,7 +1514,7 @@ final class ReleaseManager {
         return [
             'ok' => true,
             'status' => 'release_archive_apply',
-            'message' => sprintf( 'Release %s was installed from a trusted GitHub archive.', $tag ),
+            'message' => sprintf( 'Release %s was installed from a trusted update package.', $tag ),
             'release' => $release,
             'backup' => $backup,
             'archive' => $archive_result,
@@ -1823,6 +1865,12 @@ final class ReleaseManager {
             return [ 'status' => 'none' ];
         }
 
+        // A pending archive release is expected while its healthy boot is being verified.
+        // Roll back only after the runtime explicitly recorded a failed boot.
+        if ( empty( $transaction['rollback_requested'] ) ) {
+            return [ 'status' => 'awaiting_verification', 'transaction' => $transaction ];
+        }
+
         $previous = is_array( $transaction['previous'] ?? null ) ? (array) $transaction['previous'] : [];
         $backup = is_array( $transaction['backup'] ?? null ) ? (array) $transaction['backup'] : [];
         $rollbackTarget = trim( (string) ( $previous['tag'] ?? '' ) );
@@ -1854,7 +1902,12 @@ final class ReleaseManager {
         }
 
         $archivePath = trim( (string) ( $backup['archive_path'] ?? '' ) );
-        if ( $archivePath !== '' && is_file( $archivePath ) ) {
+        $archiveHash = trim( strtolower( (string) ( $backup['sha256'] ?? '' ) ) );
+        if (
+            $archivePath !== ''
+            && is_file( $archivePath )
+            && $this->archiveFileMatchesRecordedHash( $archivePath, $archiveHash )
+        ) {
             $restored = $this->restoreLocalReleaseArchive( $archivePath );
             if ( ! empty( $restored['ok'] ) ) {
                 $this->invalidateConfigCache();
@@ -2106,33 +2159,59 @@ final class ReleaseManager {
             return [ 'ok' => false, 'status' => 'restore_prepare_failed' ];
         }
 
-        $zip = new \ZipArchive();
-        if ( $zip->open( $archivePath ) !== true ) {
-            return [ 'ok' => false, 'status' => 'restore_open_failed' ];
-        }
+        try {
+            $zip = new \ZipArchive();
+            if ( $zip->open( $archivePath ) !== true ) {
+                return [ 'ok' => false, 'status' => 'restore_open_failed' ];
+            }
 
-        for ( $i = 0; $i < $zip->numFiles; $i++ ) {
-            $entry = (string) $zip->getNameIndex( $i );
-            $normalized = str_replace( '\\', '/', $entry );
-            if (
-                $normalized === ''
-                || str_starts_with( $normalized, '/' )
-                || str_contains( $normalized, '/../' )
-                || str_starts_with( $normalized, '../' )
-            ) {
-                $zip->close();
+            for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+                $entry = (string) $zip->getNameIndex( $i );
+                $normalized = str_replace( '\\', '/', $entry );
+                if (
+                    $normalized === ''
+                    || str_starts_with( $normalized, '/' )
+                    || str_contains( $normalized, '/../' )
+                    || str_starts_with( $normalized, '../' )
+                ) {
+                    $zip->close();
+                    return [ 'ok' => false, 'status' => 'restore_invalid' ];
+                }
+            }
+
+            $ok = $zip->extractTo( $extractDir );
+            $zip->close();
+            if ( ! $ok ) {
+                return [ 'ok' => false, 'status' => 'restore_extract_failed' ];
+            }
+
+            $metadataPath = $extractDir . '/release-backup.json';
+            if ( ! is_file( $metadataPath ) ) {
                 return [ 'ok' => false, 'status' => 'restore_invalid' ];
             }
-        }
 
-        $ok = $zip->extractTo( $extractDir );
-        $zip->close();
-        if ( ! $ok ) {
-            return [ 'ok' => false, 'status' => 'restore_extract_failed' ];
-        }
+            $metadata = json_decode( (string) @file_get_contents( $metadataPath ), true );
+            if ( ! is_array( $metadata ) ) {
+                return [ 'ok' => false, 'status' => 'restore_invalid' ];
+            }
 
-        $applied = $this->copyArchivePayload( $extractDir );
-        return $applied + [ 'ok' => ! empty( $applied['ok'] ) ];
+            foreach ( [ 'index.php', 'system/src/Metis/Core/Version.php' ] as $required ) {
+                if ( ! \is_file( rtrim( $extractDir, '/' ) . '/' . $required ) ) {
+                    return [
+                        'ok' => false,
+                        'status' => 'restore_invalid',
+                        'missing' => $required,
+                    ];
+                }
+            }
+
+            $applied = $this->copyArchivePayload( $extractDir );
+            return $applied + [ 'ok' => ! empty( $applied['ok'] ) ];
+        } finally {
+            if ( \is_dir( $extractDir ) ) {
+                $this->removeDirectory( $extractDir );
+            }
+        }
     }
 
     private function moduleUpdateService(): \Metis\Core\Services\ModuleUpdateService {
@@ -2699,6 +2778,15 @@ final class ReleaseManager {
 
     private function normalizeTag( string $tag ): string {
         return trim( preg_replace( '/\s+/', '', $tag ) ?? '' );
+    }
+
+    private function archiveFileMatchesRecordedHash( string $archivePath, string $expectedHash ): bool {
+        if ( $expectedHash === '' ) {
+            return true;
+        }
+
+        $actualHash = @hash_file( 'sha256', $archivePath );
+        return \is_string( $actualHash ) && $actualHash !== '' && hash_equals( strtolower( $expectedHash ), strtolower( $actualHash ) );
     }
 
     private function versionFromTag( string $tag ): string {
