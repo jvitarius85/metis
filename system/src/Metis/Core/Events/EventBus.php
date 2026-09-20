@@ -100,11 +100,13 @@ class EventBus {
     }
 
     private function normalize_name( string $name ): string {
-        return trim( strtolower( preg_replace( '/[^a-z0-9._-]+/', '', $name ) ?? '' ) );
+        $name = strtolower( trim( $name ) );
+        return trim( preg_replace( '/[^a-z0-9._-]+/', '', $name ) ?? '' );
     }
 
     private function normalize_pattern( string $pattern ): string {
-        return trim( strtolower( preg_replace( '/[^a-z0-9._*-]+/', '', $pattern ) ?? '' ) );
+        $pattern = strtolower( trim( $pattern ) );
+        return trim( preg_replace( '/[^a-z0-9._*-]+/', '', $pattern ) ?? '' );
     }
 
     private function callable_label( callable $listener ): string {

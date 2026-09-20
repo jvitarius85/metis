@@ -855,6 +855,7 @@ if ( ! function_exists( 'metis_help_register_ajax_controllers' ) ) {
                     'module' => 'core',
                     'permission' => 'view',
                     'nonce_action' => metis_ajax_nonce_action( 'metis_help_topic' ),
+                    'allow_additional_fields' => false,
                     'schema' => [
                         'topic' => [ 'type' => 'string', 'required' => true ],
                     ],
@@ -866,6 +867,7 @@ if ( ! function_exists( 'metis_help_register_ajax_controllers' ) ) {
                     'module' => 'core',
                     'permission' => 'view',
                     'nonce_action' => metis_ajax_nonce_action( 'metis_help_index' ),
+                    'allow_additional_fields' => false,
                     'schema' => [
                         'domain' => [ 'type' => 'string', 'required' => false ],
                         'view' => [ 'type' => 'string', 'required' => false ],
@@ -878,9 +880,10 @@ if ( ! function_exists( 'metis_help_register_ajax_controllers' ) ) {
                     'module' => 'core',
                     'permission' => 'view',
                     'nonce_action' => metis_ajax_nonce_action( 'metis_help_search' ),
+                    'allow_additional_fields' => false,
                     'schema' => [
                         'query' => [ 'type' => 'string', 'required' => true ],
-                        'limit' => [ 'type' => 'numeric', 'required' => false ],
+                        'limit' => [ 'type' => 'integer', 'required' => false ],
                     ],
                 ]
             );
@@ -895,6 +898,7 @@ if ( ! function_exists( 'metis_help_register_ajax_controllers' ) ) {
             [
                 'module' => 'core',
                 'permission' => 'view',
+                'allow_additional_fields' => false,
                 'schema' => [
                     'topic' => [ 'type' => 'string', 'required' => true ],
                 ],
@@ -905,6 +909,7 @@ if ( ! function_exists( 'metis_help_register_ajax_controllers' ) ) {
             [
                 'module' => 'core',
                 'permission' => 'view',
+                'allow_additional_fields' => false,
                 'schema' => [
                     'domain' => [ 'type' => 'string', 'required' => false ],
                     'view' => [ 'type' => 'string', 'required' => false ],
@@ -916,9 +921,10 @@ if ( ! function_exists( 'metis_help_register_ajax_controllers' ) ) {
             [
                 'module' => 'core',
                 'permission' => 'view',
+                'allow_additional_fields' => false,
                 'schema' => [
                     'query' => [ 'type' => 'string', 'required' => true ],
-                    'limit' => [ 'type' => 'numeric', 'required' => false ],
+                    'limit' => [ 'type' => 'integer', 'required' => false ],
                 ],
             ]
         );

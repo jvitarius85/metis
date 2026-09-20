@@ -207,44 +207,6 @@ if ( ! function_exists( 'metis_kernel_replace_request_path' ) ) {
 
 if ( ! function_exists( 'metis_kernel_normalize_front_controller_request' ) ) {
     function metis_kernel_normalize_front_controller_request( string $entry, array $attributes = [] ): array {
-        if ( $entry !== 'web' ) {
-            return $attributes;
-        }
-
-        $path = metis_kernel_request_path();
-
-        if ( preg_match( '#^/(?:system/ajax|e/ac)/?$#i', $path ) === 1 ) {
-            $ajax_path = function_exists( 'metis_ajax_endpoint_path' ) ? metis_ajax_endpoint_path() : '/api/ajax';
-            metis_kernel_replace_request_path( $ajax_path );
-            if ( function_exists( 'metis_runtime_set_query_var' ) ) {
-                metis_runtime_set_query_var( 'metis_api_ajax', 1 );
-            }
-            return $attributes;
-        }
-
-        if ( preg_match( '#^/(?:system/cron|e/cj)/?$#i', $path ) === 1 ) {
-            $cron_path = class_exists( 'Metis_Cron_Manager' ) ? Metis_Cron_Manager::endpoint_path() : '/api/cron';
-            metis_kernel_replace_request_path( $cron_path );
-            return $attributes;
-        }
-
-        if ( preg_match( '#^/(?:system/webhooks?|e/wh)/([A-Za-z0-9_-]+)/?$#i', $path, $matches ) !== 1 ) {
-            return $attributes;
-        }
-
-        $provider = metis_key_clean( (string) ( $matches[1] ?? '' ) );
-        if ( $provider === '' ) {
-            return $attributes;
-        }
-
-        $webhook_base = function_exists( 'metis_webhook_base_path' ) ? metis_webhook_base_path() : 'metis-webhooks';
-        metis_kernel_replace_request_path( '/' . trim( $webhook_base, '/' ) . '/' . $provider );
-
-        if ( function_exists( 'metis_runtime_set_query_var' ) ) {
-            metis_runtime_set_query_var( 'metis_webhook_provider', $provider );
-        }
-
-        $attributes['provider'] = $provider;
         return $attributes;
     }
 }
@@ -741,6 +703,9 @@ if ( ! function_exists( 'metis_kernel_execute' ) ) {
         metis_error_kernel()->execute(
             static function () use ( $entry, $attributes ): void {
                 metis_standalone_boot();
+                if ( $entry === 'web' && function_exists( 'metis_runtime_enforce_preferred_www_host' ) ) {
+                    metis_runtime_enforce_preferred_www_host();
+                }
                 metis_kernel_dispatch( $entry, $attributes );
             }
         );

@@ -47,6 +47,10 @@ final class StripeApiClient {
         return $this->get('/charges/' . rawurlencode($chargeId), $params, $options);
     }
 
+    public function listCharges(array $params = [], array $options = []): object {
+        return $this->get('/charges', $params, $options);
+    }
+
     public function retrieveBalanceTransaction(string $balanceTransactionId, array $params = [], array $options = []): object {
         return $this->get('/balance_transactions/' . rawurlencode($balanceTransactionId), $params, $options);
     }

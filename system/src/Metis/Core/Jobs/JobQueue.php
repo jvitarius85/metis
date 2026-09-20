@@ -14,6 +14,10 @@ class JobQueue {
     private const DEFAULT_QUEUE = 'default';
     private const DEFAULT_LEASE_TTL = 900;
     private const LONG_RUNNING_LEASE_TTL = 10800;
+    // Backup stages checkpoint their work at short, durable intervals. A
+    // shorter lease lets the scheduler recover a stopped CLI process quickly,
+    // while the stage itself renews this lease whenever it makes progress.
+    private const BACKUP_STAGE_LEASE_TTL = 900;
 
     public function __construct(
         private readonly JobWorkerRegistry $workers,
@@ -182,6 +186,36 @@ class JobQueue {
         ];
     }
 
+    /**
+     * Extend the lease for a worker that is making durable progress. This
+     * prevents another cron invocation from reclaiming a healthy large backup.
+     */
+    public function renewLease( int $job_id ): bool {
+        if ( $job_id < 1 ) {
+            return false;
+        }
+
+        $this->ensureSchema();
+        $table = \Metis_Tables::get( 'job_queue' );
+        $job = $this->database()->fetchOne(
+            "SELECT id, job_type, payload_json FROM {$table} WHERE id = %d AND status = %s LIMIT 1",
+            [ $job_id, self::STATUS_PROCESSING ]
+        );
+        if ( ! is_array( $job ) ) {
+            return false;
+        }
+
+        $updated = $this->database()->update(
+            $table,
+            [ 'reserved_until' => $this->formatTimestamp( $this->currentLocalTimestamp() + $this->leaseTtlForJob( $job ) ) ],
+            [ 'id' => $job_id, 'status' => self::STATUS_PROCESSING ],
+            [ '%s' ],
+            [ '%d', '%s' ]
+        );
+
+        return $updated !== false && $updated > 0;
+    }
+
     public function recoverExpiredProcessingJobs(): array {
         $table = \Metis_Tables::get( 'job_queue' );
         $now   = \metis_current_time( 'mysql' );
@@ -312,6 +346,9 @@ class JobQueue {
         $claimed = [];
 
         foreach ( $jobs as $job ) {
+            if ( $this->requiresCliWorker( $job ) && PHP_SAPI !== 'cli' ) {
+                continue;
+            }
             $lease_until = $this->formatTimestamp( $this->currentLocalTimestamp() + $this->leaseTtlForJob( $job ) );
             $updated = $this->database()->update(
                 $table,
@@ -343,13 +380,35 @@ class JobQueue {
         return $claimed;
     }
 
+    /**
+     * Release application changes executable code. It must be claimed by the
+     * local CLI worker that runs as the deployment account, never by PHP-FPM
+     * after an HTTP response has been sent.
+     */
+    private function requiresCliWorker( array $job ): bool {
+        if ( (string) ( $job['job_type'] ?? '' ) !== 'system.operation' ) {
+            return false;
+        }
+
+        $payload = $this->decodeJson( (string) ( $job['payload_json'] ?? '' ) );
+        return in_array(
+            strtolower( trim( (string) ( $payload['operation'] ?? '' ) ) ),
+            [ 'release.apply', 'release.rollback' ],
+            true
+        );
+    }
+
     private function leaseTtlForJob( array $job ): int {
         $payload = $this->decodeJson( (string) ( $job['payload_json'] ?? '' ) );
         $job_type = (string) ( $job['job_type'] ?? '' );
 
         if ( $job_type === 'system.operation' ) {
             $operation = strtolower( trim( (string) ( $payload['operation'] ?? '' ) ) );
-            if ( in_array( $operation, [ 'backup.run', 'backup.stage', 'backup.restore', 'release.apply', 'release.rollback' ], true ) ) {
+            if ( $operation === 'backup.stage' ) {
+                return self::BACKUP_STAGE_LEASE_TTL;
+            }
+
+            if ( in_array( $operation, [ 'backup.run', 'backup.restore', 'release.apply', 'release.rollback' ], true ) ) {
                 return self::LONG_RUNNING_LEASE_TTL;
             }
 

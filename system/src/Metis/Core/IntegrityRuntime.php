@@ -805,7 +805,7 @@ class Metis_Integrity_Manager {
             return;
         }
 
-        $items = scandir( $directory );
+        $items = @scandir( $directory );
         if ( $items === false ) {
             return;
         }
@@ -816,13 +816,16 @@ class Metis_Integrity_Manager {
             }
 
             $path = metis_trailingslashit( $directory ) . $item;
+            clearstatcache( true, $path );
             if ( is_dir( $path ) ) {
                 self::delete_directory_contents( $path );
                 @rmdir( $path );
                 continue;
             }
 
-            @unlink( $path );
+            if ( file_exists( $path ) || is_link( $path ) ) {
+                @unlink( $path );
+            }
         }
     }
 
