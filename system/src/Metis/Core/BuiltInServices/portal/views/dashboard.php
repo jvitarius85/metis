@@ -68,7 +68,7 @@ if ( $table_exists( $transactions_table ) ) {
         [
             'label' => 'This Month',
             'value' => $format_money( (float) ( $donation_summary['raised_month'] ?? 0 ) ),
-            'note'  => $now_dt->format( 'F Y' ),
+            'note'  => metis_runtime_format_date( $now_dt ),
         ],
         [
             'label' => 'Open Queue',

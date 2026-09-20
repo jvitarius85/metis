@@ -1378,9 +1378,22 @@ function metisInitSettingsUi() {
         const status = paused ? 'paused' : String((latestRun && latestRun.status) || 'unknown').trim().toLowerCase();
         const runUuid = String((latestRun && latestRun.run_uuid) || '').trim();
         const stage = paused ? 'paused' : String((latestRun && latestRun.progress_stage) || '').trim();
-        const message = paused
+        let message = paused
             ? 'Scheduled backups are paused.'
             : String((latestRun && (latestRun.progress_message || latestRun.last_error)) || '').trim();
+        if (paused && pauseStatus) {
+            const parts = [];
+            if (pauseStatus.reason) parts.push(String(pauseStatus.reason));
+            if (pauseStatus.next_retry_at_display && !pauseStatus.escalated) {
+                parts.push('Automatic retry ' + String(pauseStatus.next_retry_at_display));
+            }
+            if (pauseStatus.escalated) {
+                parts.push('Manual remediation required.');
+            }
+            if (parts.length) {
+                message = parts.join(' ');
+            }
+        }
         const updatedAt = String((latestRun && (latestRun.progress_updated_at_display || latestRun.updated_at_display || latestRun.started_at_display || latestRun.progress_updated_at || latestRun.updated_at || latestRun.started_at)) || '').trim();
         const percent = paused ? 0 : backupProgressPercent(latestRun);
         const safeStatus = status.replace(/[^a-z0-9_-]/g, '') || 'unknown';
@@ -1464,6 +1477,9 @@ function metisInitSettingsUi() {
             const progressStage = String((run && run.progress_stage) || '').trim();
             const progressMessage = String((run && run.progress_message) || '').trim();
             const lastError = String((run && run.last_error) || '').trim();
+            const retryNote = status === 'failed' && run && run.retry_summary
+                ? '<div class="metis-backup-row-detail">' + escapeHtml(String(run.retry_summary)) + '</div>'
+                : '';
             const canRestore = status === 'success' && runUuid !== '';
 
             const driveCell = fullLink
@@ -1483,7 +1499,7 @@ function metisInitSettingsUi() {
 
             return [
                 '<tr class="metis-backup-history-row is-' + escapeHtml(safeStatus) + '">',
-                '  <td class="metis-backup-history-cell metis-backup-run-cell"><span class="metis-backup-run-id">' + escapeHtml(runUuid || '-') + '</span>' + errorNote + progressNote + '</td>',
+                '  <td class="metis-backup-history-cell metis-backup-run-cell"><span class="metis-backup-run-id">' + escapeHtml(runUuid || '-') + '</span>' + errorNote + retryNote + progressNote + '</td>',
                 '  <td class="metis-backup-history-cell"><span class="metis-status-chip is-' + escapeHtml(safeStatus) + '">' + escapeHtml(ucfirst(status || 'unknown')) + '</span></td>',
                 '  <td class="metis-backup-history-cell"><span class="metis-backup-env-chip">' + escapeHtml(environment || '-') + '</span></td>',
                 '  <td class="metis-backup-history-cell"><span class="metis-backup-activity">' + escapeHtml(completedCell) + '</span></td>',
@@ -1504,9 +1520,15 @@ function metisInitSettingsUi() {
         const latestRunStatus = String((latestRun && latestRun.status) || '').trim().toLowerCase();
         const latestRunError = String((latestRun && latestRun.last_error) || '').trim();
         const latestRunFailed = latestRunStatus === 'failed' || latestRunStatus === 'error';
-        const message = paused
+        let message = paused
             ? 'Scheduled backups are paused because: ' + String((pauseStatus && pauseStatus.reason) || 'manual repair is required.')
             : (latestRunFailed ? latestRunError : '');
+        if (paused && pauseStatus && pauseStatus.next_retry_at_display && !pauseStatus.escalated) {
+            message += ' Automatic retry is scheduled for ' + String(pauseStatus.next_retry_at_display) + '.';
+        }
+        if (paused && pauseStatus && pauseStatus.escalated) {
+            message += ' Manual remediation is required.';
+        }
 
         if (!message) {
             backupStatusAlert.hidden = true;
@@ -1516,7 +1538,7 @@ function metisInitSettingsUi() {
         }
 
         backupStatusAlert.hidden = false;
-        backupStatusAlert.className = 'metis-backup-alert ' + (paused ? 'is-warning' : 'is-error');
+        backupStatusAlert.className = 'metis-backup-alert ' + ((paused && pauseStatus && pauseStatus.escalated) || !paused ? 'is-error' : 'is-warning');
         backupStatusAlert.textContent = message;
     }
 
@@ -1936,6 +1958,15 @@ function metisInitSettingsUi() {
             row.setAttribute('data-cron-task-enabled', enabled ? '1' : '0');
             row.classList.toggle('is-enabled', enabled);
             row.classList.toggle('is-disabled', !enabled);
+            if (task && task.overnight_only !== undefined) {
+                row.setAttribute('data-cron-task-overnight', task.overnight_only ? '1' : '0');
+            }
+            if (task && task.interval_minutes) {
+                row.setAttribute('data-cron-task-frequency-minutes', String(task.interval_minutes));
+            }
+            if (task && task.run_time !== undefined) {
+                row.setAttribute('data-cron-task-run-time', String(task.run_time || ''));
+            }
 
             const stateEl = document.querySelector('[data-cron-task-state="' + slug + '"]');
             if (stateEl) {
@@ -1947,10 +1978,11 @@ function metisInitSettingsUi() {
                 runEl.textContent = String((task && task.last_finished_at_display) || 'Never');
             }
 
-            const intervalInput = document.querySelector('[data-cron-task-interval="' + slug + '"]');
-            if (intervalInput && document.activeElement !== intervalInput && task && task.interval_minutes) {
-                intervalInput.value = String(task.interval_minutes);
+            const nextRunEl = document.querySelector('[data-cron-task-next-run="' + slug + '"]');
+            if (nextRunEl) {
+                nextRunEl.textContent = String((task && task.next_run_at_display) || '—');
             }
+
         });
 
         const historyBody = document.querySelector('[data-scheduler-history-body="1"]');
@@ -1992,7 +2024,78 @@ function metisInitSettingsUi() {
         });
     }
 
+    function openSchedulerTaskEditor(row) {
+        const taskSlug = String(row.getAttribute('data-cron-task-row') || '').trim();
+        if (!taskSlug || row.getAttribute('data-cron-task-editable') !== '1') return;
+        const task = {
+            label: row.getAttribute('data-cron-task-label') || taskSlug,
+            interval_minutes: parseInt(row.getAttribute('data-cron-task-frequency-minutes') || '60', 10) || 60,
+            run_time: row.getAttribute('data-cron-task-run-time') || '',
+        };
+        const modalId = 'metis-scheduler-task-editor';
+        let modal = document.getElementById(modalId);
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = modalId;
+            modal.className = 'metis-modal-backdrop metis-scheduler-task-editor';
+            modal.setAttribute('aria-hidden', 'true');
+            modal.innerHTML = '<div class="metis-modal metis-modal-sm" role="dialog" aria-modal="true" aria-labelledby="metis-scheduler-task-editor-title">' +
+                '<div class="metis-modal-header"><h2 class="metis-modal-title" id="metis-scheduler-task-editor-title">Edit scheduled job</h2><button type="button" class="metis-modal-close" data-scheduler-task-editor-close aria-label="Close">&times;</button></div>' +
+                '<div class="metis-modal-body"><p class="metis-help" data-scheduler-task-editor-task></p><div class="metis-field"><label for="metis-scheduler-task-frequency">Frequency</label><select id="metis-scheduler-task-frequency" class="metis-select" data-metis-select-trigger-class="metis-input"><option value="1">Every minute</option><option value="5">Every 5 minutes</option><option value="15">Every 15 minutes</option><option value="30">Every 30 minutes</option><option value="60">Every hour</option><option value="120">Every 2 hours</option><option value="360">Every 6 hours</option><option value="720">Every 12 hours</option><option value="1440">Every day</option></select></div><div class="metis-field"><label for="metis-scheduler-task-run-time">Preferred daily run time</label><input id="metis-scheduler-task-run-time" class="metis-input" type="time" step="60"><p class="metis-help">Used for daily tasks; leave blank to keep interval-based timing.</p></div><label class="metis-checkbox-row"><input type="checkbox" id="metis-scheduler-task-overnight"> <span>Run only overnight (midnight–6:00 AM)</span></label><p class="metis-help">Double-click the job row to enable or disable it.</p></div>' +
+                '<div class="metis-modal-footer"><button type="button" class="metis-btn metis-btn-ghost" data-scheduler-task-editor-close>Cancel</button><button type="button" class="metis-btn" data-scheduler-task-editor-save>Save changes</button></div>' +
+                '</div>';
+            document.body.appendChild(modal);
+            if (window.Metis && Metis.ui && Metis.ui.select && typeof Metis.ui.select.init === 'function') {
+                Metis.ui.select.init(modal);
+            }
+            modal.querySelectorAll('[data-scheduler-task-editor-close]').forEach(function (button) {
+                button.addEventListener('click', function () { Metis.modal.close(modal); });
+            });
+            modal.addEventListener('click', function (event) {
+                if (event.target === modal) Metis.modal.close(modal);
+            });
+            modal.querySelector('[data-scheduler-task-editor-save]').addEventListener('click', function () {
+                const activeRow = modal._schedulerTaskRow;
+                if (!activeRow) return;
+                const slug = String(activeRow.getAttribute('data-cron-task-row') || '').trim();
+                const frequency = modal.querySelector('#metis-scheduler-task-frequency').value;
+                const runTime = modal.querySelector('#metis-scheduler-task-run-time').value;
+                const overnight = modal.querySelector('#metis-scheduler-task-overnight').checked ? '1' : '0';
+                activeRow.classList.add('is-saving');
+                postSchedulerUpdate({ task_slug: slug, interval_minutes: frequency, overnight_only: overnight, run_time: runTime }).then(function (data) {
+                    const updated = data && data.task ? data.task : {};
+                    activeRow.setAttribute('data-cron-task-overnight', updated.overnight_only ? '1' : '0');
+                    activeRow.setAttribute('data-cron-task-frequency-minutes', String(updated.interval_minutes || frequency));
+                    activeRow.setAttribute('data-cron-task-run-time', String(updated.run_time || runTime));
+                    const frequencyEl = activeRow.querySelector('[data-cron-task-frequency]');
+                    if (frequencyEl) frequencyEl.textContent = modal.querySelector('#metis-scheduler-task-frequency').selectedOptions[0].textContent.replace(/^Every /, '');
+                    showToast('success', 'Job settings saved.');
+                    Metis.modal.close(modal);
+                    return refreshSchedulerSnapshot();
+                }).catch(function (error) {
+                    showToast('error', error && error.message ? error.message : 'Job settings update failed.');
+                }).finally(function () {
+                    activeRow.classList.remove('is-saving');
+                });
+            });
+        }
+        modal._schedulerTaskRow = row;
+        modal.querySelector('[data-scheduler-task-editor-task]').textContent = String(task.label || taskSlug);
+        const frequencySelect = modal.querySelector('#metis-scheduler-task-frequency');
+        frequencySelect.value = String(task.interval_minutes || 60);
+        if (frequencySelect.value !== String(task.interval_minutes || 60)) frequencySelect.value = '60';
+        modal.querySelector('#metis-scheduler-task-overnight').checked = row.getAttribute('data-cron-task-overnight') === '1';
+        modal.querySelector('#metis-scheduler-task-run-time').value = task.run_time;
+        Metis.modal.open(modal);
+    }
+
     document.querySelectorAll('[data-cron-task-row]').forEach(function (row) {
+        row.addEventListener('click', function (event) {
+            if (event.target.closest('input, button, textarea, select, label, a')) return;
+            if (row.getAttribute('data-cron-task-editable') !== '1') return;
+            openSchedulerTaskEditor(row);
+        });
+
         row.addEventListener('dblclick', function (event) {
             if (!event.target.closest('[data-cron-task-row]')) return;
             if (event.target.closest('input, button, textarea, select, label, a')) return;
@@ -2019,41 +2122,12 @@ function metisInitSettingsUi() {
                 row.classList.remove('is-saving');
             });
         });
-    });
 
-    document.querySelectorAll('[data-cron-task-interval]').forEach(function (input) {
-        let lastSaved = String(input.value || '').trim();
-
-        function saveInterval() {
-            const taskSlug = String(input.getAttribute('data-cron-task-interval') || '').trim();
-            const nextValue = String(input.value || '').trim();
-            if (!taskSlug || nextValue === '' || nextValue === lastSaved) return;
-
-            const row = input.closest('[data-cron-task-row]');
-            if (row) row.classList.add('is-saving');
-
-            postSchedulerUpdate({
-                task_slug: taskSlug,
-                interval_minutes: nextValue,
-            }).then(function (data) {
-                if (data && data.task && data.task.interval_minutes) {
-                    input.value = String(data.task.interval_minutes);
-                    lastSaved = String(data.task.interval_minutes);
-                } else {
-                    lastSaved = nextValue;
-                }
-                showToast('success', 'Cadence saved.');
-                return refreshSchedulerSnapshot();
-            }).catch(function (error) {
-                input.value = lastSaved;
-                showToast('error', error && error.message ? error.message : 'Cadence update failed.');
-            }).finally(function () {
-                if (row) row.classList.remove('is-saving');
-            });
-        }
-
-        input.addEventListener('change', saveInterval);
-        input.addEventListener('blur', saveInterval);
+        row.addEventListener('focusout', function (event) {
+            if (!row.contains(event.relatedTarget)) {
+                row.classList.remove('is-editing');
+            }
+        });
     });
 
     document.querySelectorAll('[data-cron-run-now]').forEach(function (button) {
@@ -2400,7 +2474,6 @@ function metisInitSettingsUi() {
                     body.append('metis_action_nonce', Metis.ajax.nonceFor(action, (window.metisAjax && window.metisAjax.nonce) || ''));
 
                     const originalLabel = button.textContent;
-                    let completedSuccessfully = false;
                     button.disabled = true;
                     button.textContent = 'Applying...';
                     updateReleaseProgressPanel(panel, { percent: 1, message: 'Starting release update.' });
@@ -2416,7 +2489,6 @@ function metisInitSettingsUi() {
                         };
                         updateReleaseProgressPanel(panel, progress);
                         if (result.ok) {
-                            completedSuccessfully = true;
                             showToast('success', String(data.message || 'Release update completed.'));
                             return refreshSettingsLiveRoot().catch(function (refreshError) {
                                 showToast('error', refreshError && refreshError.message ? refreshError.message : 'Release update completed, but the page could not refresh.');
@@ -2429,13 +2501,6 @@ function metisInitSettingsUi() {
                         showToast('error', error && error.message ? error.message : 'Release update failed.');
                     }).finally(function () {
                         stopProgressPolling();
-                        if (!completedSuccessfully) {
-                            window.setTimeout(function () {
-                                pollReleaseProgress(token, panel, false);
-                            }, 500);
-                        } else {
-                            hideAboutProgress('core');
-                        }
                         button.disabled = false;
                         button.textContent = originalLabel;
                     });
@@ -2598,13 +2663,13 @@ function metisInitSettingsUi() {
         return Metis.request.postForm(window.metisAjax || null, action, body, 'Settings AJAX not configured.').then(function (data) {
             const progress = data && data.progress ? data.progress : {};
             updateReleaseProgressPanel(panel, progress);
-            return { ok: true, done: !!(stopWhenDone && progress && progress.done) };
+            return { ok: true, done: !!(stopWhenDone && progress && progress.done), progress: progress };
         }).catch(function (error) {
             return { ok: false, done: false, message: error && error.message ? String(error.message) : 'Progress update failed.' };
         });
     }
 
-    function startReleaseProgressPolling(token, panel) {
+    function startReleaseProgressPolling(token, panel, onComplete) {
         let active = true;
         let timer = null;
         let inFlight = false;
@@ -2624,6 +2689,7 @@ function metisInitSettingsUi() {
                 if (result && result.done) {
                     active = false;
                     window.clearTimeout(timer);
+                    if (typeof onComplete === 'function') onComplete(result.progress || {});
                     return;
                 }
                 if (result && result.ok) {

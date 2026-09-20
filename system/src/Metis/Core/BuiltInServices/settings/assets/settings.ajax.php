@@ -290,6 +290,12 @@ metis_ajax_register_handler( 'metis_backup_history_snapshot', function () {
             ? metis_runtime_format_datetime( $value, null, null, null, '' )
             : $value;
     };
+    if ( ! empty( $pause_status['paused_at'] ) ) {
+        $pause_status['paused_at_display'] = $display_datetime( (string) $pause_status['paused_at'] );
+    }
+    if ( ! empty( $pause_status['next_retry_at'] ) ) {
+        $pause_status['next_retry_at_display'] = $display_datetime( (string) $pause_status['next_retry_at'] );
+    }
     $rows = [];
     foreach ( $runs as $run ) {
         if ( ! is_array( $run ) ) {
@@ -298,6 +304,15 @@ metis_ajax_register_handler( 'metis_backup_history_snapshot', function () {
         $components = is_array( $run['components'] ?? null ) ? $run['components'] : [];
         $metadata = is_array( $run['metadata'] ?? null ) ? $run['metadata'] : [];
         $progress = is_array( $metadata['progress'] ?? null ) ? $metadata['progress'] : [];
+        $retry_summary = '';
+        if ( (string) ( $run['status'] ?? '' ) === 'failed' && ! empty( $pause_status['last_failure_run_uuid'] ) && (string) $pause_status['last_failure_run_uuid'] === (string) ( $run['run_uuid'] ?? '' ) ) {
+            $retry_count = max( 0, (int) ( $pause_status['retry_failure_count'] ?? 0 ) );
+            if ( ! empty( $pause_status['escalated'] ) ) {
+                $retry_summary = 'Automatic retries were exhausted. Manual remediation is required.';
+            } elseif ( ! empty( $pause_status['next_retry_at_display'] ) ) {
+                $retry_summary = sprintf( 'Automatic retry %d of %d is scheduled for %s.', $retry_count, 1, (string) $pause_status['next_retry_at_display'] );
+            }
+        }
         $rows[] = [
             'run_uuid' => (string) ( $run['run_uuid'] ?? '' ),
             'status' => (string) ( $run['status'] ?? 'unknown' ),
@@ -316,6 +331,7 @@ metis_ajax_register_handler( 'metis_backup_history_snapshot', function () {
             'progress_updated_at' => (string) ( $progress['updated_at'] ?? '' ),
             'progress_updated_at_display' => $display_datetime( (string) ( $progress['updated_at'] ?? '' ) ),
             'last_error' => (string) ( $run['last_error'] ?? '' ),
+            'retry_summary' => $retry_summary,
         ];
     }
 
@@ -1218,6 +1234,13 @@ metis_ajax_register_handler( 'metis_release_apply', function () {
 }, [
     'module' => 'settings',
     'permission' => 'edit',
+    'allow_additional_fields' => false,
+    'schema' => [
+        'tag' => [ 'type' => 'string', 'required' => true ],
+        'nonce' => [ 'type' => 'string', 'required' => false ],
+        'metis_action_nonce' => [ 'type' => 'string', 'required' => false ],
+        'metis_csrf_action' => [ 'type' => 'string', 'required' => false ],
+    ],
 ] );
 
 metis_ajax_register_handler( 'metis_release_apply_now', function () {
@@ -1252,6 +1275,7 @@ metis_ajax_register_handler( 'metis_release_apply_now', function () {
     };
 
     $write_progress( [
+        'tag' => $tag,
         'stage' => 'start',
         'message' => 'Starting release update.',
         'percent' => 1,
@@ -1273,14 +1297,11 @@ metis_ajax_register_handler( 'metis_release_apply_now', function () {
     }
 
     $result_ok = ! empty( $result['ok'] );
-    $final_percent = $result_ok
-        ? 100
-        : max( 1, min( 99, (int) ( $last_progress['percent'] ?? 1 ) ) );
     $final_progress = [
         'tag' => $tag,
         'stage' => $result_ok ? 'complete' : 'failed',
         'message' => (string) ( $result['message'] ?? ( $result_ok ? 'Release update completed.' : 'Release update failed.' ) ),
-        'percent' => $final_percent,
+        'percent' => $result_ok ? 100 : max( 1, min( 99, (int) ( $last_progress['percent'] ?? 1 ) ) ),
         'context' => is_array( $last_progress['context'] ?? null ) ? $last_progress['context'] : [],
         'done' => true,
         'result' => $result,
@@ -1297,6 +1318,14 @@ metis_ajax_register_handler( 'metis_release_apply_now', function () {
     'module' => 'settings',
     'permission' => 'edit',
     'nonce_action' => metis_ajax_nonce_action( 'metis_release_apply_now' ),
+    'allow_additional_fields' => false,
+    'schema' => [
+        'tag' => [ 'type' => 'string', 'required' => true ],
+        'progress_token' => [ 'type' => 'string', 'required' => true ],
+        'nonce' => [ 'type' => 'string', 'required' => false ],
+        'metis_action_nonce' => [ 'type' => 'string', 'required' => false ],
+        'metis_csrf_action' => [ 'type' => 'string', 'required' => false ],
+    ],
 ] );
 
 metis_ajax_register_handler( 'metis_release_apply_progress', function () {
@@ -1323,6 +1352,13 @@ metis_ajax_register_handler( 'metis_release_apply_progress', function () {
     'nonce_action' => metis_ajax_nonce_action( 'metis_release_apply_progress' ),
     'rate_limit' => 120,
     'rate_window_seconds' => 60,
+    'allow_additional_fields' => false,
+    'schema' => [
+        'progress_token' => [ 'type' => 'string', 'required' => true ],
+        'nonce' => [ 'type' => 'string', 'required' => false ],
+        'metis_action_nonce' => [ 'type' => 'string', 'required' => false ],
+        'metis_csrf_action' => [ 'type' => 'string', 'required' => false ],
+    ],
 ] );
 
 metis_ajax_register_handler( 'metis_release_rollback', function () {
@@ -1330,6 +1366,12 @@ metis_ajax_register_handler( 'metis_release_rollback', function () {
 }, [
     'module' => 'settings',
     'permission' => 'edit',
+    'allow_additional_fields' => false,
+    'schema' => [
+        'nonce' => [ 'type' => 'string', 'required' => false ],
+        'metis_action_nonce' => [ 'type' => 'string', 'required' => false ],
+        'metis_csrf_action' => [ 'type' => 'string', 'required' => false ],
+    ],
 ] );
 
 metis_ajax_register_handler( 'metis_operations_queue_command', function () {
@@ -1350,6 +1392,10 @@ metis_ajax_register_handler( 'metis_operations_queue_command', function () {
 }, [
     'module' => 'settings',
     'permission' => 'edit',
+    'allow_additional_fields' => false,
+    'schema' => [
+        'command' => [ 'type' => 'string', 'required' => true ],
+    ],
 ] );
 
 metis_ajax_register_handler( 'metis_scheduler_update_task_settings', function () {
@@ -1399,8 +1445,32 @@ metis_ajax_register_handler( 'metis_scheduler_update_task_settings', function ()
         Core_Settings_Service::set( 'system_cron_task_intervals', $overrides, false );
     }
 
+    if ( isset( metis_request_post()['overnight_only'] ) ) {
+        $overnight_tasks = Core_Settings_Service::get( 'system_cron_overnight_tasks', [] );
+        $overnight_tasks = is_array( $overnight_tasks ) ? $overnight_tasks : [];
+        $overnight_tasks[ $task_slug ] = (string) metis_request_post()['overnight_only'] === '1';
+        Core_Settings_Service::set( 'system_cron_overnight_tasks', $overnight_tasks, false );
+    }
+
+    if ( array_key_exists( 'run_time', metis_request_post() ) ) {
+        $run_times = Core_Settings_Service::get( 'system_cron_task_run_times', [] );
+        $run_times = is_array( $run_times ) ? $run_times : [];
+        $run_time = trim( (string) metis_request_post()['run_time'] );
+        if ( $run_time !== '' && ! preg_match( '/^(?:[01]\d|2[0-3]):[0-5]\d$/', $run_time ) ) {
+            metis_runtime_send_json_error( [ 'message' => 'Run time must use 24-hour HH:MM format.' ], 400 );
+        }
+        if ( $run_time === '' ) {
+            unset( $run_times[ $task_slug ] );
+        } else {
+            $run_times[ $task_slug ] = $run_time;
+        }
+        Core_Settings_Service::set( 'system_cron_task_run_times', $run_times, false );
+    }
+
     $refreshed = Metis_Cron_Manager::registered_tasks();
     $task = $refreshed[ $task_slug ] ?? $registered[ $task_slug ];
+    $run_times = Core_Settings_Service::get( 'system_cron_task_run_times', [] );
+    $run_times = is_array( $run_times ) ? $run_times : [];
 
     metis_runtime_send_json_success( [
         'message' => 'Task settings updated.',
@@ -1408,10 +1478,20 @@ metis_ajax_register_handler( 'metis_scheduler_update_task_settings', function ()
             'slug' => $task_slug,
             'enabled' => ! empty( $task['enabled'] ),
             'interval_minutes' => max( 1, (int) ceil( ( (int) ( $task['interval'] ?? 300 ) ) / MINUTE_IN_SECONDS ) ),
+            'overnight_only' => ! empty( $task['overnight_only'] ),
+            'run_time' => (string) ( $run_times[ $task_slug ] ?? '' ),
         ],
     ] );
 }, [
     'module' => 'settings',
     'permission' => 'edit',
     'nonce_action' => metis_ajax_nonce_action( 'metis_scheduler_update_task_settings' ),
+    'allow_additional_fields' => false,
+    'schema' => [
+        'task_slug' => [ 'type' => 'string', 'required' => true ],
+        'enabled' => [ 'type' => 'boolean', 'required' => false ],
+        'interval_minutes' => [ 'type' => 'integer', 'required' => false ],
+        'overnight_only' => [ 'type' => 'boolean', 'required' => false ],
+        'run_time' => [ 'type' => 'string', 'required' => false ],
+    ],
 ] );

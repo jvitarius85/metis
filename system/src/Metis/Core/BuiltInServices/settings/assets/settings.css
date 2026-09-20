@@ -855,6 +855,84 @@
     padding: 10px;
 }
 
+.metis-settings-navigation {
+    gap: 0;
+    padding: 14px 10px 10px;
+}
+
+.metis-settings-navigation-title {
+    margin: 0 4px 4px;
+}
+
+.metis-settings-navigation-intro {
+    margin: 0 4px 12px;
+    color: var(--metis-text-muted);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.metis-settings-navigation .metis-list-sidebar-nav {
+    gap: 5px;
+    margin: 0;
+}
+
+.metis-settings-navigation-group {
+    border: 1px solid transparent;
+    border-radius: 8px;
+}
+
+.metis-settings-navigation-group[open] {
+    border-color: var(--metis-border);
+    background: var(--metis-bg);
+}
+
+.metis-settings-navigation-group-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 10px;
+    color: var(--metis-text);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .055em;
+    list-style: none;
+    text-transform: uppercase;
+}
+
+.metis-settings-navigation-group-summary::-webkit-details-marker {
+    display: none;
+}
+
+.metis-settings-navigation-group-summary span::before {
+    content: '+';
+    color: var(--metis-text-muted);
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1;
+}
+
+.metis-settings-navigation-group[open] .metis-settings-navigation-group-summary span::before {
+    content: '−';
+}
+
+.metis-settings-navigation-group-summary:focus-visible {
+    border-radius: 6px;
+    outline: 2px solid var(--metis-primary);
+    outline-offset: -2px;
+}
+
+.metis-settings-navigation-group-items {
+    display: grid;
+    gap: 2px;
+    padding: 0 5px 6px;
+}
+
+.metis-settings-navigation .metis-list-sidebar-nav-item {
+    padding: 8px 9px;
+}
+
 .metis-settings-links {
     display: flex;
     flex-wrap: wrap;
@@ -886,6 +964,25 @@
     color: #fff;
 }
 
+@media (max-width: 900px) {
+    .metis-settings-navigation {
+        display: block;
+        padding: 12px;
+    }
+
+    .metis-settings-navigation .metis-list-sidebar-nav {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+}
+
+@media (max-width: 560px) {
+    .metis-settings-navigation .metis-list-sidebar-nav {
+        grid-template-columns: 1fr;
+    }
+}
+
 .metis-scheduler-queue-table .metis-premium-row,
 .metis-scheduler-queue-table .metis-premium-header {
     grid-template-columns: minmax(170px, 2fr) repeat(4, minmax(84px, 1fr));
@@ -893,12 +990,12 @@
 
 .metis-scheduler-table .metis-premium-row,
 .metis-scheduler-table .metis-premium-header {
-    grid-template-columns: minmax(220px, 2fr) minmax(90px, .9fr) minmax(150px, 1.2fr) minmax(120px, 1fr) minmax(140px, 1.15fr);
+    grid-template-columns: minmax(220px, 2fr) minmax(90px, .9fr) minmax(130px, 1.1fr) minmax(150px, 1.2fr) minmax(140px, 1.15fr) minmax(150px, 1.2fr);
 }
 
 .metis-scheduler-table.is-admin .metis-premium-row,
 .metis-scheduler-table.is-admin .metis-premium-header {
-    grid-template-columns: minmax(220px, 2fr) minmax(90px, .9fr) minmax(150px, 1.2fr) minmax(120px, 1fr) minmax(140px, 1.15fr) minmax(100px, .85fr);
+    grid-template-columns: minmax(220px, 2fr) minmax(90px, .9fr) minmax(130px, 1.1fr) minmax(150px, 1.2fr) minmax(140px, 1.15fr) minmax(150px, 1.2fr) minmax(100px, .85fr);
 }
 
 .metis-scheduler-history-table .metis-premium-row,
@@ -1760,8 +1857,82 @@
     box-shadow: inset 0 0 0 2px #93c5fd;
 }
 
+.metis-scheduler-table .metis-scheduler-row[data-cron-task-editable="1"] {
+    cursor: pointer;
+}
+
+.metis-scheduler-table .metis-scheduler-row.is-editing {
+    outline: 2px solid rgba(79, 70, 229, .35);
+    outline-offset: -2px;
+}
+
+.metis-scheduler-task-editor .metis-modal {
+    width: min(420px, calc(100vw - 32px));
+}
+
+.metis-scheduler-task-editor .metis-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin: -4px 0 20px;
+    padding: 0 0 14px;
+    border-bottom: 1px solid var(--metis-border);
+}
+
+.metis-scheduler-task-editor .metis-modal-title {
+    margin: 0;
+}
+
+.metis-scheduler-task-editor .metis-modal-close {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--metis-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--metis-text);
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.metis-scheduler-task-editor .metis-modal-close:hover,
+.metis-scheduler-task-editor .metis-modal-close:focus-visible {
+    background: #eef2fb;
+    border-color: var(--metis-primary);
+    color: var(--metis-primary);
+    outline: none;
+}
+
+.metis-scheduler-task-editor .metis-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--metis-border);
+}
+
+.metis-scheduler-task-editor .metis-checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-top: 16px;
+    color: var(--metis-text);
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.metis-scheduler-task-editor .metis-checkbox-row input {
+    margin-top: 3px;
+}
+
 .metis-scheduler-table .metis-scheduler-row [data-cron-task-interval] {
-    width: 88px;
+    width: 150px;
     border: 0;
     background: transparent;
     box-shadow: none;

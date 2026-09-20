@@ -144,7 +144,7 @@ if ( ! function_exists( 'metis_portal_normalize_focus_card' ) ) {
             'desc' => trim( (string) ( $card['desc'] ?? '' ) ),
             'url' => $url,
             'metrics' => metis_portal_normalize_focus_metrics( (array) ( $card['metrics'] ?? [] ) ),
-            'updated' => trim( (string) ( $card['updated'] ?? metis_current_datetime()->format( 'M j, g:i a' ) ) ),
+            'updated' => trim( (string) ( $card['updated'] ?? metis_runtime_format_datetime( metis_current_datetime() ) ) ),
             'priority' => (int) ( $card['priority'] ?? 50 ),
         ];
     }
