@@ -75,13 +75,10 @@ Fresh closeout audit results:
   - `includes/.htaccess`
   - `includes/index.php`
 - `core/` is no longer present in the repository tree.
-- `system/` still exists, but the executable files are confirmed to be thin launchers only:
-  - `system/ajax.php`
-  - `system/cron.php`
+- `system/` still exists, and the only remaining executable launcher is:
   - `system/shell.php`
-  - `system/webhooks.php`
-  Each file only requires `src/Metis/Core/Kernel/Runtime.php` and calls `metis_kernel_execute(...)`.
-- The non-runtime leftover `system/CHANGELOG.txt` has been removed, so `system/` now contains launcher files only.
+  It only requires `src/Metis/Core/Kernel/Runtime.php` and calls `metis_kernel_execute(...)`.
+- The non-runtime leftover `system/CHANGELOG.txt` has been removed, so `system/` no longer exposes public HTTP wrapper launchers.
 - No active runtime ownership was found under `includes/core`, `includes/modules`, `includes/apis`, or `core/*`.
 - The last public bridge wrappers previously carried by `src/Metis/Core/Runtime/StandaloneBootstrap.php` have been removed.
 - Live callers now use runtime-owned helpers directly for:

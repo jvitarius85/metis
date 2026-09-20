@@ -1,6 +1,17 @@
 # Settings
 
-Configure workspace settings, integrations, and system tools.
+Configure the workspace, connected services, system operations, and recovery tools.
+
+## Navigation
+
+Settings are grouped around administrator tasks while retaining the existing routes:
+
+- **Workspace**: General, User Experience, Branding, and Navigation.
+- **Services & Integrations**: Email, Payments, Google Workspace, Calendar, and Drive.
+- **Development & Operations**: API & Endpoints, Logging, Cache, Jobs & Tasks, and System Health. The legacy Runtime route remains available for existing links but is not shown in the administrator navigation.
+- **Recovery & Support**: Backup, About, and Help. Modules Store remains a separate administration area.
+
+The sidebar keeps the active group expanded and lets administrators expand other groups as needed. Links are alphabetized within each group, reducing visual noise without hiding any setting or changing its URL, permission, or save contract.
 
 ## Routes
 

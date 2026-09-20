@@ -2,11 +2,16 @@
 
 Create email campaigns, manage newsletter theme settings, and track delivery.
 
+## List Visibility
+
+Each newsletter list has independent **status** and **visibility**. Active public lists are available to website newsletter signup forms. Active private lists remain available for internal membership management and campaign audiences, but cannot be selected or subscribed to through public website signup routes.
+
 ## Routes
 
 - Base route: `/newsletter`
 - `/newsletter/dashboard` -> `dashboard.php`
 - `/newsletter/campaigns` -> `campaigns.php`
+- `/newsletter/campaigns/{campaign-code}/details` -> sent campaign delivery and engagement statistics
 - `/newsletter/theme` -> `theme.php`
 - `/newsletter/editor` -> `editor.php`
 - `/newsletter/lists` -> `lists.php`
@@ -16,6 +21,8 @@ Create email campaigns, manage newsletter theme settings, and track delivery.
 
 - **Dashboard** template: `dashboard.php`
 - **Campaigns** template: `campaigns.php`
+- **Campaign details**: combines aggregate delivery counts, a native engagement funnel, recipient activity, delivery-health timing, and unique-recipient conversion rates. Delivery success uses resolved delivery results; open, click-through, and unsubscribe rates use delivered recipients; click-to-open uses unique opens.
+- **Campaign actions**: rendered through `metis_action_pill()` / `Metis.ui.actionPill`. Navigation actions use `href`; queue, delete, and archive actions declare their centralized AJAX endpoint and scalar payload. Newsletter preserves its confirmation prompts, then invokes `Metis.ui.actionPill.request()` so nonce handling, busy state, error feedback, and success events remain shared. Large-text and navigation-label modes render the controls as a vertical, non-wrapping action group and use horizontal table scrolling rather than breaking labels into letters.
 - **Theme** template: `theme.php`
 - **Editor** template: `editor.php`
 - **Lists** template: `lists.php`

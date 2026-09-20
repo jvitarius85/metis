@@ -35,9 +35,6 @@ All runtime application logic must live in:
 Only these execution entrypoints are allowed:
 
 - `index.php`
-- `system/ajax.php`
-- `system/webhooks.php`
-- `system/cron.php`
 - `system/shell.php`
 
 Entrypoints must be thin launchers only. They must immediately delegate execution into the core runtime.

@@ -6,6 +6,7 @@ Structured website management for pages, posts, categories, menus, redirects, te
 
 - Base route: `/website`
 - `/website/dashboard` -> `dashboard.php`
+- `/website/analytics` -> `analytics.php`
 - `/website/editor` -> `editor.php`
 - `/website/pages` -> `pages.php`
 - `/website/posts` -> `posts.php`
@@ -63,6 +64,14 @@ Structured website management for pages, posts, categories, menus, redirects, te
 - `website_post_tag_map` (`metis_website_post_tag_map`)
 - `website_posts` (`metis_website_posts`)
 - `website_redirects` (`metis_website_redirects`)
+- `website_analytics_daily` (`metis_website_analytics_daily`)
+- `website_analytics_visits` (`metis_website_analytics_visits`)
+- `website_analytics_dimensions` (`metis_website_analytics_dimensions`)
+- `website_analytics_events` (`metis_website_analytics_events`)
+
+## First-Party Analytics
+
+Website → Analytics reports page views, cookie-based unique visitors, top pages, traffic sources, device/browser groups, UTM campaign activity, and aggregated engagement such as calls-to-action, downloads, external/contact links, popups, forms, scroll depth, and active time. It uses no external provider and never stores IP addresses, raw user agents, or query strings. A random first-party cookie is hashed before short-lived visitor deduplication; its hashes are pruned after 90 days while daily aggregate reporting remains available. Do Not Track and Global Privacy Control requests are respected.
 - `website_revisions` (`metis_website_revisions`)
 - `website_templates` (`metis_website_templates`)
 - `website_theme_config` (`metis_website_theme_config`)
@@ -72,3 +81,4 @@ Structured website management for pages, posts, categories, menus, redirects, te
 
 - CSS: `website.css`, `theme-admin.css`
 - JS: `website.js`
+- Image Carousel block: supports up to 12 images, smooth slide, fade, crossfade, tile-flip, reveal, or cinematic transitions, a per-image display duration, and either a link or an existing Website popup action. Slide pushes the outgoing image offscreen as the next image enters; tile-flip builds a dense responsive grid of roughly 48px tiles from the outgoing image, then alternates horizontal and vertical flips to reveal the next image underneath. Configure popup forms in Website → Popups, then select that popup for the image action.
