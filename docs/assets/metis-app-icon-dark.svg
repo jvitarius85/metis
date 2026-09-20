@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Metis app icon for dark surfaces</title>
+  <desc id="desc">A rounded navy app tile with the Metis North Shield mark.</desc>
+  <rect width="512" height="512" rx="112" fill="#101A35"/>
+  <path fill="#FFF" d="M256 48 432 130v148c0 101-70 146-176 186C150 424 80 379 80 278V130L256 48Z"/>
+  <path fill="#88EDD4" d="m256 82 36 96-36-21-36 21 36-96Z"/>
+  <path fill="#101A35" d="M128 326V196h45l83 86 83-86h45v130h-48v-59l-80 80-80-80v59h-48Z"/>
+</svg>
