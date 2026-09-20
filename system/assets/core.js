@@ -309,56 +309,74 @@ Metis.time = {
         return Number.isNaN(date.getTime()) ? null : date;
     },
 
-    intlOptions(format, fallback) {
-        const fmt = String(format || '').trim();
-        const has = function (token) { return fmt.indexOf(token) >= 0; };
-        const options = Object.assign({ timeZone: this.timezone() }, fallback || {});
+    parts(value) {
+        const date = this.parse(value);
+        if (!date) return null;
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: this.timezone(), weekday: 'long', year: 'numeric', month: 'long',
+            day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true
+        });
+        const parts = formatter.formatToParts(date).reduce(function (carry, part) {
+            if (part.type !== 'literal') carry[part.type] = part.value;
+            return carry;
+        }, {});
+        const numeric = new Intl.DateTimeFormat('en-US', {
+            timeZone: this.timezone(), year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+        }).formatToParts(date).reduce(function (carry, part) {
+            if (part.type !== 'literal') carry[part.type] = part.value;
+            return carry;
+        }, {});
+        parts.numericHour = Number(numeric.hour || '0');
+        parts.numericMonth = Number(numeric.month || '1');
+        parts.numericDay = Number(numeric.day || '1');
+        return parts;
+    },
 
-        if (has('l')) options.weekday = 'long';
-        else if (has('D')) options.weekday = 'short';
-
-        if (has('Y')) options.year = 'numeric';
-        else if (has('y')) options.year = '2-digit';
-
-        if (has('F')) options.month = 'long';
-        else if (has('M')) options.month = 'short';
-        else if (has('m')) options.month = '2-digit';
-        else if (has('n')) options.month = 'numeric';
-
-        if (has('d')) options.day = '2-digit';
-        else if (has('j')) options.day = 'numeric';
-
-        if (has('H') || has('h')) options.hour = '2-digit';
-        else if (has('G') || has('g')) options.hour = 'numeric';
-
-        if (has('i')) options.minute = '2-digit';
-        if (has('s')) options.second = '2-digit';
-
-        if (has('a') || has('A') || has('g') || has('h')) options.hour12 = true;
-        if (has('G') || has('H')) options.hour12 = false;
-
-        return options;
+    formatPhp(value, format, empty) {
+        const parts = this.parts(value);
+        if (!parts) return String(empty || '');
+        const hour24 = parts.numericHour;
+        const hour12 = hour24 % 12 || 12;
+        const weekdayShort = String(parts.weekday || '').slice(0, 3);
+        const monthShort = String(parts.month || '').slice(0, 3);
+        const year = String(parts.year || '');
+        const tokenValues = {
+            d: String(parts.numericDay).padStart(2, '0'), D: weekdayShort, j: String(parts.numericDay), l: String(parts.weekday || ''),
+            m: String(parts.numericMonth).padStart(2, '0'), M: monthShort, n: String(parts.numericMonth), F: String(parts.month || ''),
+            Y: year, y: year.slice(-2), a: String(parts.dayPeriod || '').toLowerCase(), A: String(parts.dayPeriod || '').toUpperCase(),
+            g: String(hour12), G: String(hour24), h: String(hour12).padStart(2, '0'), H: String(hour24).padStart(2, '0'),
+            i: String(parts.minute || '00').padStart(2, '0'), s: String(parts.second || '00').padStart(2, '0')
+        };
+        let output = '';
+        let escaped = false;
+        String(format || '').split('').forEach(function (token) {
+            if (escaped) { output += token; escaped = false; return; }
+            if (token === '\\') { escaped = true; return; }
+            output += Object.prototype.hasOwnProperty.call(tokenValues, token) ? tokenValues[token] : token;
+        });
+        return output;
     },
 
     format(value, options) {
         const date = this.parse(value);
         if (!date) return String((options && options.empty) || '');
         const format = options && options.format ? String(options.format) : this.datetimeFormat();
-        return new Intl.DateTimeFormat(undefined, this.intlOptions(format)).format(date);
+        return this.formatPhp(date, format, options && options.empty);
     },
 
     formatDate(value, options) {
         const date = this.parse(value);
         if (!date) return String((options && options.empty) || '');
         const format = options && options.format ? String(options.format) : this.dateFormat();
-        return new Intl.DateTimeFormat(undefined, this.intlOptions(format, { year: 'numeric', month: 'numeric', day: 'numeric' })).format(date);
+        return this.formatPhp(date, format, options && options.empty);
     },
 
     formatTime(value, options) {
         const date = this.parse(value);
         if (!date) return String((options && options.empty) || '');
         const format = options && options.format ? String(options.format) : this.timeFormat();
-        return new Intl.DateTimeFormat(undefined, this.intlOptions(format, { hour: 'numeric', minute: '2-digit' })).format(date);
+        return this.formatPhp(date, format, options && options.empty);
     }
 };
 
@@ -801,6 +819,9 @@ Metis.request = (function() {
         if (!body.has('nonce')) {
             body.set('nonce', resolved.nonce);
         }
+        if (action && !body.has('metis_csrf_action')) {
+            body.set('metis_csrf_action', 'metis_ajax:' + String(action));
+        }
         var csrf = body.get('metis_action_nonce') || body.get('nonce') || '';
         return fetch(resolved.ajax_url, {
             method: 'POST',
@@ -819,6 +840,9 @@ Metis.request = (function() {
         body.set('metis_action_nonce', resolvedNonceFor(resolved, action));
         if (!body.has('nonce')) {
             body.set('nonce', resolved.nonce);
+        }
+        if (action && !body.has('metis_csrf_action')) {
+            body.set('metis_csrf_action', 'metis_ajax:' + String(action));
         }
         var csrf = body.get('metis_action_nonce') || body.get('nonce') || '';
         return fetch(resolved.ajax_url, {
@@ -849,9 +873,6 @@ Metis.request = (function() {
 Metis.navigation = (function() {
     var allowedPhpPaths = {
         'index.php': true,
-        'system/ajax.php': true,
-        'system/cron.php': true,
-        'system/webhooks.php': true,
         'system/shell.php': true
     };
 
@@ -1135,6 +1156,183 @@ Metis.toast = (function() {
 Metis.ui = Metis.ui || {};
 Metis.ui.ajax = Metis.ajax;
 Metis.ui.toast = Metis.toast;
+Metis.ui.actionPill = (function() {
+    function validIcon(icon) {
+        return /^[a-z0-9][a-z0-9-]*$/i.test(String(icon || '')) ? String(icon).toLowerCase() : '';
+    }
+
+    function applyAttributes(node, attributes) {
+        Object.keys(attributes || {}).forEach(function(name) {
+            if (!/^(?:data|aria)-[a-z0-9:_-]+$/i.test(name)) return;
+            node.setAttribute(name, String(attributes[name] == null ? '' : attributes[name]));
+        });
+    }
+
+    function requestPayload(value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+        var payload = {};
+        Object.keys(value).forEach(function(name) {
+            if (!/^[a-z][a-z0-9:_-]*$/i.test(name)) return;
+            var item = value[name];
+            if (item == null || ['string', 'number', 'boolean'].indexOf(typeof item) === -1) return;
+            payload[name] = typeof item === 'boolean' ? (item ? '1' : '0') : String(item);
+        });
+        return payload;
+    }
+
+    function applyRequest(node, config) {
+        var endpoint = String(config.endpoint || '').trim();
+        if (!endpoint) return;
+        node.setAttribute('data-metis-action-pill-endpoint', endpoint);
+        var method = String(config.method || 'POST').trim().toUpperCase();
+        node.setAttribute('data-metis-action-pill-method', ['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(method) !== -1 ? method : 'POST');
+        var payload = requestPayload(config.payload);
+        if (Object.keys(payload).length) node.setAttribute('data-metis-action-pill-payload', JSON.stringify(payload));
+        var successMessage = String(config.successMessage || '').trim();
+        if (successMessage) node.setAttribute('data-metis-action-pill-success-message', successMessage);
+    }
+
+    function create(actions, options) {
+        var group = document.createElement('div');
+        group.className = 'metis-action-pill';
+        group.setAttribute('role', 'group');
+        group.setAttribute('aria-label', String((options && options.label) || 'Actions'));
+
+        (Array.isArray(actions) ? actions : []).forEach(function(action) {
+            var config = action && typeof action === 'object' ? action : {};
+            var label = String(config.label || '').trim();
+            if (!label) return;
+            var href = String(config.href || '').trim();
+            var control = document.createElement(href ? 'a' : 'button');
+            control.className = 'metis-action-pill-button';
+            (Array.isArray(config.classes) ? config.classes : []).forEach(function(className) {
+                if (/^[a-z][a-z0-9_-]*$/i.test(String(className || ''))) control.classList.add(String(className));
+            });
+            if (config.danger) control.classList.add('is-danger');
+            if (href) control.setAttribute('href', href); else control.setAttribute('type', 'button');
+            var accessibleLabel = String(config.ariaLabel || label);
+            control.setAttribute('aria-label', accessibleLabel);
+            control.setAttribute('title', accessibleLabel);
+            applyAttributes(control, config.attributes || {});
+            applyRequest(control, config);
+
+            var icon = validIcon(config.icon);
+            if (icon) {
+                var iconNode = document.createElement('img');
+                iconNode.className = 'metis-action-pill-icon-image';
+                iconNode.setAttribute('src', '/svg/' + encodeURIComponent(icon));
+                iconNode.setAttribute('alt', '');
+                iconNode.setAttribute('aria-hidden', 'true');
+                control.appendChild(iconNode);
+            }
+            var labelNode = document.createElement('span');
+            labelNode.className = 'metis-action-pill-label';
+            labelNode.textContent = label;
+            control.appendChild(labelNode);
+            group.appendChild(control);
+        });
+        return group;
+    }
+
+    function render(target, actions, options) {
+        var root = typeof target === 'string' ? document.querySelector(target) : target;
+        if (!root) return null;
+        root.replaceChildren(create(actions, options));
+        return root.querySelector('.metis-action-pill');
+    }
+
+    function requestFromControl(control) {
+        var payload = {};
+        try {
+            payload = requestPayload(JSON.parse(control.getAttribute('data-metis-action-pill-payload') || '{}'));
+        } catch (error) {
+            payload = {};
+        }
+        return {
+            endpoint: String(control.getAttribute('data-metis-action-pill-endpoint') || '').trim(),
+            method: String(control.getAttribute('data-metis-action-pill-method') || 'POST').trim().toUpperCase(),
+            payload: payload
+        };
+    }
+
+    function dispatchRequestEvent(control, type, detail) {
+        control.dispatchEvent(new CustomEvent('metis:action-pill:' + type, {
+            bubbles: true,
+            detail: detail
+        }));
+    }
+
+    function invokeEndpoint(control) {
+        var request = requestFromControl(control);
+        if (!request.endpoint) return Promise.resolve(null);
+        var endpointUrl;
+        try {
+            endpointUrl = new URL(request.endpoint, window.location.href);
+        } catch (error) {
+            return Promise.reject(new Error('Action endpoint is invalid.'));
+        }
+        if (endpointUrl.origin !== window.location.origin) {
+            return Promise.reject(new Error('Action endpoint must use this site.'));
+        }
+
+        var ajaxUrl = new URL(String((Metis.ajax && (Metis.ajax.url || Metis.ajax.ajax_url)) || ''), window.location.href);
+        var isAjaxEndpoint = endpointUrl.href === ajaxUrl.href;
+        var body;
+        if (isAjaxEndpoint && request.payload.action && Metis.ajax && typeof Metis.ajax.formData === 'function') {
+            body = Metis.ajax.formData(request.payload.action, request.payload);
+        } else {
+            body = new FormData();
+            Object.keys(request.payload).forEach(function(name) { body.append(name, request.payload[name]); });
+        }
+        var csrf = body.get('metis_action_nonce') || body.get('nonce') || '';
+        return fetch(endpointUrl.href, {
+            method: ['POST', 'PUT', 'PATCH', 'DELETE'].indexOf(request.method) !== -1 ? request.method : 'POST',
+            credentials: 'same-origin',
+            headers: metisCsrfHeaders(csrf),
+            body: body
+        }).then(function(response) {
+            return Metis.ajax.parseJson(response);
+        }).then(function(response) {
+            if (!response || response.success === false) throw new Error(Metis.ajax.message(response));
+            return response;
+        });
+    }
+
+    function request(control) {
+        if (!(control instanceof Element) || !control.matches('.metis-action-pill-button[data-metis-action-pill-endpoint]')) {
+            return Promise.reject(new Error('Action endpoint is unavailable.'));
+        }
+        if (control.getAttribute('aria-busy') === 'true') return Promise.reject(new Error('Action is already in progress.'));
+        control.setAttribute('aria-busy', 'true');
+        control.classList.add('is-loading');
+        if ('disabled' in control) control.disabled = true;
+        return invokeEndpoint(control).then(function(response) {
+            var detail = { control: control, response: response, request: requestFromControl(control) };
+            dispatchRequestEvent(control, 'success', detail);
+            var message = String(control.getAttribute('data-metis-action-pill-success-message') || '').trim();
+            if (message && Metis.toast && typeof Metis.toast.success === 'function') Metis.toast.success(message);
+            return response;
+        }).catch(function(error) {
+            var detail = { control: control, error: error, request: requestFromControl(control) };
+            dispatchRequestEvent(control, 'error', detail);
+            if (Metis.toast && typeof Metis.toast.error === 'function') Metis.toast.error(error && error.message ? error.message : 'Action failed.');
+            throw error;
+        }).finally(function() {
+            control.removeAttribute('aria-busy');
+            control.classList.remove('is-loading');
+            if ('disabled' in control) control.disabled = false;
+        });
+    }
+
+    document.addEventListener('click', function(event) {
+        var target = event.target instanceof Element ? event.target.closest('.metis-action-pill-button[data-metis-action-pill-endpoint]') : null;
+        if (!target) return;
+        event.preventDefault();
+        request(target).catch(function() {});
+    });
+
+    return { create: create, render: render, invoke: invokeEndpoint, request: request };
+}());
 Metis.ui.loading = (function() {
     function set(target, busy, options) {
         var node = typeof target === 'string' ? document.querySelector(target) : target;
@@ -1204,8 +1402,8 @@ Metis.ui.select = (function() {
             return isEnhanceable(scope) ? [scope] : [];
         }
 
-        var selectList = Array.prototype.slice.call(scope.querySelectorAll('select.metis-select, select[data-metis-ui-select="1"]'));
-        if (scope instanceof HTMLElement && scope.matches('select.metis-select, select[data-metis-ui-select="1"]')) {
+        var selectList = Array.prototype.slice.call(scope.querySelectorAll('select.metis-select, select.metis-input, select[data-metis-ui-select="1"]'));
+        if (scope instanceof HTMLElement && scope.matches('select.metis-select, select.metis-input, select[data-metis-ui-select="1"]')) {
             selectList.unshift(scope);
         }
 
@@ -1253,7 +1451,31 @@ Metis.ui.select = (function() {
         var list = document.createElement('div');
         list.className = 'metis-ui-select__list';
         list.setAttribute('role', 'listbox');
+        list.addEventListener('wheel', function(event) {
+            var scrollingUp = event.deltaY < 0;
+            var scrollingDown = event.deltaY > 0;
+            var atTop = list.scrollTop <= 0;
+            var atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
+            if ((scrollingUp && atTop) || (scrollingDown && atBottom)) {
+                event.preventDefault();
+            }
+            event.stopPropagation();
+        }, { passive: false });
         panel.appendChild(list);
+
+        var search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'metis-ui-select__search';
+        search.placeholder = 'Search options…';
+        search.setAttribute('aria-label', 'Search options');
+        search.hidden = select.dataset.metisSelectSearchable !== '1';
+        search.addEventListener('input', function() {
+            filterOptions(wrapper, search.value);
+        });
+        search.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') { close(wrapper); trigger.focus(); }
+        });
+        panel.insertBefore(search, list);
 
         wrapper.appendChild(trigger);
         wrapper.appendChild(panel);
@@ -1339,7 +1561,7 @@ Metis.ui.select = (function() {
         var panel = wrapper.querySelector('.metis-ui-select__panel');
         var list = wrapper.querySelector('.metis-ui-select__list');
         if (!trigger || !panel || !list) return;
-
+        wrapper.classList.toggle('is-searchable', select.dataset.metisSelectSearchable === '1');
         trigger.className = buildTriggerClass(select);
         applyVariant(wrapper, select);
 
@@ -1382,10 +1604,21 @@ Metis.ui.select = (function() {
             renderOptionContent(optionButton, select, option);
             list.appendChild(optionButton);
         });
+        var search = panel.querySelector('.metis-ui-select__search');
+        if (search) {
+            search.hidden = select.dataset.metisSelectSearchable !== '1';
+            filterOptions(wrapper, search.value || '');
+        }
     }
 
     function buildTriggerClass(select) {
-        var baseClass = String(select.dataset.metisSelectTriggerClass || 'metis-select').trim() || 'metis-select';
+        var baseClass = String(select.dataset.metisSelectTriggerClass || '').trim();
+        if (!baseClass) {
+            var sourceClasses = Array.prototype.slice.call(select.classList).filter(function(className) {
+                return className !== 'metis-ui-select__native';
+            });
+            baseClass = sourceClasses.length ? sourceClasses.join(' ') : 'metis-select';
+        }
         return baseClass + ' metis-ui-select__trigger';
     }
 
@@ -1475,7 +1708,7 @@ Metis.ui.select = (function() {
     }
 
     function focusAdjacent(wrapper, direction) {
-        var options = Array.prototype.slice.call(wrapper.querySelectorAll('.metis-ui-select__option:not(:disabled)'));
+        var options = Array.prototype.slice.call(wrapper.querySelectorAll('.metis-ui-select__option:not(:disabled):not([hidden])'));
         var selectedIndex = -1;
         if (options.length === 0) return;
         var current = document.activeElement;
@@ -1494,6 +1727,14 @@ Metis.ui.select = (function() {
         if (nextIndex < 0) nextIndex = options.length - 1;
         if (nextIndex >= options.length) nextIndex = 0;
         options[nextIndex].focus();
+    }
+
+    function filterOptions(wrapper, query) {
+        var normalized = String(query || '').trim().toLowerCase();
+        wrapper.querySelectorAll('.metis-ui-select__option').forEach(function(option) {
+            var label = String(option.textContent || '').toLowerCase();
+            option.hidden = normalized !== '' && !label.includes(normalized);
+        });
     }
 
     function open(target) {
@@ -1545,16 +1786,31 @@ Metis.ui.select = (function() {
 
         wrapper.classList.remove('is-open-up');
         var triggerRect = trigger instanceof HTMLElement ? trigger.getBoundingClientRect() : wrapper.getBoundingClientRect();
-        var panelHeight = panel.offsetHeight || panel.scrollHeight || 0;
-        if (panelHeight <= 0) return;
-
-        var spaceBelow = window.innerHeight - triggerRect.bottom;
-        var spaceAbove = triggerRect.top;
-        var shouldOpenUp = spaceBelow < (panelHeight + 16) && spaceAbove > spaceBelow;
+        var viewportPadding = 12;
+        var gap = 8;
+        var viewportWidth = Math.max(0, window.innerWidth);
+        var viewportHeight = Math.max(0, window.innerHeight);
+        var width = Math.min(triggerRect.width || wrapper.getBoundingClientRect().width, viewportWidth - (viewportPadding * 2));
+        var left = Math.min(Math.max(viewportPadding, triggerRect.left), Math.max(viewportPadding, viewportWidth - width - viewportPadding));
+        var spaceBelow = Math.max(0, viewportHeight - triggerRect.bottom - viewportPadding - gap);
+        var spaceAbove = Math.max(0, triggerRect.top - viewportPadding - gap);
+        var naturalHeight = panel.scrollHeight || panel.offsetHeight || 0;
+        var shouldOpenUp = spaceBelow < naturalHeight && spaceAbove > spaceBelow;
+        var availableHeight = Math.max(96, shouldOpenUp ? spaceAbove : spaceBelow);
+        panel.style.left = left + 'px';
+        panel.style.width = width + 'px';
+        panel.style.maxHeight = availableHeight + 'px';
+        var list = panel.querySelector('.metis-ui-select__list');
+        if (list instanceof HTMLElement) list.style.maxHeight = Math.max(72, availableHeight - 12) + 'px';
+        panel.style.top = shouldOpenUp ? 'auto' : (triggerRect.bottom + gap) + 'px';
+        panel.style.bottom = shouldOpenUp ? (viewportHeight - triggerRect.top + gap) + 'px' : 'auto';
         wrapper.classList.toggle('is-open-up', shouldOpenUp);
     }
 
-    function repositionOpenPanels() {
+    function repositionOpenPanels(event) {
+        if (event && event.target instanceof Element && event.target.closest('.metis-ui-select__list')) {
+            return;
+        }
         document.querySelectorAll('.metis-ui-select.is-open').forEach(function(wrapper) {
             positionPanel(wrapper);
         });
@@ -1568,6 +1824,28 @@ Metis.ui.select = (function() {
 
     window.addEventListener('resize', repositionOpenPanels);
     document.addEventListener('scroll', repositionOpenPanels, true);
+
+    function observeDynamicSelects() {
+        if (!document.body || typeof MutationObserver === 'undefined') return;
+        var observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                Array.prototype.forEach.call(mutation.addedNodes || [], function(node) {
+                    if (!(node instanceof HTMLElement)) return;
+                    if (node.matches('select.metis-select, select.metis-input, select[data-metis-ui-select="1"]')) {
+                        syncSelect(node);
+                    }
+                    listEnhanceable(node).forEach(syncSelect);
+                });
+            });
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    if (document.body) {
+        observeDynamicSelects();
+    } else {
+        document.addEventListener('DOMContentLoaded', observeDynamicSelects, { once: true });
+    }
 
     return {
         init: function(root) {
@@ -2581,6 +2859,41 @@ Metis.modal = (function() {
         return modal;
     }
 
+    function bindCloseControl(button) {
+        if (!button || button._metisModalCloseInited) {
+            return;
+        }
+        button._metisModalCloseInited = true;
+        button.addEventListener('click', function() {
+            var target = button.dataset.modalClose;
+            var backdrop = target ? document.getElementById(target) : button.closest('.metis-modal-backdrop');
+            if (backdrop) close(backdrop);
+        });
+    }
+
+    function ensureCloseControl(modal) {
+        if (!modal || !modal.querySelector) {
+            return;
+        }
+        var dialog = modal.querySelector('.metis-modal');
+        if (!dialog) {
+            return;
+        }
+        var button = dialog.querySelector('.metis-modal-close');
+        if (!button) {
+            button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'metis-modal-close';
+            button.setAttribute('aria-label', 'Close');
+            button.textContent = '\u00d7';
+            dialog.appendChild(button);
+        }
+        if (!button.dataset.modalClose && modal.id) {
+            button.dataset.modalClose = modal.id;
+        }
+        bindCloseControl(button);
+    }
+
     function focusableNodes(container) {
         if (!container) {
             return [];
@@ -2632,6 +2945,7 @@ Metis.modal = (function() {
     function open(id) {
         var el = resolveModal(id);
         if (!el || el.classList.contains('metis-open')) return;
+        ensureCloseControl(el);
         if (window.Metis && Metis.a11y && typeof Metis.a11y.ensureDialogSemantics === 'function') {
             Metis.a11y.ensureDialogSemantics(el);
         }
@@ -2680,6 +2994,9 @@ Metis.modal = (function() {
         if (window.Metis && Metis.a11y && typeof Metis.a11y.enhance === 'function') {
             Metis.a11y.enhance(root);
         }
+        root.querySelectorAll('.metis-modal-backdrop').forEach(function(backdrop) {
+            ensureCloseControl(backdrop);
+        });
         /* Open triggers: [data-modal-open="modal-id"] */
         root.querySelectorAll('[data-modal-open]').forEach(function(btn) {
             if (btn._metisModalInited) return;
@@ -2689,13 +3006,7 @@ Metis.modal = (function() {
 
         /* Close triggers: [data-modal-close] or .metis-modal-close */
         root.querySelectorAll('[data-modal-close], .metis-modal-close').forEach(function(btn) {
-            if (btn._metisModalCloseInited) return;
-            btn._metisModalCloseInited = true;
-            btn.addEventListener('click', function() {
-                var target = btn.dataset.modalClose;
-                var backdrop = target ? document.getElementById(target) : btn.closest('.metis-modal-backdrop');
-                if (backdrop) close(backdrop);
-            });
+            bindCloseControl(btn);
         });
 
         /* Close on backdrop click */
@@ -4020,7 +4331,132 @@ Metis.nav = (function() {
             });
         }
 
+        function sidebarLayoutMetrics() {
+            var zoom = parseFloat(window.getComputedStyle(document.documentElement).zoom || '1');
+            if (!Number.isFinite(zoom) || zoom <= 0) zoom = 1;
+            return {
+                zoom: zoom,
+                width: window.innerWidth / zoom,
+                height: window.innerHeight / zoom
+            };
+        }
+
+        function sidebarUsesCompactLayout() {
+            return sidebarLayoutMetrics().width <= 900;
+        }
+
         var navScroll = sidebar.querySelector('.metis-sidebar-nav-scroll');
+        var mobileDrillStack = [];
+
+        function installMobileTapGuard(link) {
+            if (!link || link.dataset.metisTapGuard === 'true') return;
+            link.dataset.metisTapGuard = 'true';
+            var startX = 0;
+            var startY = 0;
+            var moved = false;
+            link.addEventListener('touchstart', function(event) {
+                var touch = event.touches && event.touches[0];
+                if (!touch) return;
+                startX = touch.clientX;
+                startY = touch.clientY;
+                moved = false;
+            }, { passive: true });
+            link.addEventListener('touchmove', function(event) {
+                var touch = event.touches && event.touches[0];
+                if (!touch) return;
+                if (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10) {
+                    moved = true;
+                    link.dataset.metisTouchMoved = 'true';
+                }
+            }, { passive: true });
+            link.addEventListener('touchend', function() {
+                if (moved) {
+                    window.setTimeout(function() { delete link.dataset.metisTouchMoved; }, 700);
+                }
+            }, { passive: true });
+        }
+
+        function leaveMobilePanel() {
+            var frame = mobileDrillStack.pop();
+            if (!frame) return;
+            if (frame.backButton && frame.backButton.parentNode) {
+                frame.backButton.parentNode.removeChild(frame.backButton);
+            }
+            if (frame.originalParent) {
+                frame.originalParent.insertBefore(frame.panel, frame.originalNextSibling || null);
+            }
+            frame.hiddenNodes.forEach(function(item) {
+                item.node.hidden = item.hidden;
+                item.node.style.display = item.display;
+            });
+            if (frame.triggerOwner) {
+                frame.triggerOwner.hidden = frame.triggerOwnerHidden;
+                frame.triggerOwner.style.display = frame.triggerOwnerDisplay;
+            }
+            if (frame.previousPanel) frame.previousPanel.hidden = frame.previousPanelHidden;
+            frame.panel.classList.remove('metis-mobile-panel-active');
+            frame.panel.style.display = '';
+            if (mobileDrillStack.length === 0 && navScroll) {
+                navScroll.classList.remove('metis-mobile-drilldown-active');
+                if (frame.rootGroup) closeGroup(frame.rootGroup);
+            }
+        }
+
+        function enterMobilePanel(panel, trigger, container, title) {
+            if (!sidebarUsesCompactLayout() || !panel || !trigger || !container) return;
+            if (panel.classList.contains('metis-mobile-panel-active')) return;
+            var hiddenNodes = [];
+            Array.prototype.slice.call(container.children).forEach(function(node) {
+                hiddenNodes.push({ node: node, hidden: node.hidden, display: node.style.display });
+                node.hidden = true;
+                node.style.display = 'none';
+            });
+            var triggerOwner = trigger;
+            var triggerOwnerHidden = triggerOwner.hidden;
+            var triggerOwnerDisplay = triggerOwner.style.display;
+            triggerOwner.hidden = true;
+            triggerOwner.style.display = 'none';
+            var triggerLink = trigger.querySelector(':scope > .metis-sidebar-group-link, :scope > .metis-sidebar-subitem-link');
+            var triggerHidden = triggerLink ? triggerLink.hidden : false;
+            if (triggerLink) triggerLink.hidden = true;
+            var previousPanel = container.classList.contains('metis-sidebar-submenu') ? container : null;
+            var previousPanelHidden = previousPanel ? previousPanel.hidden : false;
+            if (previousPanel) previousPanel.hidden = true;
+            var originalParent = panel.parentElement;
+            var originalNextSibling = panel.nextSibling;
+            if (navScroll && panel.parentNode !== navScroll) navScroll.appendChild(panel);
+            panel.hidden = false;
+            panel.style.display = 'block';
+            panel.classList.add('metis-mobile-panel-active');
+            var backButton = document.createElement('button');
+            backButton.type = 'button';
+            backButton.className = 'metis-sidebar-mobile-back';
+            backButton.innerHTML = '<span aria-hidden="true">‹</span><span>Back</span>';
+            backButton.setAttribute('aria-label', 'Back to ' + (title || 'previous menu'));
+            backButton.addEventListener('click', function(event) {
+                event.preventDefault();
+                event.stopPropagation();
+                leaveMobilePanel();
+            });
+            panel.insertBefore(backButton, panel.firstChild);
+            mobileDrillStack.push({
+                panel: panel,
+                originalParent: originalParent,
+                originalNextSibling: originalNextSibling,
+                trigger: triggerLink,
+                triggerHidden: triggerHidden,
+                triggerOwner: triggerOwner,
+                triggerOwnerHidden: triggerOwnerHidden,
+                triggerOwnerDisplay: triggerOwnerDisplay,
+                hiddenNodes: hiddenNodes,
+                backButton: backButton,
+                previousPanel: previousPanel,
+                previousPanelHidden: previousPanelHidden,
+                rootGroup: container === navScroll ? trigger : null
+            });
+            if (navScroll) navScroll.classList.add('metis-mobile-drilldown-active');
+        }
+
         if (navScroll) {
             navScroll.addEventListener('scroll', clearAllSidebarLabelPositions, { passive: true });
         }
@@ -4033,12 +4469,15 @@ Metis.nav = (function() {
             if (groupLink) {
                 groupLink.setAttribute('aria-expanded', 'false');
             }
-            if (submenu && window.innerWidth > 900) {
+            if (submenu && !sidebarUsesCompactLayout()) {
                 submenu.style.top = '';
                 submenu.style.left = '';
                 submenu.style.visibility = '';
                 submenu.style.position = '';
                 submenu.style.maxHeight = '';
+            }
+            if (submenu && sidebarUsesCompactLayout()) {
+                submenu.style.display = '';
             }
             if (submenu) {
                 submenu.setAttribute('aria-hidden', 'true');
@@ -4082,32 +4521,37 @@ Metis.nav = (function() {
                 subMenu.style.maxHeight = '';
                 subMenu.style.visibility = '';
             });
-            if (window.innerWidth > 900) {
+            if (!sidebarUsesCompactLayout()) {
+                var layoutMetrics = sidebarLayoutMetrics();
                 var viewportPadding = 8;
                 submenu.style.position = 'fixed';
-                submenu.style.maxHeight = Math.max(180, Math.floor(window.innerHeight * 0.82)) + 'px';
+                submenu.style.maxHeight = Math.max(180, Math.floor(layoutMetrics.height * 0.82)) + 'px';
                 submenu.style.visibility = 'hidden';
                 submenu.style.left = '-9999px';
                 submenu.style.top = '0px';
             }
             group.classList.add('is-open');
+            if (sidebarUsesCompactLayout()) {
+                submenu.style.display = 'block';
+            }
             if (groupLink) {
                 groupLink.setAttribute('aria-expanded', 'true');
             }
             submenu.setAttribute('aria-hidden', 'false');
-            if (window.innerWidth > 900) {
+            if (!sidebarUsesCompactLayout()) {
+                layoutMetrics = sidebarLayoutMetrics();
                 var rect = group.getBoundingClientRect();
                 var submenuRect = submenu.getBoundingClientRect();
-                var submenuHeight = submenuRect.height || submenu.offsetHeight || 220;
-                var submenuWidth = submenuRect.width || submenu.offsetWidth || 220;
-                var top = Math.min(Math.max(viewportPadding, rect.top), Math.max(viewportPadding, window.innerHeight - submenuHeight - viewportPadding));
-                var left = rect.right + 8;
-                if (left + submenuWidth > window.innerWidth - viewportPadding) {
-                    left = Math.max(viewportPadding, rect.left - submenuWidth - 8);
+                var submenuHeight = (submenuRect.height || submenu.offsetHeight || 220) / layoutMetrics.zoom;
+                var submenuWidth = (submenuRect.width || submenu.offsetWidth || 220) / layoutMetrics.zoom;
+                var top = Math.min(Math.max(viewportPadding, rect.top / layoutMetrics.zoom), Math.max(viewportPadding, layoutMetrics.height - submenuHeight - viewportPadding));
+                var left = (rect.right / layoutMetrics.zoom) + 8;
+                if (left + submenuWidth > layoutMetrics.width - viewportPadding) {
+                    left = Math.max(viewportPadding, (rect.left / layoutMetrics.zoom) - submenuWidth - 8);
                 }
                 submenu.style.top = top + 'px';
                 submenu.style.left = left + 'px';
-                submenu.style.maxHeight = Math.max(180, Math.floor(window.innerHeight * 0.82)) + 'px';
+                submenu.style.maxHeight = Math.max(180, Math.floor(layoutMetrics.height * 0.82)) + 'px';
                 submenu.style.visibility = '';
             }
         }
@@ -4119,11 +4563,13 @@ Metis.nav = (function() {
             if (!submenu) return;
 
             group.addEventListener('mouseenter', function() {
+                if (sidebarUsesCompactLayout()) return;
                 clearTimeout(closeTimer);
                 openGroup(group);
             });
 
             group.addEventListener('mouseleave', function(event) {
+                if (sidebarUsesCompactLayout()) return;
                 if (event && event.relatedTarget && submenu.contains(event.relatedTarget)) {
                     return;
                 }
@@ -4134,15 +4580,18 @@ Metis.nav = (function() {
             });
 
             if (groupLink) {
+                installMobileTapGuard(groupLink);
                 groupLink.addEventListener('click', function(event) {
-                    if (window.innerWidth <= 900) {
+                    if (groupLink.dataset.metisTouchMoved === 'true') {
                         event.preventDefault();
                         event.stopPropagation();
-                        if (group.classList.contains('is-open')) {
-                            closeGroup(group);
-                        } else {
-                            openGroup(group);
-                        }
+                        return;
+                    }
+                    if (sidebarUsesCompactLayout()) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (!group.classList.contains('is-open')) openGroup(group);
+                        enterMobilePanel(submenu, group, navScroll, groupLink.textContent.trim());
                         return;
                     }
                     if (String(groupLink.getAttribute('href') || '') === '#') {
@@ -4167,10 +4616,12 @@ Metis.nav = (function() {
             }
 
             submenu.addEventListener('mouseenter', function() {
+                if (sidebarUsesCompactLayout()) return;
                 clearTimeout(closeTimer);
             });
 
             submenu.addEventListener('mouseleave', function(event) {
+                if (sidebarUsesCompactLayout()) return;
                 if (event && event.relatedTarget && group.contains(event.relatedTarget)) {
                     return;
                 }
@@ -4181,11 +4632,13 @@ Metis.nav = (function() {
             });
 
             group.addEventListener('focusin', function() {
+                if (sidebarUsesCompactLayout()) return;
                 clearTimeout(closeTimer);
                 openGroup(group);
             });
 
             group.addEventListener('focusout', function() {
+                if (sidebarUsesCompactLayout()) return;
                 window.setTimeout(function() {
                     var active = document.activeElement;
                     var stillInside = !!(active && group.contains(active));
@@ -4220,6 +4673,9 @@ Metis.nav = (function() {
                     subMenu.style.visibility = '';
                     subMenu.style.position = '';
                     subMenu.setAttribute('aria-hidden', 'true');
+                    if (sidebarUsesCompactLayout()) {
+                        subMenu.style.display = '';
+                    }
                 }
                 function openSubGroup() {
                     submenu.querySelectorAll('.metis-sidebar-subitem-group.is-open').forEach(function(openSub) {
@@ -4235,31 +4691,38 @@ Metis.nav = (function() {
                             }
                         }
                     });
-                    if (window.innerWidth > 900) {
+                    if (!sidebarUsesCompactLayout()) {
+                        var subLayoutMetrics = sidebarLayoutMetrics();
                         subMenu.style.position = 'fixed';
-                        subMenu.style.maxHeight = Math.max(160, Math.floor(window.innerHeight * 0.8)) + 'px';
+                        subMenu.style.maxHeight = Math.max(160, Math.floor(subLayoutMetrics.height * 0.8)) + 'px';
                         subMenu.style.visibility = 'hidden';
                         subMenu.style.left = '-9999px';
                         subMenu.style.top = '0px';
                     }
                     subGroup.classList.add('is-open');
+                    if (sidebarUsesCompactLayout()) {
+                        subMenu.style.display = 'block';
+                    }
                     if (subLink) {
                         subLink.setAttribute('aria-expanded', 'true');
                     }
                     subMenu.setAttribute('aria-hidden', 'false');
-                    if (window.innerWidth > 900) {
+                    if (!sidebarUsesCompactLayout()) {
                         if (!subGroup.classList.contains('is-open')) return;
+                        subLayoutMetrics = sidebarLayoutMetrics();
                         var triggerRect = subGroup.getBoundingClientRect();
                         var menuRect = subMenu.getBoundingClientRect();
                         var viewportPadding = 8;
-                        var left = triggerRect.right + 8;
-                        var top = triggerRect.top - 6;
+                        var menuWidth = menuRect.width / subLayoutMetrics.zoom;
+                        var menuHeight = menuRect.height / subLayoutMetrics.zoom;
+                        var left = (triggerRect.right / subLayoutMetrics.zoom) + 8;
+                        var top = (triggerRect.top / subLayoutMetrics.zoom) - 6;
 
-                        if (left + menuRect.width > window.innerWidth - viewportPadding) {
-                            left = Math.max(viewportPadding, triggerRect.left - menuRect.width - 8);
+                        if (left + menuWidth > subLayoutMetrics.width - viewportPadding) {
+                            left = Math.max(viewportPadding, (triggerRect.left / subLayoutMetrics.zoom) - menuWidth - 8);
                         }
-                        if (top + menuRect.height > window.innerHeight - viewportPadding) {
-                            top = Math.max(viewportPadding, window.innerHeight - menuRect.height - viewportPadding);
+                        if (top + menuHeight > subLayoutMetrics.height - viewportPadding) {
+                            top = Math.max(viewportPadding, subLayoutMetrics.height - menuHeight - viewportPadding);
                         }
                         if (top < viewportPadding) {
                             top = viewportPadding;
@@ -4268,28 +4731,36 @@ Metis.nav = (function() {
                         subMenu.style.position = 'fixed';
                         subMenu.style.left = left + 'px';
                         subMenu.style.top = top + 'px';
-                        subMenu.style.maxHeight = Math.max(160, Math.floor(window.innerHeight * 0.8)) + 'px';
+                        subMenu.style.maxHeight = Math.max(160, Math.floor(subLayoutMetrics.height * 0.8)) + 'px';
                         subMenu.style.visibility = '';
                     }
                 }
 
                 subGroup.addEventListener('mouseenter', function() {
+                    if (sidebarUsesCompactLayout()) return;
                     openSubGroup();
                 });
 
-                subGroup.addEventListener('mouseleave', function() {});
+                subGroup.addEventListener('mouseleave', function() {
+                    if (sidebarUsesCompactLayout()) return;
+                });
 
                 subMenu.addEventListener('mouseenter', function() {
+                    if (sidebarUsesCompactLayout()) return;
                     openSubGroup();
                 });
 
-                subMenu.addEventListener('mouseleave', function() {});
+                subMenu.addEventListener('mouseleave', function() {
+                    if (sidebarUsesCompactLayout()) return;
+                });
 
                 subGroup.addEventListener('focusin', function() {
+                    if (sidebarUsesCompactLayout()) return;
                     openSubGroup();
                 });
 
                 subGroup.addEventListener('focusout', function() {
+                    if (sidebarUsesCompactLayout()) return;
                     window.setTimeout(function() {
                         var active = document.activeElement;
                         var stillInside = !!(active && subGroup.contains(active));
@@ -4301,15 +4772,37 @@ Metis.nav = (function() {
                 });
 
                 if (subLink) {
+                    installMobileTapGuard(subLink);
+                    function toggleSubGroupFromTouch(event) {
+                        if (!sidebarUsesCompactLayout()) return;
+                        if (subLink.dataset.metisTouchMoved === 'true') return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        subLink.dataset.metisTouchHandled = 'true';
+                        if (!subGroup.classList.contains('is-open')) openSubGroup();
+                        enterMobilePanel(subMenu, subGroup, submenu, subLink.textContent.trim());
+                        window.setTimeout(function() {
+                            delete subLink.dataset.metisTouchHandled;
+                        }, 700);
+                    }
+
+                    subLink.addEventListener('touchend', toggleSubGroupFromTouch, { passive: false });
                     subLink.addEventListener('click', function(event) {
-                        if (window.innerWidth <= 900) {
+                        if (subLink.dataset.metisTouchMoved === 'true') {
                             event.preventDefault();
                             event.stopPropagation();
-                            if (subGroup.classList.contains('is-open')) {
-                                closeSubGroup();
-                            } else {
-                                openSubGroup();
-                            }
+                            return;
+                        }
+                        if (subLink.dataset.metisTouchHandled === 'true') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                        }
+                        if (sidebarUsesCompactLayout()) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (!subGroup.classList.contains('is-open')) openSubGroup();
+                            enterMobilePanel(subMenu, subGroup, submenu, subLink.textContent.trim());
                             return;
                         }
                         event.preventDefault();
@@ -4389,7 +4882,7 @@ Metis.nav = (function() {
         });
 
         sidebar.addEventListener('click', function(event) {
-            if (window.innerWidth > 900) {
+            if (!sidebarUsesCompactLayout()) {
                 return;
             }
             var directLink = event.target.closest('.metis-sidebar-item[href], .metis-sidebar-subitem[href]');
@@ -4403,7 +4896,7 @@ Metis.nav = (function() {
         });
 
         window.addEventListener('resize', function() {
-            if (window.innerWidth > 900 && sidebar.classList.contains('is-open')) {
+            if (!sidebarUsesCompactLayout() && sidebar.classList.contains('is-open')) {
                 setSidebarOpen(false);
             }
         }, { passive: true });

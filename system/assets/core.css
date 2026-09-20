@@ -237,7 +237,7 @@ html[data-metis-contrast="true"] [tabindex]:focus-visible {
     padding: 0 10px;
     border: 1px solid var(--metis-border);
     border-radius: 12px;
-    background: var(--metis-surface);
+    background: transparent;
     color: var(--metis-text);
     cursor: pointer;
 }
@@ -841,6 +841,9 @@ html[data-metis-nav-labels="true"] .metis-sidebar-submenu {
     font-weight: 700;
     color: var(--metis-primary);
     white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .metis-topbar-right {
@@ -1888,10 +1891,7 @@ html[data-metis-contrast="true"] textarea:focus-visible {
 }
 
 .metis-ui-select__panel {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0;
-    right: 0;
+    position: fixed;
     z-index: 250;
     border: 1px solid var(--metis-border);
     border-radius: calc(var(--metis-radius) + 2px);
@@ -1900,15 +1900,41 @@ html[data-metis-contrast="true"] textarea:focus-visible {
     overflow: hidden;
 }
 
+.metis-ui-select__search {
+    display: block;
+    width: calc(100% - 12px);
+    margin: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--metis-border);
+    border-radius: var(--metis-radius);
+    background: #fff;
+    color: var(--metis-text);
+    font: inherit;
+}
+
+.metis-ui-select__search:focus {
+    outline: none;
+    border-color: var(--metis-primary);
+    box-shadow: 0 0 0 3px rgba(72,91,199,.18);
+}
+
+.metis-ui-select__search[hidden] {
+    display: none !important;
+}
+
 .metis-ui-select.is-open-up .metis-ui-select__panel {
     top: auto;
-    bottom: calc(100% + 8px);
 }
 
 .metis-ui-select__list {
     max-height: 280px;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 6px;
+}
+
+.metis-ui-select.is-searchable .metis-ui-select__list {
+    min-height: 150px;
 }
 
 .metis-ui-select__option {
@@ -1926,6 +1952,8 @@ html[data-metis-contrast="true"] textarea:focus-visible {
     text-align: left;
     transition: background-color var(--metis-transition), color var(--metis-transition);
 }
+
+.metis-ui-select__option[hidden] { display: none !important; }
 
 .metis-ui-select__option:hover,
 .metis-ui-select__option:focus-visible {
@@ -2130,6 +2158,115 @@ button[disabled],
 .metis-btn.is-disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
 
 .metis-btn-icon { padding: 6px; width: 32px; height: 32px; border-radius: var(--metis-radius); }
+
+/* Shared grouped row actions. Labels expand whenever an accessibility preference is active. */
+.metis-action-pill {
+    display: inline-flex;
+    align-items: stretch;
+    min-height: 36px;
+    border: 1px solid #c7d2fe;
+    border-radius: var(--metis-radius-pill);
+    overflow: hidden;
+    background: rgba(255, 255, 255, .75);
+}
+
+.metis-action-pill-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 42px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 0;
+    border-right: 1px solid rgba(199, 210, 254, .9);
+    background: #eef2ff;
+    color: #3346b5;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
+    transition: background var(--metis-transition), color var(--metis-transition), box-shadow var(--metis-transition);
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.metis-action-pill-button:last-child { border-right: 0; }
+.metis-action-pill-button:hover { background: #e0e7ff; color: #3346b5; box-shadow: 0 0 0 3px rgba(99, 102, 241, .12); text-decoration: none; }
+.metis-action-pill-button:focus-visible { position: relative; z-index: 1; background: #e0e7ff; color: #3346b5; box-shadow: 0 0 0 3px rgba(99, 102, 241, .12); outline: 0; }
+.metis-action-pill-button.is-danger { background: #fff1f2; color: #be123c; border-right: 0; }
+.metis-action-pill-button.is-danger:hover { background: #ffe4e6; color: #be123c; box-shadow: 0 0 0 3px rgba(244, 63, 94, .12); }
+.metis-action-pill-button.is-danger:focus-visible { background: #ffe4e6; color: #be123c; box-shadow: 0 0 0 3px rgba(244, 63, 94, .12); }
+
+.metis-action-pill-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 16px;
+}
+
+.metis-action-pill-icon svg,
+.metis-action-pill-icon-image { width: 16px; height: 16px; display: block; color: currentColor; }
+
+.metis-action-pill-icon svg {
+    stroke: currentColor;
+    stroke-width: .85px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.metis-action-pill-label { display: none; }
+
+/* Expanded labels are a deliberate alternate control layout, not a side effect
+   of contrast, motion, typography, or link-decoration preferences. */
+html:is(
+    [data-metis-large-text="true"],
+    [data-metis-nav-labels="true"]
+) .metis-action-pill-label {
+    display: inline;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
+html:is(
+    [data-metis-large-text="true"],
+    [data-metis-nav-labels="true"]
+) .metis-action-pill {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    min-width: 10.5rem;
+    max-width: 15rem;
+    border-radius: 10px;
+}
+
+html:is(
+    [data-metis-large-text="true"],
+    [data-metis-nav-labels="true"]
+) .metis-action-pill-button {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    justify-content: flex-start;
+    padding: 8px 12px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(199, 210, 254, .9);
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+}
+
+html:is(
+    [data-metis-large-text="true"],
+    [data-metis-nav-labels="true"]
+) .metis-action-pill-button:last-child { border-bottom: 0; }
+
+html[data-metis-large-text="true"] .metis-action-pill-button { min-height: 44px; font-size: 1rem; }
 
 .metis-btn-row {
     display: flex;
@@ -2572,10 +2709,32 @@ a.metis-chip:hover,
     gap: 8px;
 }
 
+.metis-alert[hidden] {
+    display: none !important;
+}
+
 .metis-alert-success { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
 .metis-alert-error   { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
 .metis-alert-warning { background: #fffbeb; color: #92400e; border-color: #fde68a; }
 .metis-alert-info    { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+
+/* Theme color binding is shared by Website Theme and menu button controls. */
+.metis-theme-color-wrap { display: flex; gap: 10px; align-items: center; }
+.metis-theme-color-dot {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 2px solid #d0d7e4;
+    box-shadow: 0 1px 2px rgba(16,24,40,.12);
+    cursor: pointer;
+    background: #fff;
+}
+.metis-theme-color-dot.is-locked,
+.metis-theme-color-dot:disabled { cursor: not-allowed; opacity: .95; }
+.metis-theme-color-wrap .metis-ui-select { flex: 1; min-width: 0; }
+.metis-ui-select--theme-binding .metis-ui-select__trigger { height: 42px; }
+.metis-ui-select--theme-binding .metis-ui-select__swatch { width: 24px; min-width: 24px; height: 24px; }
 
 .metis-callout {
     padding: 12px 16px;
@@ -3061,7 +3220,16 @@ a.metis-chip:hover,
 
 @media (max-width: 640px) {
     .metis-page-title { font-size: 26px; }
-    .metis-topbar     { padding: 0 14px; }
+    .metis-topbar     { padding: 0 10px; gap: 6px; }
+    .metis-topbar-left { gap: 8px; }
+    .metis-topbar-logo-img { max-width: 150px; height: 26px; }
+    .metis-topbar-right { gap: 6px; }
+    .metis-topbar-controls { gap: 6px; }
+    .metis-topbar-module { font-size: 14px; }
+    .metis-help-actions { gap: 5px; }
+    .metis-help-toggle { padding: 8px 10px; }
+    #metis-quick-actions { display: none; }
+    .metis-nav-toggle { width: 40px; height: 40px; }
     .metis-stats-row  { grid-template-columns: 1fr 1fr; }
     .metis-tile-grid  { grid-template-columns: 1fr; }
     .metis-modal      { padding: 20px 16px; }
@@ -3073,6 +3241,209 @@ a.metis-chip:hover,
 
     .metis-tab-sidebar { flex-direction: row; flex-wrap: wrap; position: static; padding: 6px; }
     .metis-tab-sidebar-btn { flex: 0 0 auto; padding: 6px 10px; font-size: 12px; }
+}
+
+/* Mobile navigation and list controls use a single, touch-first flow. */
+@media (max-width: 900px) {
+    .metis-sidebar {
+        width: min(92vw, 360px);
+        max-width: 360px;
+        height: 100dvh;
+        overscroll-behavior: contain;
+        box-shadow: 12px 0 32px rgba(15, 23, 42, .18);
+    }
+
+    .metis-sidebar-nav {
+        flex: 1 1 auto;
+        overflow: hidden;
+    }
+
+    .metis-sidebar-nav-scroll {
+        height: 100%;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 8px 10px 24px;
+    }
+
+    /* Touch devices should never open a desktop hover flyout. */
+    .metis-sidebar-group:hover > .metis-sidebar-submenu,
+    .metis-sidebar-group:focus-within > .metis-sidebar-submenu,
+    .metis-sidebar-subitem-group:hover > .metis-sidebar-subsubmenu,
+    .metis-sidebar-subitem-group:focus-within > .metis-sidebar-subsubmenu {
+        display: none;
+    }
+
+    .metis-sidebar-group.is-open > .metis-sidebar-submenu,
+    .metis-sidebar-subitem-group.is-open > .metis-sidebar-subsubmenu {
+        display: block;
+    }
+
+    .metis-sidebar-group-link,
+    .metis-sidebar-subitem,
+    .metis-sidebar-subitem-link {
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+    }
+
+    /* Groups are horizontal flex rows on desktop. Stack the trigger and its
+       submenu on touch screens so the submenu remains in the drawer flow. */
+    .metis-sidebar-group {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        flex: 0 0 auto;
+        width: calc(100% - 20px);
+        margin: 0 10px;
+        padding: 0;
+    }
+
+    .metis-sidebar-nav-scroll > .metis-sidebar-item {
+        width: calc(100% - 20px);
+        margin: 0 10px;
+    }
+
+    .metis-sidebar-group-link {
+        width: 100%;
+        justify-content: flex-start;
+        padding: 0 12px;
+        gap: 12px;
+        box-sizing: border-box;
+    }
+
+    .metis-sidebar-subitem-group {
+        display: block;
+    }
+
+    .metis-sidebar-group:not(.is-open) > .metis-sidebar-submenu,
+    .metis-sidebar-subitem-group:not(.is-open) > .metis-sidebar-subsubmenu {
+        display: none !important;
+    }
+
+    .metis-sidebar-group.is-open > .metis-sidebar-submenu,
+    .metis-sidebar-subitem-group.is-open > .metis-sidebar-subsubmenu {
+        display: block !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+
+    .metis-sidebar-submenu,
+    .metis-sidebar-subsubmenu {
+        border: 0;
+        border-left: 2px solid color-mix(in srgb, var(--metis-primary) 28%, var(--metis-border));
+        border-radius: 0;
+        background: transparent;
+        margin: 2px 0 8px 12px;
+        padding: 0 0 0 8px;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+    }
+
+    .metis-sidebar-submenu,
+    .metis-sidebar-subsubmenu,
+    .metis-sidebar-submenu-title,
+    .metis-sidebar-subitem,
+    .metis-sidebar-subitem-link {
+        color: #e8eaff;
+    }
+
+    .metis-sidebar-subitem,
+    .metis-sidebar-subitem-link {
+        border-radius: 8px;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .metis-sidebar-subitem:hover,
+    .metis-sidebar-subitem:focus-visible,
+    .metis-sidebar-subitem.is-active,
+    .metis-sidebar-subitem-group.is-open > .metis-sidebar-subitem-link {
+        background: rgba(137, 151, 255, .22);
+        color: #ffffff;
+    }
+
+    .metis-sidebar-mobile-back {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 100%;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 0;
+        border-bottom: 1px solid rgba(232, 234, 255, .18);
+        border-radius: 0;
+        background: transparent;
+        color: #ffffff;
+        padding: 0 10px 0 2px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 700;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .metis-sidebar-mobile-back span:first-child {
+        font-size: 25px;
+        font-weight: 400;
+        line-height: 1;
+    }
+
+    .metis-sidebar-mobile-back:active,
+    .metis-sidebar-mobile-back:focus-visible {
+        background: rgba(137, 151, 255, .22);
+        outline: none;
+    }
+
+    .metis-sidebar-submenu.metis-mobile-panel-active,
+    .metis-sidebar-subsubmenu.metis-mobile-panel-active {
+        width: 100%;
+        box-sizing: border-box;
+        margin-left: 0;
+        padding-left: 10px;
+        border-left: 0;
+        animation: metis-mobile-panel-in .18s ease-out both;
+    }
+
+    @keyframes metis-mobile-panel-in {
+        from { opacity: 0; transform: translateX(18px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+}
+
+@media (max-width: 640px) {
+    .metis-main {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .metis-list-sidebar,
+    .metis-sidebar-layout-sidebar-inner {
+        display: block;
+        padding: 0;
+    }
+
+    .metis-list-sidebar-section,
+    .metis-list-sidebar-actions {
+        width: 100%;
+        border-right: 0;
+        border-bottom: 1px solid var(--metis-border);
+        padding: 12px;
+    }
+
+    .metis-list-sidebar-actions {
+        display: grid;
+        gap: 8px;
+    }
+
+    .metis-list-sidebar-actions .metis-btn,
+    .metis-list-sidebar-actions .metis-btn-xs,
+    .metis-list-sidebar-section .metis-btn {
+        width: 100%;
+        min-height: 44px;
+    }
 }
 
 /* ============================================================
@@ -3108,6 +3479,32 @@ a.metis-chip:hover,
 }
 
 .metis-modal-title { margin: 0 0 20px; font-size: 22px; font-weight: 700; line-height: 1.1; }
+
+/* Shared modal close control: every standard modal has a persistent upper-right exit. */
+.metis-modal { position: relative; }
+.metis-modal .metis-modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 1;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--metis-border);
+    border-radius: 10px;
+    background: var(--metis-surface);
+    color: var(--metis-text-muted);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+.metis-modal .metis-modal-close:hover,
+.metis-modal .metis-modal-close:focus-visible {
+    color: var(--metis-primary);
+    border-color: var(--metis-primary);
+    outline: none;
+}
+.metis-modal .metis-modal-title { margin-right: 52px; }
 
 .metis-form-grid {
     display: grid;
