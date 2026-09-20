@@ -1529,12 +1529,32 @@ function metis_auth_login_customization(): array {
     return $resolved;
 }
 
+function metis_auth_inline_asset_contents( string $path ): string {
+    static $cache = [];
+
+    $path = trim( $path );
+    if ( $path === '' || ! is_readable( $path ) ) {
+        return '';
+    }
+
+    $mtime = (int) ( @filemtime( $path ) ?: 0 );
+    $key = $path . ':' . $mtime;
+    if ( array_key_exists( $key, $cache ) ) {
+        return (string) $cache[ $key ];
+    }
+
+    $contents = (string) file_get_contents( $path );
+    $cache = [ $key => $contents ];
+
+    return $contents;
+}
+
 function metis_auth_render_shell( string $title, string $body, int $status = 200 ): never {
     $custom = metis_auth_login_customization();
     $css_path = ( defined( 'METIS_PATH' ) ? rtrim( (string) METIS_PATH, '/\\' ) : dirname( __DIR__, 4 ) ) . '/system/assets/css/auth-shell.css';
     $js_path = ( defined( 'METIS_PATH' ) ? rtrim( (string) METIS_PATH, '/\\' ) : dirname( __DIR__, 4 ) ) . '/system/assets/js/auth-passkey-client.js';
-    $inline_css = is_readable( $css_path ) ? (string) file_get_contents( $css_path ) : '';
-    $inline_js = is_readable( $js_path ) ? (string) file_get_contents( $js_path ) : '';
+    $inline_css = metis_auth_inline_asset_contents( $css_path );
+    $inline_js = metis_auth_inline_asset_contents( $js_path );
     $background_style = 'background:' . metis_escape_attr( (string) $custom['background_color'] ) . ' center center / cover fixed no-repeat;';
     if ( ! empty( $custom['background_image'] ) ) {
         $background_style = 'background:' . metis_escape_attr( (string) $custom['background_color'] ) . ' url(' . metis_escape_url( (string) $custom['background_image'] ) . ') center center / cover fixed no-repeat;';
@@ -1916,10 +1936,13 @@ function metis_auth_handle_request( Metis_Http_Request $request ): bool {
     if ( (string) ( metis_request_get()['provider'] ?? '' ) === 'google_workspace' && isset( metis_request_get()['code'] ) && \Metis\Core\Application::has_service( 'auth_core' ) ) {
         try {
             metis_auth_rate_limit_check( 'google_workspace' );
+            $callback_redirect = array_key_exists( 'redirect_to', metis_request_get() )
+                ? (string) metis_request_get()['redirect_to']
+                : '';
             $result = \Metis\Core\Application::service( 'auth_core' )->finishGoogleWorkspaceLogin(
                 (string) metis_request_get()['code'],
                 (string) ( metis_request_get()['state'] ?? '' ),
-                $redirect
+                $callback_redirect
             );
             metis_runtime_redirect( (string) ( $result['redirect_url'] ?? $redirect ) );
         } catch ( Throwable $e ) {

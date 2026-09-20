@@ -14,6 +14,13 @@ metis_on('metis_assets_enqueue', function () {
         }
     };
     $asset_version = defined( 'METIS_VERSION' ) ? (string) METIS_VERSION : '1.0.0';
+    $core_asset_mtimes = array_filter( [
+        @filemtime( METIS_ASSETS_PATH . 'core.css' ),
+        @filemtime( METIS_ASSETS_PATH . 'core.js' ),
+    ], static fn ( $mtime ): bool => is_int( $mtime ) && $mtime > 0 );
+    if ( $core_asset_mtimes !== [] ) {
+        $asset_version .= '.' . max( $core_asset_mtimes );
+    }
     $asset_base_url = defined( 'METIS_URL' ) ? (string) METIS_URL : metis_trailingslashit( metis_home_url( '/' ) );
     $domain = metis_key_clean( (string) metis_get_query_var( 'metis_domain' ) );
     $view   = metis_key_clean( (string) metis_get_query_var( 'metis_view' ) );

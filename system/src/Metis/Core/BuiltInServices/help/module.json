@@ -53,7 +53,7 @@
                 "GET"
             ],
             "pattern": "#^/admin/help/?$#",
-            "handler": "Metis\\Modules\\Help\\HelpModule::handleIndexRoute"
+            "handler": "Metis\\Modules\\Help\\Controllers\\HelpPageController::handleIndexRoute"
         },
         {
             "name": "help.search",
@@ -61,7 +61,7 @@
                 "GET"
             ],
             "pattern": "#^/admin/help/search/?$#",
-            "handler": "Metis\\Modules\\Help\\HelpModule::handleSearchRoute"
+            "handler": "Metis\\Modules\\Help\\Controllers\\HelpPageController::handleSearchRoute"
         },
         {
             "name": "help.article",
@@ -69,7 +69,7 @@
                 "GET"
             ],
             "pattern": "#^/admin/help/article/(?P<slug>[a-z0-9-]+)/?$#",
-            "handler": "Metis\\Modules\\Help\\HelpModule::handleArticleRoute"
+            "handler": "Metis\\Modules\\Help\\Controllers\\HelpPageController::handleArticleRoute"
         },
         {
             "name": "help.category",
@@ -77,7 +77,7 @@
                 "GET"
             ],
             "pattern": "#^/admin/help/category/(?P<slug>[a-z0-9-]+)/?$#",
-            "handler": "Metis\\Modules\\Help\\HelpModule::handleCategoryRoute"
+            "handler": "Metis\\Modules\\Help\\Controllers\\HelpPageController::handleCategoryRoute"
         },
         {
             "name": "help.admin.articles",
@@ -85,7 +85,7 @@
                 "GET"
             ],
             "pattern": "#^/admin/help/articles/?$#",
-            "handler": "Metis\\Modules\\Help\\HelpModule::handleAdminArticlesRoute"
+            "handler": "Metis\\Modules\\Help\\Controllers\\HelpPageController::handleAdminArticlesRoute"
         },
         {
             "name": "help.admin.issue_resolution",
@@ -93,7 +93,7 @@
                 "GET"
             ],
             "pattern": "#^/admin/help/issue-resolution/?$#",
-            "handler": "Metis\\Modules\\Help\\HelpModule::handleAdminIssueResolutionRoute"
+            "handler": "Metis\\Modules\\Help\\Controllers\\HelpPageController::handleAdminIssueResolutionRoute"
         },
         {
             "name": "help.admin.create",
@@ -101,7 +101,7 @@
                 "GET"
             ],
             "pattern": "#^/admin/help/articles/create/?$#",
-            "handler": "Metis\\Modules\\Help\\HelpModule::handleAdminCreateRoute"
+            "handler": "Metis\\Modules\\Help\\Controllers\\HelpPageController::handleAdminCreateRoute"
         },
         {
             "name": "help.admin.edit",
@@ -109,7 +109,7 @@
                 "GET"
             ],
             "pattern": "#^/admin/help/articles/edit/(?P<id>[0-9]+)/?$#",
-            "handler": "Metis\\Modules\\Help\\HelpModule::handleAdminEditRoute"
+            "handler": "Metis\\Modules\\Help\\Controllers\\HelpPageController::handleAdminEditRoute"
         }
     ],
     "assets": {

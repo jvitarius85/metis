@@ -59,6 +59,7 @@ if ( class_exists( 'Metis_Cron_Manager' ) ) {
             'interval' => DAY_IN_SECONDS,
             'lock_ttl' => 3 * HOUR_IN_SECONDS,
             'module'   => 'core',
+            'intensive' => true,
         ]
     );
 }

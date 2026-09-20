@@ -34,35 +34,33 @@ final class Metis_Ajax_Controller_Registry {
             return;
         }
 
-        $module = metis_key_clean(
-            (string) (
-                $definition['module']
-                ?? ( function_exists( 'metis_security_infer_module_from_ajax_action' )
-                    ? metis_security_infer_module_from_ajax_action( $action )
-                    : '' )
-                ?? ''
-            )
-        );
+        $module = $this->normalize_module( $action, $definition );
+        $permission = $this->normalize_permission( $action, $definition );
+        $methods = $this->normalize_methods( $definition['methods'] ?? [ 'POST' ] );
+        $nonce_action = $this->normalize_nonce_action( $action, $definition );
+        $rate_limit = $this->normalize_rate_limit( $permission, $definition );
+        $rate_window = $this->normalize_rate_window( $definition );
 
         $this->controllers[ $action ] = array_merge(
             [
                 'action' => $action,
                 'module' => $module,
-                'permission' => (string) (
-                    $definition['permission']
-                    ?? ( function_exists( 'metis_security_infer_permission_from_ajax_action' )
-                        ? metis_security_infer_permission_from_ajax_action( $action )
-                        : '' )
-                ),
-                'methods' => [ 'POST' ],
-                'nonce_action' => metis_ajax_nonce_action( $action ),
-                'rate_limit' => (int) ( $definition['rate_limit'] ?? 0 ),
-                'rate_window_seconds' => (int) ( $definition['rate_window_seconds'] ?? 60 ),
+                'permission' => $permission,
+                'methods' => $methods,
+                'nonce_action' => $nonce_action,
+                'rate_limit' => $rate_limit,
+                'rate_window_seconds' => $rate_window,
                 'allow_additional_fields' => array_key_exists( 'allow_additional_fields', $definition ) ? (bool) $definition['allow_additional_fields'] : true,
                 'schema' => [],
             ],
             $definition
         );
+        $this->controllers[ $action ]['module'] = $module;
+        $this->controllers[ $action ]['permission'] = $permission;
+        $this->controllers[ $action ]['methods'] = $methods;
+        $this->controllers[ $action ]['nonce_action'] = $nonce_action;
+        $this->controllers[ $action ]['rate_limit'] = $rate_limit;
+        $this->controllers[ $action ]['rate_window_seconds'] = $rate_window;
 
         $this->controllers[ $action ]['schema'] = $this->normalize_schema(
             $this->controllers[ $action ]['schema'],
@@ -123,6 +121,22 @@ final class Metis_Ajax_Controller_Registry {
                     'type' => 'string',
                     'required' => true,
                 ],
+                'metis_action_nonce' => [
+                    'type' => 'string',
+                    'required' => false,
+                ],
+                'metis_csrf_action' => [
+                    'type' => 'string',
+                    'required' => false,
+                ],
+                'csrf_token' => [
+                    'type' => 'string',
+                    'required' => false,
+                ],
+                'security' => [
+                    'type' => 'string',
+                    'required' => false,
+                ],
             ],
             'allow_additional_fields' => $allow_additional_fields,
         ];
@@ -152,6 +166,70 @@ final class Metis_Ajax_Controller_Registry {
             'required' => ! empty( $definition['required'] ),
             'enum' => array_values( array_map( 'strval', (array) ( $definition['enum'] ?? [] ) ) ),
         ];
+    }
+
+    private function normalize_module( string $action, array $definition ): string {
+        $module = metis_key_clean( (string) ( $definition['module'] ?? '' ) );
+        if ( $module !== '' ) {
+            return $module;
+        }
+
+        if ( function_exists( 'metis_security_infer_module_from_ajax_action' ) ) {
+            return metis_key_clean( (string) ( metis_security_infer_module_from_ajax_action( $action ) ?? '' ) );
+        }
+
+        return '';
+    }
+
+    private function normalize_permission( string $action, array $definition ): string {
+        $permission = metis_key_clean( (string) ( $definition['permission'] ?? '' ) );
+        if ( $permission !== '' ) {
+            return $permission;
+        }
+
+        if ( function_exists( 'metis_security_infer_permission_from_ajax_action' ) ) {
+            $permission = metis_key_clean( metis_security_infer_permission_from_ajax_action( $action ) );
+        }
+
+        return $permission !== '' ? $permission : 'edit';
+    }
+
+    private function normalize_methods( mixed $methods ): array {
+        $normalized = [];
+
+        foreach ( (array) $methods as $method ) {
+            $candidate = strtoupper( trim( (string) $method ) );
+            if ( $candidate === '' ) {
+                continue;
+            }
+
+            $normalized[ $candidate ] = $candidate;
+        }
+
+        if ( $normalized === [] ) {
+            $normalized['POST'] = 'POST';
+        }
+
+        return array_values( $normalized );
+    }
+
+    private function normalize_nonce_action( string $action, array $definition ): string {
+        $nonce_action = trim( (string) ( $definition['nonce_action'] ?? '' ) );
+        return $nonce_action !== '' ? $nonce_action : metis_ajax_nonce_action( $action );
+    }
+
+    private function normalize_rate_limit( string $permission, array $definition ): int {
+        $rate_limit = (int) ( $definition['rate_limit'] ?? 0 );
+        if ( $rate_limit > 0 ) {
+            return $rate_limit;
+        }
+
+        return $permission === 'view' ? 180 : 90;
+    }
+
+    private function normalize_rate_window( array $definition ): int {
+        $rate_window = (int) ( $definition['rate_window_seconds'] ?? 60 );
+        return $rate_window > 0 ? $rate_window : 60;
     }
 }
 
@@ -487,14 +565,17 @@ function metis_core_register_ajax_controllers(): void {
         'module' => 'portal',
         'permission' => 'view',
         'nonce_action' => 'metis_core',
+        'allow_additional_fields' => false,
         'schema' => [
             'code' => [ 'type' => 'string', 'required' => true ],
+            'fuzzy' => [ 'type' => 'boolean', 'required' => false ],
         ],
     ] );
 
     metis_ajax_register_controller( 'metis_rehydrate_code_lookup', [
         'module' => 'settings',
         'permission' => 'edit',
+        'allow_additional_fields' => false,
         'schema' => [],
     ] );
 
@@ -502,6 +583,7 @@ function metis_core_register_ajax_controllers(): void {
         'module' => 'core',
         'permission' => 'view',
         'nonce_action' => 'metis_core',
+        'allow_additional_fields' => false,
         'schema' => [
             'key' => [ 'type' => 'string', 'required' => true ],
         ],

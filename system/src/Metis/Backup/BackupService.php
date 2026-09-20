@@ -12,6 +12,9 @@ final class BackupService {
     private const RUN_TIMEOUT_SECONDS = 3 * 60 * 60;
     private const LOCAL_ARTIFACT_STALE_SECONDS = 30 * 60;
     private const BACKUP_EXECUTION_REFRESH_SECONDS = 10 * 60;
+    private const MIN_FREE_STAGING_BYTES = 1024 * 1024 * 1024;
+    private const AUTO_RETRY_DELAY_SECONDS = HOUR_IN_SECONDS;
+    private const AUTO_RETRY_MAX_FAILURES = 2;
     private const DRIVE_RESUMABLE_UPLOAD_THRESHOLD_BYTES = 8 * 1024 * 1024;
     private const DRIVE_RESUMABLE_CHUNK_BYTES = 8 * 1024 * 1024;
     private const LOCAL_ARTIFACT_RETAINED_ERROR = 'Backup local artifacts were created, but Drive upload/finalization did not complete. Local artifact retained for review.';
@@ -22,7 +25,19 @@ final class BackupService {
     private const PAUSED_SETTING = 'backup_paused_until_fix';
     private const PAUSED_REASON_SETTING = 'backup_paused_reason';
     private const PAUSED_AT_SETTING = 'backup_paused_at';
-    private const RUNTIME_BACKUP_EXCLUDED_DIRS = [ 'backups', 'cache' ];
+    private const RETRY_FAILURE_COUNT_SETTING = 'backup_retry_failure_count';
+    private const RETRY_NEXT_ATTEMPT_AT_SETTING = 'backup_retry_next_attempt_at';
+    private const RETRY_LAST_FAILURE_STAGE_SETTING = 'backup_retry_last_failure_stage';
+    private const RETRY_LAST_FAILURE_RUN_SETTING = 'backup_retry_last_failure_run_uuid';
+    private const RETRY_ESCALATED_SETTING = 'backup_retry_escalated';
+    private const FAILURE_ALERTS_ENABLED_SETTING = 'backup_failure_alerts_enabled';
+    private const FAILURE_ALERT_RECIPIENTS_SETTING = 'backup_failure_alert_recipients';
+    private const RUNTIME_BACKUP_EXCLUDED_DIRS = [ 'backups', 'cache', 'module_updates', 'release', 'operator-backups', 'import', 'recovery', 'setup', 'system-cron', 'hermes', 'quarantine' ];
+    private const ARCHIVE_EXCLUDED_DIRS = [ '.git', '.svn', '.hg', '__MACOSX' ];
+    private const ARCHIVE_EXCLUDED_FILES = [ '.DS_Store', 'Thumbs.db', 'desktop.ini', '.gitignore' ];
+
+    private int $activeJobId = 0;
+    private int $lastLeaseRenewalAt = 0;
 
     private function database(): \Metis\Services\DatabaseService {
         return \function_exists( 'metis_db' ) ? \metis_db() : new \Metis\Services\DatabaseService();
@@ -77,12 +92,24 @@ final class BackupService {
 
         $pause = $this->backupPauseStatus();
         if ( $this->isScheduledTrigger( $trigger ) && ! empty( $pause['paused'] ) ) {
-            return [
-                'ok'      => false,
-                'status'  => 'paused',
-                'paused'  => true,
-                'error'   => 'Scheduled backups are paused: ' . (string) ( $pause['reason'] ?? 'manual repair is required.' ),
-            ];
+            if ( $this->scheduledRetryIsReady( $pause ) ) {
+                $this->resumeScheduledRetryWindow();
+            } else {
+                $message = 'Scheduled backups are paused: ' . (string) ( $pause['reason'] ?? 'manual repair is required.' );
+                if ( ! empty( $pause['next_retry_at'] ) ) {
+                    $message .= ' Automatic retry is scheduled for ' . (string) $pause['next_retry_at'] . '.';
+                }
+
+                return [
+                    'ok'             => false,
+                    'status'         => 'paused',
+                    'paused'         => true,
+                    'retry_due'      => ! empty( $pause['retry_due'] ),
+                    'retry_attempts' => (int) ( $pause['retry_failure_count'] ?? 0 ),
+                    'escalated'      => ! empty( $pause['escalated'] ),
+                    'error'          => $message,
+                ];
+            }
         }
 
         $active = $this->activeRunningRun();
@@ -142,7 +169,7 @@ final class BackupService {
         $queued = $this->enqueueStage( $run_uuid, self::STAGE_HEALTH_CHECK );
         if ( empty( $queued['ok'] ) ) {
             $reason = 'Backup failed because the stage worker could not be queued.';
-            $this->failRun( $run_id, $run_uuid, $local_dir, $metadata, $component_archives, 'stage_queue_failed', $reason, true );
+            $this->failRun( $run_id, $run_uuid, $local_dir, $metadata, $component_archives, 'stage_queue_failed', $reason, true, $reason );
             return [
                 'ok'       => false,
                 'status'   => self::FAILED,
@@ -161,7 +188,7 @@ final class BackupService {
         ];
     }
 
-    public function runBackupStage( string $run_uuid, string $stage ): array {
+    public function runBackupStage( string $run_uuid, string $stage, int $job_id = 0 ): array {
         $this->initializeLongRunningExecution();
         $this->ensureSchema();
         $this->reconcileStaleRuns();
@@ -186,13 +213,21 @@ final class BackupService {
             ];
         }
 
-        return match ( $stage ) {
-            self::STAGE_HEALTH_CHECK => $this->runHealthCheckStage( $row ),
-            self::STAGE_LOCAL_GENERATION => $this->runLocalGenerationStage( $row ),
-            self::STAGE_VERIFY => $this->runVerifyStage( $row ),
-            self::STAGE_UPLOAD => $this->runUploadStage( $row ),
-            default => [ 'ok' => false, 'status' => self::FAILED, 'error' => 'Unknown backup stage.' ],
-        };
+        $previous_job_id = $this->activeJobId;
+        $this->activeJobId = max( 0, $job_id );
+        $this->lastLeaseRenewalAt = 0;
+        try {
+            return match ( $stage ) {
+                self::STAGE_HEALTH_CHECK => $this->runHealthCheckStage( $row ),
+                self::STAGE_LOCAL_GENERATION => $this->runLocalGenerationStage( $row ),
+                self::STAGE_VERIFY => $this->runVerifyStage( $row ),
+                self::STAGE_UPLOAD => $this->runUploadStage( $row ),
+                default => [ 'ok' => false, 'status' => self::FAILED, 'error' => 'Unknown backup stage.' ],
+            };
+        } finally {
+            $this->activeJobId = $previous_job_id;
+            $this->lastLeaseRenewalAt = 0;
+        }
     }
 
     public function pauseStatus(): array {
@@ -232,6 +267,7 @@ final class BackupService {
                 throw new \RuntimeException( 'Backup failed because the configuration directory is not readable.' );
             }
             $this->ensureBackupSourceDirectories();
+            $this->assertBackupWorkspaceReady( $local_dir );
             $drive_cfg = $this->resolveDriveConfig();
             if ( empty( $drive_cfg['ok'] ) ) {
                 throw new \RuntimeException( 'Backup failed because the configured Google Drive backup target is unavailable.' );
@@ -253,7 +289,7 @@ final class BackupService {
                 'job' => $queued,
             ];
         } catch ( \Throwable $e ) {
-            return $this->failRun( $run_id, $run_uuid, $local_dir, $metadata, $components, 'health_check_failed', $this->publicFailureReason( self::STAGE_HEALTH_CHECK, $e ), true );
+            return $this->failRun( $run_id, $run_uuid, $local_dir, $metadata, $components, 'health_check_failed', $this->publicFailureReason( self::STAGE_HEALTH_CHECK, $e ), true, $e->getMessage() );
         }
     }
 
@@ -288,7 +324,11 @@ final class BackupService {
                 'job' => $queued,
             ];
         } catch ( \Throwable $e ) {
-            return $this->failRun( $run_id, $run_uuid, $local_dir, $metadata, $components, 'local_generation_failed', $this->publicFailureReason( self::STAGE_LOCAL_GENERATION, $e ), true );
+            // A failed exporter must not leave a read transaction open on the
+            // shared worker connection; otherwise later jobs can observe a
+            // stale snapshot or retain locks until the process exits.
+            $this->rollbackDatabaseSnapshot();
+            return $this->failRun( $run_id, $run_uuid, $local_dir, $metadata, $components, 'local_generation_failed', $this->publicFailureReason( self::STAGE_LOCAL_GENERATION, $e ), true, $e->getMessage() );
         }
     }
 
@@ -321,7 +361,7 @@ final class BackupService {
                 'job' => $queued,
             ];
         } catch ( \Throwable $e ) {
-            return $this->failRun( $run_id, $run_uuid, $local_dir, $metadata, $components, 'verification_failed', $this->publicFailureReason( self::STAGE_VERIFY, $e ), true );
+            return $this->failRun( $run_id, $run_uuid, $local_dir, $metadata, $components, 'verification_failed', $this->publicFailureReason( self::STAGE_VERIFY, $e ), true, $e->getMessage() );
         }
     }
 
@@ -434,11 +474,11 @@ final class BackupService {
                 'drive_folder_id' => $root_folder_id,
             ];
         } catch ( \Throwable $e ) {
-            return $this->failRun( $run_id, $run_uuid, $local_dir, $metadata, $components, 'upload_failed', $this->publicFailureReason( self::STAGE_UPLOAD, $e ), true );
+            return $this->failRun( $run_id, $run_uuid, $local_dir, $metadata, $components, 'upload_failed', $this->publicFailureReason( self::STAGE_UPLOAD, $e ), true, $e->getMessage() );
         }
     }
 
-    private function createLocalBackupArtifacts( int $run_id, string $run_uuid, string $local_dir, array $metadata, array $component_archives ): array {
+    private function createLocalBackupArtifacts( int $run_id, string $run_uuid, string $local_dir, array &$metadata, array &$component_archives ): array {
         $payload_dir = rtrim( $local_dir, '/\\' ) . '/payload';
         if ( ! \metis_runtime_make_dir( $payload_dir . '/database' ) ) {
             throw new \RuntimeException( 'Backup failed because the local backup staging directory could not be created.' );
@@ -450,7 +490,7 @@ final class BackupService {
         $this->ensureBackupSourceDirectories();
 
         $this->updateRunProgress( $run_id, $metadata, $component_archives, 'database_snapshot', 'Creating database snapshot.' );
-        $database_file = $this->buildDatabaseSnapshot( $payload_dir . '/database', $run_uuid );
+        $database_file = $this->buildDatabaseSnapshot( $payload_dir . '/database', $run_uuid, $run_id, $metadata, $component_archives );
         $component_archives['database'] = $this->describeFile( 'database', $database_file );
         $this->updateRunProgress( $run_id, $metadata, $component_archives, 'component_archives', 'Database snapshot created.' );
 
@@ -504,7 +544,7 @@ final class BackupService {
 
         $full_archive = $payload_dir . '/full.zip';
         $this->updateRunProgress( $run_id, $metadata, $component_archives, 'full_archive', 'Building full local backup archive.' );
-        $this->buildFullArchive( $full_archive, $database_file, $metadata_path, $checksums_path );
+        $this->buildFullArchive( $full_archive, $component_archives, $metadata_path, $checksums_path );
         $component_archives['full'] = $this->describeFile( 'full', $full_archive );
         $metadata['integrity'] = [
             'created'  => true,
@@ -548,6 +588,10 @@ final class BackupService {
                 throw new \RuntimeException( 'Backup failed because the full archive is missing ' . $entry . '.' );
             }
         }
+        if ( ! empty( $components['runtime']['local_path'] ) && $zip->locateName( 'components/runtime.zip' ) === false ) {
+            $zip->close();
+            throw new \RuntimeException( 'Backup failed because the full archive is missing components/runtime.zip.' );
+        }
         $zip->close();
     }
 
@@ -571,7 +615,7 @@ final class BackupService {
         ];
     }
 
-    private function failRun( int $run_id, string $run_uuid, string $local_dir, array $metadata, array $components, string $stage, string $reason, bool $pause_scheduled ): array {
+    private function failRun( int $run_id, string $run_uuid, string $local_dir, array $metadata, array $components, string $stage, string $reason, bool $pause_scheduled, string $internal_reason = '' ): array {
         $completed_at = \metis_current_time( 'mysql' );
         $snapshot = $this->localArtifactSnapshot( $local_dir, $run_uuid, $metadata, $components );
         $snapshot_metadata = (array) ( $snapshot['metadata'] ?? $metadata );
@@ -591,23 +635,50 @@ final class BackupService {
             'last_error'      => $reason,
         ];
 
-        if ( empty( $snapshot['full_available'] ) ) {
-            $this->cleanupLocalRunArtifacts( $run_id, $run_uuid, $local_dir );
-            $payload['local_path'] = '';
+        // Keep partial staging data available for diagnostics and operator
+        // recovery. It is reclaimed by retention cleanup, or immediately when
+        // the retry policy escalates. Deleting it here hid the actual failure
+        // and left operators unable to inspect what was written.
+        if ( $local_dir !== '' && is_dir( $local_dir ) ) {
+            $payload['local_path'] = $local_dir;
         }
 
         $this->updateRun( $run_id, $payload );
 
+        $pause_status = [
+            'paused' => false,
+            'reason' => '',
+            'escalated' => false,
+            'retry_failure_count' => 0,
+            'next_retry_at' => '',
+        ];
         if ( $pause_scheduled ) {
-            $this->pauseScheduledBackups( $reason );
+            $pause_status = $this->recordFailurePauseState( $run_uuid, $stage, $reason );
+            if ( ! empty( $pause_status['escalated'] ) ) {
+                $this->cleanupLocalRunArtifacts( $run_id, $run_uuid, $local_dir );
+                $this->updateRun( $run_id, [ 'local_path' => '' ] );
+            }
         }
+
+        $snapshot_metadata = $this->sendFailureAlertOnce(
+            $run_id,
+            $run_uuid,
+            $stage,
+            $reason,
+            $pause_status,
+            $snapshot_metadata
+        );
 
         if ( \class_exists( 'Metis_Logger' ) ) {
             \Metis_Logger::error( 'Backup stage failed', [
                 'run_uuid' => $run_uuid,
                 'stage' => $stage,
                 'reason' => $reason,
+                'internal_reason' => $internal_reason !== '' ? $internal_reason : $reason,
                 'local_artifact_available' => ! empty( $snapshot['full_available'] ),
+                'retry_failure_count' => (int) ( $pause_status['retry_failure_count'] ?? 0 ),
+                'retry_next_attempt_at' => (string) ( $pause_status['next_retry_at'] ?? '' ),
+                'escalated' => ! empty( $pause_status['escalated'] ),
             ] );
         }
 
@@ -618,6 +689,9 @@ final class BackupService {
             'stage' => $stage,
             'error' => $reason,
             'paused' => $pause_scheduled,
+            'retry_failure_count' => (int) ( $pause_status['retry_failure_count'] ?? 0 ),
+            'retry_next_attempt_at' => (string) ( $pause_status['next_retry_at'] ?? '' ),
+            'escalated' => ! empty( $pause_status['escalated'] ),
             'local_artifact_available' => ! empty( $snapshot['full_available'] ),
         ];
     }
@@ -691,6 +765,20 @@ final class BackupService {
             \Core_Settings_Service::set( self::PAUSED_SETTING, false, false );
             \Core_Settings_Service::set( self::PAUSED_REASON_SETTING, '', false );
             \Core_Settings_Service::set( self::PAUSED_AT_SETTING, '', false );
+            \Core_Settings_Service::set( self::RETRY_FAILURE_COUNT_SETTING, 0, false );
+            \Core_Settings_Service::set( self::RETRY_NEXT_ATTEMPT_AT_SETTING, '', false );
+            \Core_Settings_Service::set( self::RETRY_LAST_FAILURE_STAGE_SETTING, '', false );
+            \Core_Settings_Service::set( self::RETRY_LAST_FAILURE_RUN_SETTING, '', false );
+            \Core_Settings_Service::set( self::RETRY_ESCALATED_SETTING, false, false );
+        }
+    }
+
+    private function resumeScheduledRetryWindow(): void {
+        if ( \class_exists( '\Core_Settings_Service' ) ) {
+            \Core_Settings_Service::set( self::PAUSED_SETTING, false, false );
+            \Core_Settings_Service::set( self::PAUSED_REASON_SETTING, '', false );
+            \Core_Settings_Service::set( self::PAUSED_AT_SETTING, '', false );
+            \Core_Settings_Service::set( self::RETRY_NEXT_ATTEMPT_AT_SETTING, '', false );
         }
     }
 
@@ -721,10 +809,18 @@ final class BackupService {
             return [ 'paused' => false, 'reason' => '', 'paused_at' => '' ];
         }
 
+        $next_retry_at = (string) \Core_Settings_Service::get( self::RETRY_NEXT_ATTEMPT_AT_SETTING, '' );
+        $next_retry_ts = $this->parseTimestamp( $next_retry_at );
         return [
             'paused' => (bool) \Core_Settings_Service::get( self::PAUSED_SETTING, false ),
             'reason' => (string) \Core_Settings_Service::get( self::PAUSED_REASON_SETTING, '' ),
             'paused_at' => (string) \Core_Settings_Service::get( self::PAUSED_AT_SETTING, '' ),
+            'retry_failure_count' => max( 0, (int) \Core_Settings_Service::get( self::RETRY_FAILURE_COUNT_SETTING, 0 ) ),
+            'next_retry_at' => $next_retry_at,
+            'last_failure_stage' => (string) \Core_Settings_Service::get( self::RETRY_LAST_FAILURE_STAGE_SETTING, '' ),
+            'last_failure_run_uuid' => (string) \Core_Settings_Service::get( self::RETRY_LAST_FAILURE_RUN_SETTING, '' ),
+            'escalated' => (bool) \Core_Settings_Service::get( self::RETRY_ESCALATED_SETTING, false ),
+            'retry_due' => $next_retry_ts > 0 && $next_retry_ts <= time(),
         ];
     }
 
@@ -793,7 +889,15 @@ final class BackupService {
                     'components_json' => $this->encode( $snapshot_components ),
                     'last_error'      => self::LOCAL_ARTIFACT_RETAINED_ERROR,
                 ] );
-                $this->pauseScheduledBackups( self::LOCAL_ARTIFACT_RETAINED_ERROR );
+                $pause_status = $this->recordFailurePauseState( $run_uuid, 'stale_after_local_artifact', self::LOCAL_ARTIFACT_RETAINED_ERROR );
+                $this->sendFailureAlertOnce(
+                    $run_id,
+                    $run_uuid,
+                    'stale_after_local_artifact',
+                    self::LOCAL_ARTIFACT_RETAINED_ERROR,
+                    $pause_status,
+                    $snapshot_metadata
+                );
             } else {
                 $timeout_reason = 'Backup failed because the backup worker stopped without completing local artifact generation.';
                 $this->updateRun( $run_id, [
@@ -801,10 +905,18 @@ final class BackupService {
                     'completed_at' => $completed_at,
                     'last_error'   => $timeout_reason,
                 ] );
-                $this->pauseScheduledBackups( $timeout_reason );
+                $pause_status = $this->recordFailurePauseState( $run_uuid, 'stale_before_local_artifact', $timeout_reason );
+                $this->sendFailureAlertOnce(
+                    $run_id,
+                    $run_uuid,
+                    'stale_before_local_artifact',
+                    $timeout_reason,
+                    $pause_status,
+                    $this->decode( (string) ( $row['metadata_json'] ?? '' ) )
+                );
             }
 
-            if ( $local_path !== '' && empty( $snapshot['full_available'] ) ) {
+            if ( $local_path !== '' && empty( $snapshot['full_available'] ) && ! empty( $pause_status['escalated'] ) ) {
                 $this->removeDirectory( $local_path );
             }
 
@@ -843,12 +955,73 @@ final class BackupService {
             'stage'      => $this->normalizeProgressStage( $stage ),
             'message'    => $message,
             'updated_at' => \metis_current_time( 'mysql' ),
+            'heartbeat'  => [
+                'pid'  => function_exists( 'getmypid' ) ? (int) getmypid() : 0,
+                'host' => function_exists( 'php_uname' ) ? (string) php_uname( 'n' ) : '',
+            ],
         ];
 
         $this->updateRun( $run_id, [
             'metadata_json'   => $this->encode( $metadata ),
             'components_json' => $this->encode( $components ),
         ] );
+        $this->renewActiveWorkerLease();
+    }
+
+    private function renewActiveWorkerLease(): void {
+        if ( $this->activeJobId < 1 || ! \function_exists( 'metis_job_queue' ) ) {
+            return;
+        }
+
+        $now = time();
+        if ( $this->lastLeaseRenewalAt > 0 && ( $now - $this->lastLeaseRenewalAt ) < 60 ) {
+            return;
+        }
+
+        if ( \metis_job_queue()->renewLease( $this->activeJobId ) ) {
+            $this->lastLeaseRenewalAt = $now;
+        }
+    }
+
+    /**
+     * Fail early when the worker cannot safely stage a backup.  This avoids
+     * spending minutes generating a database artifact only to fail on the
+     * first archive write or a full disk.
+     */
+    private function assertBackupWorkspaceReady( string $local_dir ): void {
+        $local_dir = rtrim( trim( $local_dir ), '/\\' );
+        if ( $local_dir === '' || ! \is_dir( $local_dir ) || ! \is_writable( $local_dir ) ) {
+            throw new \RuntimeException( 'Backup failed because the local staging workspace is not writable.' );
+        }
+
+        $free = @\disk_free_space( $local_dir );
+        if ( \is_int( $free ) || \is_float( $free ) ) {
+            if ( (float) $free < self::MIN_FREE_STAGING_BYTES ) {
+                throw new \RuntimeException( sprintf(
+                    'Backup failed because the staging volume has insufficient free space (%d MB available; at least %d MB required).',
+                    (int) floor( (float) $free / 1048576 ),
+                    (int) floor( self::MIN_FREE_STAGING_BYTES / 1048576 )
+                ) );
+            }
+        }
+
+        $probe = $local_dir . '/.metis-write-probe-' . bin2hex( random_bytes( 6 ) );
+        $handle = @\fopen( $probe, 'wb' );
+        if ( ! \is_resource( $handle ) ) {
+            throw new \RuntimeException( 'Backup failed because the staging volume could not be written.' );
+        }
+        @\fwrite( $handle, "metis-backup-write-probe\n" );
+        @\fclose( $handle );
+        @\unlink( $probe );
+    }
+
+    private function rollbackDatabaseSnapshot(): void {
+        try {
+            $this->database()->execute( 'ROLLBACK' );
+        } catch ( \Throwable ) {
+            // The adapter may not support transactions; rollback is best
+            // effort and must never mask the original backup failure.
+        }
     }
 
     private function localArtifactSnapshot( string $local_dir, string $run_uuid, array $fallback_metadata = [], array $fallback_components = [] ): array {
@@ -994,6 +1167,8 @@ final class BackupService {
             }
             if ( \is_dir( $runtime_source ) ) {
                 $this->mirrorDirectory( $runtime_source, $this->metisPath( 'storage/runtime' ), [ 'backups' ] );
+            } else {
+                $this->restoreRuntimeFromComponentArchive( $restore_dir );
             }
 
             if ( ! \is_file( $database_file ) ) {
@@ -1061,8 +1236,19 @@ final class BackupService {
 
         $entryName = $this->locateRestoreFileEntry( $zip, $relative_path );
         if ( $entryName === '' ) {
+            $result = $this->restoreFileFromNestedComponentArchive( $zip, $relative_path, $destination );
             $zip->close();
-            return [ 'ok' => false, 'error' => 'The requested file is not present in the backup archive.' ];
+            if ( empty( $result['ok'] ) ) {
+                return $result;
+            }
+
+            return [
+                'ok' => true,
+                'run_uuid' => $run_uuid,
+                'relative_path' => $relative_path,
+                'destination' => $destination,
+                'restored_at' => \metis_current_time( 'mysql' ),
+            ];
         }
 
         $stream = $zip->getStream( $entryName );
@@ -1071,29 +1257,11 @@ final class BackupService {
             return [ 'ok' => false, 'error' => 'The requested file could not be read from the backup archive.' ];
         }
 
-        $targetDir = dirname( $destination );
-        if ( ! \metis_runtime_make_dir( $targetDir ) || ! is_dir( $targetDir ) ) {
-            fclose( $stream );
-            $zip->close();
-            return [ 'ok' => false, 'error' => 'The restore destination could not be prepared.' ];
-        }
-
-        $tempPath = $targetDir . '/.metis-restore-' . md5( $relative_path ) . '.tmp';
-        $write = fopen( $tempPath, 'wb' );
-        if ( ! is_resource( $write ) ) {
-            fclose( $stream );
-            $zip->close();
-            return [ 'ok' => false, 'error' => 'The restore workspace could not be prepared.' ];
-        }
-
-        stream_copy_to_stream( $stream, $write );
-        fclose( $write );
-        fclose( $stream );
+        $result = $this->writeRestoreStreamToDestination( $stream, $destination, $relative_path );
         $zip->close();
 
-        if ( ! @rename( $tempPath, $destination ) ) {
-            @unlink( $tempPath );
-            return [ 'ok' => false, 'error' => 'The restored file could not be written to its destination.' ];
+        if ( empty( $result['ok'] ) ) {
+            return $result;
         }
 
         return [
@@ -1105,12 +1273,44 @@ final class BackupService {
         ];
     }
 
-    private function buildDatabaseSnapshot( string $directory, string $run_uuid ): string {
+    private function buildDatabaseSnapshot( string $directory, string $run_uuid, int $run_id = 0, array &$metadata = [], array $components = [] ): string {
         $this->initializeLongRunningExecution();
         $db = $this->database();
 
         $sql_path = $directory . '/database.sql';
-        $handle   = \fopen( $sql_path, 'wb' );
+        $checkpoint = is_array( $metadata['database_export'] ?? null ) ? $metadata['database_export'] : [];
+        $completed_source = (string) ( $checkpoint['state'] ?? '' ) === 'complete'
+            && (string) ( $checkpoint['sql_path'] ?? '' ) === $sql_path
+            && \is_file( $sql_path );
+        if ( $completed_source ) {
+            if ( $run_id > 0 ) {
+                $this->updateRunProgress( $run_id, $metadata, $components, 'database_snapshot', 'Compressing database snapshot.' );
+            }
+            $gz_path = $directory . '/database.sql.gz';
+            $this->gzipFile( $sql_path, $gz_path );
+            @\unlink( $sql_path );
+            return $gz_path;
+        }
+
+        $resume = (string) ( $checkpoint['state'] ?? '' ) === 'exporting'
+            && (string) ( $checkpoint['sql_path'] ?? '' ) === $sql_path
+            && \is_file( $sql_path );
+        if ( ! $resume ) {
+            // A completed SQL source is safe to recompress, but a stale or
+            // incompatible partial source cannot be resumed reliably.
+            if ( \is_file( $sql_path ) ) {
+                @\unlink( $sql_path );
+            }
+            $checkpoint = [
+                'state' => 'exporting',
+                'sql_path' => $sql_path,
+                'table_index' => 0,
+                'last_id' => 0,
+                'offset' => 0,
+            ];
+        }
+
+        $handle   = \fopen( $sql_path, $resume ? 'ab' : 'wb' );
         if ( ! \is_resource( $handle ) ) {
             throw new \RuntimeException( 'Could not create the database snapshot.' );
         }
@@ -1120,13 +1320,28 @@ final class BackupService {
             \class_exists( 'Metis_Tables' ) ? \Metis_Tables::all() : []
         ) ) ) );
 
-        \fwrite( $handle, "-- Metis backup: {$run_uuid}\n" );
-        \fwrite( $handle, "-- Generated at " . \gmdate( 'c' ) . "\n\n" );
-        \fwrite( $handle, "SET FOREIGN_KEY_CHECKS=0;\n" );
+        // Keep the export reads independent. A transaction held for the
+        // complete database snapshot hides this worker's progress updates on
+        // the shared connection until commit, which makes a healthy long
+        // backup look dead to the watchdog. Bounded, ordered reads keep the
+        // backup responsive and let each durable heartbeat commit immediately.
 
-        foreach ( $tables as $table ) {
+        if ( ! $resume ) {
+            \fwrite( $handle, "-- Metis backup: {$run_uuid}\n" );
+            \fwrite( $handle, "-- Generated at " . \gmdate( 'c' ) . "\n\n" );
+            \fwrite( $handle, "SET FOREIGN_KEY_CHECKS=0;\n" );
+        }
+
+        foreach ( $tables as $table_index => $table ) {
+            if ( $table_index < (int) ( $checkpoint['table_index'] ?? 0 ) ) {
+                continue;
+            }
             $exists = $db->scalar( 'SHOW TABLES LIKE %s', [ $table ] );
             if ( $exists !== $table ) {
+                $checkpoint = [
+                    'state' => 'exporting', 'sql_path' => $sql_path,
+                    'table_index' => $table_index + 1, 'last_id' => 0, 'offset' => 0,
+                ];
                 continue;
             }
 
@@ -1136,13 +1351,20 @@ final class BackupService {
                 continue;
             }
 
-            \fwrite( $handle, "DROP TABLE IF EXISTS `{$table}`;\n" );
-            \fwrite( $handle, $create_sql . ";\n\n" );
+            $resuming_table = $resume && $table_index === (int) ( $checkpoint['table_index'] ?? 0 );
+            if ( ! $resuming_table ) {
+                \fwrite( $handle, "DROP TABLE IF EXISTS `{$table}`;\n" );
+                \fwrite( $handle, $create_sql . ";\n\n" );
+                $checkpoint = [
+                    'state' => 'exporting', 'sql_path' => $sql_path,
+                    'table_index' => $table_index, 'last_id' => 0, 'offset' => 0,
+                ];
+            }
 
             $batch_size = 500;
-            $processed_rows = 0;
+            $processed_rows = $resuming_table ? max( 0, (int) ( $checkpoint['offset'] ?? 0 ) ) : 0;
             $has_id_column = $this->databaseColumnExists( $table, 'id' );
-            $last_id = 0;
+            $last_id = $resuming_table ? max( 0, (int) ( $checkpoint['last_id'] ?? 0 ) ) : 0;
             [ $table_where, $table_where_args ] = $this->backupTableDataWhereClause( $table );
             do {
                 $this->refreshExecutionBudget();
@@ -1160,6 +1382,8 @@ final class BackupService {
                     ) ?: [];
                 }
 
+                $insert_columns = '';
+                $insert_values = [];
                 foreach ( $rows as $row ) {
                     $processed_rows++;
                     if ( $has_id_column ) {
@@ -1172,20 +1396,63 @@ final class BackupService {
                         static fn ( string $column ): string => '`' . str_replace( '`', '``', $column ) . '`',
                         array_keys( $row )
                     );
+                    if ( $insert_columns === '' ) {
+                        $insert_columns = implode( ', ', $columns );
+                    }
                     $values = array_map( fn ( mixed $value ): string => $this->sqlValue( $value ), array_values( $row ) );
-                    \fwrite(
-                        $handle,
-                        'INSERT INTO `' . $table . '` (' . implode( ', ', $columns ) . ') VALUES (' . implode( ', ', $values ) . ");\n"
-                    );
+                    $insert_values[] = '(' . implode( ', ', $values ) . ')';
+                    if ( count( $insert_values ) >= 100 ) {
+                        // Checkpoints are persisted after each source batch.
+                        // IGNORE keeps a resumed export idempotent if a worker
+                        // stops after a write but before its checkpoint commit.
+                        \fwrite( $handle, 'INSERT IGNORE INTO `' . $table . '` (' . $insert_columns . ') VALUES ' . implode( ', ', $insert_values ) . ";\n" );
+                        $insert_values = [];
+                    }
+                }
+
+                if ( $insert_values !== [] ) {
+                    \fwrite( $handle, 'INSERT IGNORE INTO `' . $table . '` (' . $insert_columns . ') VALUES ' . implode( ', ', $insert_values ) . ";\n" );
+                }
+
+                // A checkpoint is written only after the batch has reached
+                // disk. A later worker can reopen this exact SQL file and
+                // continue after its primary-key cursor (or bounded offset).
+                if ( $rows !== [] ) {
+                    $checkpoint = [
+                        'state' => 'exporting', 'sql_path' => $sql_path,
+                        'table_index' => $table_index,
+                        'last_id' => $has_id_column ? $last_id : 0,
+                        'offset' => $has_id_column ? 0 : $processed_rows,
+                    ];
+                    $metadata['database_export'] = $checkpoint;
+                    if ( $run_id > 0 ) {
+                        $this->updateRunProgress( $run_id, $metadata, $components, 'database_snapshot', 'Creating database snapshot.' );
+                    }
                 }
 
             } while ( $rows !== [] );
 
             \fwrite( $handle, "\n" );
+            $checkpoint = [
+                'state' => 'exporting', 'sql_path' => $sql_path,
+                'table_index' => $table_index + 1, 'last_id' => 0, 'offset' => 0,
+            ];
+            $metadata['database_export'] = $checkpoint;
+            if ( $run_id > 0 ) {
+                $this->updateRunProgress( $run_id, $metadata, $components, 'database_snapshot', 'Creating database snapshot.' );
+            }
         }
 
         \fwrite( $handle, "SET FOREIGN_KEY_CHECKS=1;\n" );
         \fclose( $handle );
+
+        $metadata['database_export'] = [
+            'state' => 'complete', 'sql_path' => $sql_path,
+            'table_index' => count( $tables ), 'last_id' => 0, 'offset' => 0,
+        ];
+        if ( $run_id > 0 ) {
+            $this->updateRunProgress( $run_id, $metadata, $components, 'database_snapshot', 'Compressing database snapshot.' );
+        }
 
         $gz_path = $directory . '/database.sql.gz';
         $this->gzipFile( $sql_path, $gz_path );
@@ -1194,27 +1461,36 @@ final class BackupService {
         return $gz_path;
     }
 
-    private function buildFullArchive( string $archive_path, string $database_file, string $metadata_path, string $checksums_path ): void {
+    private function buildFullArchive( string $archive_path, array $components, string $metadata_path, string $checksums_path ): void {
+        $this->ensureArchiveTargetDirectory( $archive_path );
         $zip = new \ZipArchive();
         if ( $zip->open( $archive_path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE ) !== true ) {
             throw new \RuntimeException( 'Could not create the full backup archive.' );
         }
 
-        $zip->addFile( $metadata_path, 'metadata.json' );
-        $zip->addFile( $checksums_path, 'checksums.json' );
-        $zip->addFile( $database_file, 'database/' . basename( $database_file ) );
+        $database_file = (string) ( $components['database']['local_path'] ?? '' );
+        $runtime_archive = (string) ( $components['runtime']['local_path'] ?? '' );
+        $this->assertArtifactExists( $metadata_path, 'backup metadata' );
+        $this->assertArtifactExists( $checksums_path, 'backup checksums' );
+        $this->assertArtifactExists( $database_file, 'database snapshot' );
+        $this->addStableFileToZip( $zip, $metadata_path, 'metadata.json' );
+        $this->addStableFileToZip( $zip, $checksums_path, 'checksums.json' );
+        $this->addStableFileToZip( $zip, $database_file, 'database/' . basename( $database_file ) );
         $this->addDirectoryToZip( $zip, $this->configPath(), 'config', [ 'index.php' ] );
         $this->addDirectoryToZip( $zip, $this->metisPath( 'storage/media' ), 'storage/media' );
         $this->addDirectoryToZip( $zip, $this->metisPath( 'storage/public-media' ), 'storage/public-media' );
         $this->addDirectoryToZip( $zip, $this->metisPath( 'storage/protected-media' ), 'storage/protected-media' );
         $this->addDirectoryToZip( $zip, $this->metisPath( 'storage/private-records' ), 'storage/private-records' );
-        $this->addDirectoryToZip( $zip, $this->metisPath( 'storage/runtime' ), 'storage/runtime', self::RUNTIME_BACKUP_EXCLUDED_DIRS );
+        if ( $runtime_archive !== '' && \is_file( $runtime_archive ) ) {
+            $this->addStableFileToZip( $zip, $runtime_archive, 'components/runtime.zip' );
+        }
         if ( ! $zip->close() ) {
             throw new \RuntimeException( 'Could not finalize archive: ' . basename( $archive_path ) );
         }
     }
 
     private function zipDirectory( string $source, string $archive_path, array $exclude_dirs = [], array $exclude_files = [] ): void {
+        $this->ensureArchiveTargetDirectory( $archive_path );
         $zip = new \ZipArchive();
         if ( $zip->open( $archive_path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE ) !== true ) {
             throw new \RuntimeException( 'Could not create archive: ' . basename( $archive_path ) );
@@ -1249,12 +1525,16 @@ final class BackupService {
             $zip->addEmptyDir( $base_in_zip );
         }
 
+        $exclude_dirs = array_values( array_unique( array_merge( $exclude_dirs, self::ARCHIVE_EXCLUDED_DIRS ) ) );
+        $exclude_files = array_values( array_unique( array_merge( $exclude_files, self::ARCHIVE_EXCLUDED_FILES ) ) );
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator( $root, \FilesystemIterator::SKIP_DOTS ),
             \RecursiveIteratorIterator::SELF_FIRST
         );
 
         foreach ( $iterator as $item ) {
+            $this->refreshExecutionBudget();
+            $this->renewActiveWorkerLease();
             $path = $item->getPathname();
             $relative = ltrim( substr( $path, strlen( $root ) ), DIRECTORY_SEPARATOR );
             if ( $relative === '' ) {
@@ -1283,7 +1563,42 @@ final class BackupService {
                 continue;
             }
 
-            $zip->addFile( $path, $zip_path );
+            if ( ! $this->canStageArchiveFile( $path ) ) {
+                continue;
+            }
+
+            $this->addFileToZipNow( $zip, $path, $zip_path );
+        }
+    }
+
+    private function ensureArchiveTargetDirectory( string $archive_path ): void {
+        $directory = dirname( $archive_path );
+        if ( $directory === '' || $directory === '.' ) {
+            return;
+        }
+
+        if ( ! \is_dir( $directory ) && ! \metis_runtime_make_dir( $directory ) ) {
+            throw new \RuntimeException( 'Could not create archive directory: ' . basename( $directory ) );
+        }
+    }
+
+    private function canStageArchiveFile( string $path ): bool {
+        clearstatcache( true, $path );
+        return \is_file( $path ) && \is_readable( $path );
+    }
+
+    private function addStableFileToZip( \ZipArchive $zip, string $path, string $zip_path ): void {
+        if ( ! $this->canStageArchiveFile( $path ) ) {
+            throw new \RuntimeException( 'Could not stage archive file: ' . basename( $path ) );
+        }
+
+        $this->addFileToZipNow( $zip, $path, $zip_path );
+    }
+
+    private function addFileToZipNow( \ZipArchive $zip, string $path, string $zip_path ): void {
+        $flags = \defined( '\ZipArchive::FL_OPEN_FILE_NOW' ) ? \ZipArchive::FL_OPEN_FILE_NOW : 0;
+        if ( ! $zip->addFile( $path, $zip_path, 0, 0, $flags ) ) {
+            throw new \RuntimeException( 'Could not add archive file: ' . basename( $path ) );
         }
     }
 
@@ -2095,12 +2410,18 @@ final class BackupService {
             throw new \RuntimeException( 'Could not compress the database snapshot.' );
         }
 
+        $chunks = 0;
         while ( ! \feof( $input ) ) {
             $chunk = \fread( $input, 1024 * 1024 );
             if ( $chunk === false ) {
                 break;
             }
             \gzwrite( $output, $chunk );
+            $chunks++;
+            if ( ( $chunks % 16 ) === 0 ) {
+                $this->refreshExecutionBudget();
+                $this->renewActiveWorkerLease();
+            }
         }
 
         \fclose( $input );
@@ -2286,6 +2607,88 @@ final class BackupService {
         return '';
     }
 
+    private function restoreFileFromNestedComponentArchive( \ZipArchive $zip, string $relative_path, string $destination ): array {
+        $nested = $this->nestedComponentArchiveEntry( $relative_path );
+        if ( $nested === [] ) {
+            return [ 'ok' => false, 'error' => 'The requested file is not present in the backup archive.' ];
+        }
+
+        $archive_bytes = $zip->getFromName( (string) ( $nested['archive_entry'] ?? '' ) );
+        if ( ! is_string( $archive_bytes ) || $archive_bytes === '' ) {
+            return [ 'ok' => false, 'error' => 'The requested file is not present in the backup archive.' ];
+        }
+
+        $temp_archive = $this->temporaryFile( 'backup-component-' );
+        if ( \file_put_contents( $temp_archive, $archive_bytes, LOCK_EX ) === false ) {
+            @unlink( $temp_archive );
+            return [ 'ok' => false, 'error' => 'The restore workspace could not be prepared.' ];
+        }
+
+        try {
+            $component_zip = new \ZipArchive();
+            if ( $component_zip->open( $temp_archive ) !== true ) {
+                return [ 'ok' => false, 'error' => 'The requested file could not be read from the backup archive.' ];
+            }
+
+            $entry_name = (string) ( $nested['entry_name'] ?? '' );
+            $stream = $component_zip->getStream( $entry_name );
+            if ( ! is_resource( $stream ) ) {
+                $component_zip->close();
+                return [ 'ok' => false, 'error' => 'The requested file is not present in the backup archive.' ];
+            }
+
+            $result = $this->writeRestoreStreamToDestination( $stream, $destination, $relative_path );
+            $component_zip->close();
+            return $result;
+        } finally {
+            @unlink( $temp_archive );
+        }
+    }
+
+    private function writeRestoreStreamToDestination( $stream, string $destination, string $key ): array {
+        $targetDir = dirname( $destination );
+        if ( ! \metis_runtime_make_dir( $targetDir ) || ! is_dir( $targetDir ) ) {
+            if ( is_resource( $stream ) ) {
+                fclose( $stream );
+            }
+            return [ 'ok' => false, 'error' => 'The restore destination could not be prepared.' ];
+        }
+
+        $tempPath = $targetDir . '/.metis-restore-' . md5( $key ) . '.tmp';
+        $write = fopen( $tempPath, 'wb' );
+        if ( ! is_resource( $write ) ) {
+            if ( is_resource( $stream ) ) {
+                fclose( $stream );
+            }
+            return [ 'ok' => false, 'error' => 'The restore workspace could not be prepared.' ];
+        }
+
+        stream_copy_to_stream( $stream, $write );
+        fclose( $write );
+        fclose( $stream );
+
+        if ( ! @rename( $tempPath, $destination ) ) {
+            @unlink( $tempPath );
+            return [ 'ok' => false, 'error' => 'The restored file could not be written to its destination.' ];
+        }
+
+        return [ 'ok' => true, 'destination' => $destination ];
+    }
+
+    private function nestedComponentArchiveEntry( string $relative_path ): array {
+        if ( str_starts_with( $relative_path, 'storage/runtime/' ) ) {
+            $suffix = substr( $relative_path, strlen( 'storage/runtime/' ) );
+            if ( $suffix !== '' ) {
+                return [
+                    'archive_entry' => 'components/runtime.zip',
+                    'entry_name'    => 'runtime/' . ltrim( $suffix, '/' ),
+                ];
+            }
+        }
+
+        return [];
+    }
+
     private function metisPath( string $suffix = '' ): string {
         return rtrim( \METIS_PATH, '/\\' ) . ( $suffix !== '' ? '/' . ltrim( $suffix, '/\\' ) : '' );
     }
@@ -2301,6 +2704,219 @@ final class BackupService {
         }
 
         return $this->metisPath( 'config' );
+    }
+
+    private function recordFailurePauseState( string $run_uuid, string $stage, string $reason ): array {
+        $pause_status = $this->backupPauseStatus();
+        $failure_count = max( 0, (int) ( $pause_status['retry_failure_count'] ?? 0 ) ) + 1;
+        $escalated = $failure_count >= self::AUTO_RETRY_MAX_FAILURES;
+        $next_retry_at = $escalated ? '' : $this->formatTimestamp( time() + self::AUTO_RETRY_DELAY_SECONDS );
+        $pause_reason = $escalated
+            ? $reason . ' Automatic retries were exhausted; local backup artifacts will be cleaned up and manual remediation is required.'
+            : $reason . ' Metis will retry the scheduled backup in about one hour.';
+
+        $this->pauseScheduledBackups( $pause_reason );
+        if ( \class_exists( '\Core_Settings_Service' ) ) {
+            \Core_Settings_Service::set( self::RETRY_FAILURE_COUNT_SETTING, $failure_count, false );
+            \Core_Settings_Service::set( self::RETRY_NEXT_ATTEMPT_AT_SETTING, $next_retry_at, false );
+            \Core_Settings_Service::set( self::RETRY_LAST_FAILURE_STAGE_SETTING, $stage, false );
+            \Core_Settings_Service::set( self::RETRY_LAST_FAILURE_RUN_SETTING, $run_uuid, false );
+            \Core_Settings_Service::set( self::RETRY_ESCALATED_SETTING, $escalated, false );
+        }
+
+        return $this->backupPauseStatus();
+    }
+
+    /**
+     * Record and deliver one failure alert for a backup run.  The persisted marker
+     * keeps recovery/reconciliation from sending duplicate alerts for the same run.
+     *
+     * @param array<string,mixed> $pause_status
+     * @param array<string,mixed> $metadata
+     * @return array<string,mixed>
+     */
+    private function sendFailureAlertOnce( int $run_id, string $run_uuid, string $stage, string $reason, array $pause_status, array $metadata ): array {
+        $existing = is_array( $metadata['failure_alert'] ?? null ) ? $metadata['failure_alert'] : [];
+        if ( ! empty( $existing['attempted_at'] ) ) {
+            return $metadata;
+        }
+
+        $alert = [
+            'attempted_at' => \metis_current_time( 'mysql' ),
+            'stage'        => $stage,
+            'status'       => 'not_configured',
+            'recipient_count' => 0,
+        ];
+        $metadata['failure_alert'] = $alert;
+        $this->updateRun( $run_id, [ 'metadata_json' => $this->encode( $metadata ) ] );
+
+        if ( ! $this->failureAlertsEnabled() ) {
+            $alert['status'] = 'disabled';
+            $metadata['failure_alert'] = $alert;
+            $this->updateRun( $run_id, [ 'metadata_json' => $this->encode( $metadata ) ] );
+            return $metadata;
+        }
+
+        $recipients = $this->failureAlertRecipients();
+        if ( $recipients === [] || ! class_exists( '\\Metis\\Core\\Services\\EmailService' ) ) {
+            $alert['status'] = $recipients === [] ? 'no_recipient' : 'email_service_unavailable';
+            $metadata['failure_alert'] = $alert;
+            $this->updateRun( $run_id, [ 'metadata_json' => $this->encode( $metadata ) ] );
+            if ( class_exists( 'Metis_Logger' ) ) {
+                \Metis_Logger::error( 'Backup failure alert could not be delivered', [
+                    'run_uuid' => $run_uuid,
+                    'stage' => $stage,
+                    'status' => $alert['status'],
+                ] );
+            }
+            return $metadata;
+        }
+
+        $alert['recipient_count'] = count( $recipients );
+        $alert['status'] = 'sending';
+        $metadata['failure_alert'] = $alert;
+        $this->updateRun( $run_id, [ 'metadata_json' => $this->encode( $metadata ) ] );
+
+        $subject = sprintf( '[Metis] Backup failed on %s', $this->environmentLabel() );
+        $lines = [
+            'A Metis backup did not complete.',
+            'Environment: ' . $this->environmentLabel(),
+            'Run: ' . $run_uuid,
+            'Stage: ' . $stage,
+            'Reason: ' . $reason,
+            ! empty( $pause_status['escalated'] )
+                ? 'Automatic retries are exhausted. Manual remediation is required.'
+                : 'Scheduled backups are paused and Metis will retry in about one hour.',
+        ];
+
+        $delivery_errors = [];
+        $sent_count = 0;
+        foreach ( $recipients as $recipient ) {
+            $result = \Metis\Core\Services\EmailService::sendHtml(
+                $recipient,
+                $subject,
+                '<pre>' . \metis_escape_html( implode( PHP_EOL, $lines ) ) . '</pre>',
+                [
+                    'module' => 'core',
+                    'internal_reference' => 'BACKUP:' . $run_uuid,
+                ]
+            );
+            if ( ! empty( $result['ok'] ) ) {
+                ++$sent_count;
+            } else {
+                $delivery_errors[] = (string) ( $result['error'] ?? 'Unknown email delivery error.' );
+            }
+        }
+
+        $alert['delivered_at'] = \metis_current_time( 'mysql' );
+        $alert['sent_count'] = $sent_count;
+        $alert['status'] = $sent_count === count( $recipients ) ? 'sent' : ( $sent_count > 0 ? 'partial_failure' : 'delivery_failed' );
+        if ( $delivery_errors !== [] ) {
+            $alert['delivery_error'] = implode( ' | ', array_values( array_unique( $delivery_errors ) ) );
+        }
+        $metadata['failure_alert'] = $alert;
+        $this->updateRun( $run_id, [ 'metadata_json' => $this->encode( $metadata ) ] );
+
+        if ( class_exists( 'Metis_Logger' ) ) {
+            $log_context = [
+                'run_uuid' => $run_uuid,
+                'stage' => $stage,
+                'status' => $alert['status'],
+                'recipient_count' => count( $recipients ),
+                'sent_count' => $sent_count,
+            ];
+            if ( $sent_count > 0 ) {
+                \Metis_Logger::warn( 'Backup failure alert processed', $log_context );
+            } else {
+                \Metis_Logger::error( 'Backup failure alert processed', $log_context );
+            }
+        }
+
+        return $metadata;
+    }
+
+    private function failureAlertsEnabled(): bool {
+        if ( ! class_exists( '\\Core_Settings_Service' ) ) {
+            return true;
+        }
+
+        return (bool) \Core_Settings_Service::get( self::FAILURE_ALERTS_ENABLED_SETTING, true );
+    }
+
+    /** @return array<int,string> */
+    private function failureAlertRecipients(): array {
+        $configured = class_exists( '\\Core_Settings_Service' )
+            ? \Core_Settings_Service::get( self::FAILURE_ALERT_RECIPIENTS_SETTING, [] )
+            : [];
+        $candidates = is_array( $configured )
+            ? $configured
+            : ( preg_split( '/[\\s,;]+/', (string) $configured ) ?: [] );
+
+        if ( $candidates === [] && function_exists( 'metis_get_option' ) ) {
+            $candidates[] = (string) \metis_get_option( 'admin_email', '' );
+        }
+
+        $emails = [];
+        foreach ( $candidates as $candidate ) {
+            $email = strtolower( trim( (string) $candidate ) );
+            if ( $email !== '' && \metis_email_is_valid( $email ) ) {
+                $emails[] = $email;
+            }
+        }
+
+        return array_values( array_unique( $emails ) );
+    }
+
+    private function scheduledRetryIsReady( array $pause_status ): bool {
+        return ! empty( $pause_status['paused'] )
+            && empty( $pause_status['escalated'] )
+            && ! empty( $pause_status['retry_due'] );
+    }
+
+    private function parseTimestamp( string $value ): int {
+        $value = trim( $value );
+        if ( $value === '' ) {
+            return 0;
+        }
+
+        $timezone = \function_exists( 'metis_runtime_timezone' )
+            ? \metis_runtime_timezone()
+            : new \DateTimeZone( 'UTC' );
+        $dt = \DateTimeImmutable::createFromFormat( 'Y-m-d H:i:s', $value, $timezone );
+        return $dt instanceof \DateTimeImmutable ? $dt->getTimestamp() : 0;
+    }
+
+    private function assertArtifactExists( string $path, string $label ): void {
+        if ( $path === '' || ! \is_file( $path ) ) {
+            throw new \RuntimeException( 'Could not locate ' . $label . ' for the full backup archive.' );
+        }
+    }
+
+    private function restoreRuntimeFromComponentArchive( string $restore_dir ): void {
+        $component_archive = $restore_dir . '/components/runtime.zip';
+        if ( ! \is_file( $component_archive ) ) {
+            return;
+        }
+
+        $component_extract = $restore_dir . '/components/runtime';
+        if ( ! \metis_runtime_make_dir( $component_extract ) ) {
+            throw new \RuntimeException( 'The runtime backup archive could not be extracted.' );
+        }
+
+        $zip = new \ZipArchive();
+        if ( $zip->open( $component_archive ) !== true ) {
+            throw new \RuntimeException( 'The runtime backup archive could not be opened.' );
+        }
+        if ( ! $zip->extractTo( $component_extract ) ) {
+            $zip->close();
+            throw new \RuntimeException( 'The runtime backup archive could not be extracted.' );
+        }
+        $zip->close();
+
+        $runtime_source = $component_extract . '/runtime';
+        if ( \is_dir( $runtime_source ) ) {
+            $this->mirrorDirectory( $runtime_source, $this->metisPath( 'storage/runtime' ), [ 'backups' ] );
+        }
     }
 
     private function encode( mixed $value ): string {
