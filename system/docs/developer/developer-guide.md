@@ -1,27 +1,24 @@
 # Developer Guide
 
-## Module Creation
+Use the documents below as the current developer baseline for Metis.
 
-- Create a manifest in `modules/<module>/<module>.json`.
-- Define views, assets, permissions, help topics, and optional services.
-- Keep module logic behind the existing router, service, and UI layers instead of bypassing them.
+## Core Docs
 
-## Router Usage
+- [Request Lifecycle](./request-lifecycle.md)
+- [Directory Structure](./directory-structure.md)
+- [Coding Standards](./coding-standards.md)
+- [Extension Points](./extension-points.md)
 
-- Portal routes are derived from domain and view query vars.
-- AJAX routes go through the normalized `/api/ajax` path and inherit the site base path on subdirectory installs, for example `/metis/api/ajax`.
+## Additional References
 
-## Service Architecture
+- [Help System](./help-system.md)
+- [API Endpoints](../api/endpoints.md)
+- [Security Model](../security/security-model.md)
+- [Module Documentation](../modules/README.md)
 
-- Register shared services through `src/Metis/Core/ServiceRegistryRuntime.php`.
-- Reuse `Core_Settings_Service`, `Metis_Tables`, and existing module services before adding new abstractions.
+## Practical Summary
 
-## UI Services
-
-- Extend the shared `Metis` JS namespace instead of shipping isolated frameworks.
-- Use `data-help` attributes and manifest `help_topics` to connect UI elements to help content.
-
-## Coding Standards
-
-- Preserve the layered request path: router -> core services -> UI services -> modules.
-- Prefer aggregated queries, indexed filters, lazy-loaded help metadata, and cached references on performance-sensitive paths.
+- Route web requests through the shared front controller and router.
+- Register AJAX controllers explicitly and validate request payloads at the boundary.
+- Reuse shared services before introducing new abstractions.
+- Treat `system/src/Metis` and the split `metis-private` module tree as the authoritative runtime surfaces.

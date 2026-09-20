@@ -17,6 +17,15 @@
 
 Store-managed modules now own their own schema. The standalone installer creates only core-owned and built-in service tables; after the core install finishes it can optionally pull modules from the store, and each selected module must ensure its own tables when it boots or is installed.
 
+Installer completion order is intentional:
+
+1. core defaults are finalized
+2. update-server registration and scheduler verification run
+3. the install lock is written
+4. runtime permissions are normalized
+
+The completion response returns scheduler and update-registration status so the client can surface required follow-up instead of assuming background scheduling succeeded.
+
 ## First Boot
 
 - The core bootstrap loads autoloading, service registration, routing, security boundaries, and module manifests.
