@@ -1,0 +1,16 @@
+<header class="site-header">
+  <nav class="site-nav" aria-label="Primary navigation">
+    <a class="site-brand" href="{{ '/' | relative_url }}" aria-label="Metis home">
+      <img src="{{ '/assets/metis-app-icon-dark.svg' | relative_url }}" alt="">
+      <span class="site-brand-name">Metis</span>
+    </a>
+    <span class="site-links">
+      <a href="{{ '/' | relative_url }}"{% if page.active_nav == 'home' %} aria-current="page"{% endif %}>Home</a>
+      <a href="{{ '/capabilities.html' | relative_url }}"{% if page.active_nav == 'capabilities' %} aria-current="page"{% endif %}>Capabilities</a>
+      <a href="{{ '/modules.html' | relative_url }}"{% if page.active_nav == 'modules' %} aria-current="page"{% endif %}>Modules</a>
+      <a href="{{ '/status.html' | relative_url }}"{% if page.active_nav == 'status' %} aria-current="page"{% endif %}>Status</a>
+      <a href="https://github.com/jvitarius85/metis">GitHub</a>
+    </span>
+  </nav>
+</header>
+

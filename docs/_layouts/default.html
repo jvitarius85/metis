@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  {% if page.description %}<meta name="description" content="{{ page.description | escape }}">{% endif %}
+  <title>{{ page.title }}</title>
+  {% if page.secondary_stylesheet %}<link rel="stylesheet" href="{{ page.secondary_stylesheet | relative_url }}">{% endif %}
+  {% if page.layout == 'module-detail' %}<link rel="stylesheet" href="{{ '/module-details.css' | relative_url }}">{% endif %}
+  {% if page.stylesheet %}<link rel="stylesheet" href="{{ page.stylesheet | relative_url }}">{% endif %}
+  <link rel="stylesheet" href="{{ '/site.css' | relative_url }}">
+</head>
+<body class="{{ page.body_class }}">
+  {% include header.html %}
+  {{ content }}
+</body>
+</html>
